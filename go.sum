@@ -33,6 +33,8 @@ github.com/goccy/go-json v0.10.2/go.mod h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MG
 github.com/google/go-cmp v0.5.5 h1:Khx7svrCpmxxtHBq5j2mp/xVjsi8hQMfNLvJFAlrGgU=
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
+github.com/h2non/filetype v1.1.3 h1:FKkx9QbD7HR/zjK1Ia5XiBsq9zdLi5Kf3zGyFTAFkGg=
+github.com/h2non/filetype v1.1.3/go.mod h1:319b3zT68BvV+WRj7cwy856M2ehB3HqNOt6sy1HndBY=
 github.com/json-iterator/go v1.1.12 h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=
 github.com/json-iterator/go v1.1.12/go.mod h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo=
 github.com/klauspost/cpuid/v2 v2.0.9/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
@@ -77,10 +79,6 @@ github.com/xpzouying/headless_browser v0.0.2 h1:sLc4gqUT/5IyTruYIOfCW4aZLinq38hI
 github.com/xpzouying/headless_browser v0.0.2/go.mod h1:bQTSzGYHIipa1zwToMlOGHcXWDlvw8y33Cx5zzElekc=
 github.com/ysmood/fetchup v0.2.3 h1:ulX+SonA0Vma5zUFXtv52Kzip/xe7aj4vqT5AJwQ+ZQ=
 github.com/ysmood/fetchup v0.2.3/go.mod h1:xhibcRKziSvol0H1/pj33dnKrYyI2ebIvz5cOOkYGns=
-github.com/ysmood/fetchup v0.4.0 h1:x8n2dskN+lFCALOHArJ5+3jlPN+z5TEpKwdq4jSCuNw=
-github.com/ysmood/fetchup v0.4.0/go.mod h1:yCv8s8itjsCul1LGXJ1Q+8EQnZcVjfbZ4+l1zDm4StE=
-github.com/ysmood/fetchup v0.5.2 h1:P9w3OIA7RSNEEFvEmOiTq09IOu42C96PMyZ1MWd8TAs=
-github.com/ysmood/fetchup v0.5.2/go.mod h1:yCv8s8itjsCul1LGXJ1Q+8EQnZcVjfbZ4+l1zDm4StE=
 github.com/ysmood/goob v0.4.0 h1:HsxXhyLBeGzWXnqVKtmT9qM7EuVs/XOgkX7T6r1o1AQ=
 github.com/ysmood/goob v0.4.0/go.mod h1:u6yx7ZhS4Exf2MwciFr6nIM8knHQIE22lFpWHnfql18=
 github.com/ysmood/gop v0.0.2/go.mod h1:rr5z2z27oGEbyB787hpEcx4ab8cCiPnKxn0SUHt6xzk=

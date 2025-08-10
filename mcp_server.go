@@ -79,7 +79,7 @@ func handlePublishContent(ctx context.Context, args map[string]interface{}) *MCP
 	// 解析参数
 	title, _ := args["title"].(string)
 	content, _ := args["content"].(string)
-	imagePathsInterface, _ := args["image_paths"].([]interface{})
+	imagePathsInterface, _ := args["images"].([]interface{})
 
 	var imagePaths []string
 	for _, path := range imagePathsInterface {
@@ -92,9 +92,9 @@ func handlePublishContent(ctx context.Context, args map[string]interface{}) *MCP
 
 	// 构建发布请求
 	req := &PublishRequest{
-		Title:      title,
-		Content:    content,
-		ImagePaths: imagePaths,
+		Title:   title,
+		Content: content,
+		Images:  imagePaths,
 	}
 
 	// 执行发布
@@ -183,14 +183,14 @@ func handleToolsList(w http.ResponseWriter, req JSONRPCRequest) {
 						"type":        "string",
 						"description": "发布内容的正文",
 					},
-					"image_ids": map[string]interface{}{
+					"images": map[string]interface{}{
 						"type":        "array",
 						"items":       map[string]string{"type": "string"},
-						"description": "图片ID列表（至少一个）",
+						"description": "图片路径或URL列表（支持本地文件路径和HTTP/HTTPS图片URL，至少一个）",
 						"minItems":    1,
 					},
 				},
-				"required": []string{"title", "content", "image_ids"},
+				"required": []string{"title", "content", "images"},
 			},
 		},
 	}
