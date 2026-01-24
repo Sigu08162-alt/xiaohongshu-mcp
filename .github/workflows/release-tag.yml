@@ -31,17 +31,34 @@ jobs:
       - name: Build all platforms
         run: make build-all
 
+      - name: Package binaries
+        run: |
+          cd dist
+          # macOS ARM64
+          tar czf xiaohongshu-mcp-darwin-arm64.tar.gz xiaohongshu-mcp-darwin-arm64
+          # macOS Intel
+          tar czf xiaohongshu-mcp-darwin-amd64.tar.gz xiaohongshu-mcp-darwin-amd64
+          # Linux x64
+          tar czf xiaohongshu-mcp-linux-amd64.tar.gz xiaohongshu-mcp-linux-amd64
+          # Linux ARM64
+          tar czf xiaohongshu-mcp-linux-arm64.tar.gz xiaohongshu-mcp-linux-arm64
+          # Windows x64
+          zip xiaohongshu-mcp-windows-amd64.zip xiaohongshu-mcp-windows-amd64.exe
+          # Windows ARM64
+          zip xiaohongshu-mcp-windows-arm64.zip xiaohongshu-mcp-windows-arm64.exe
+
       - name: Create checksums
         run: |
           cd dist
-          sha256sum * > checksums.txt
+          sha256sum *.tar.gz *.zip > checksums.txt
           cat checksums.txt
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            dist/xiaohongshu-mcp-*
+            dist/*.tar.gz
+            dist/*.zip
             dist/checksums.txt
           body: |
             ## 小红书MCP工具 ${{ steps.version.outputs.VERSION }}
