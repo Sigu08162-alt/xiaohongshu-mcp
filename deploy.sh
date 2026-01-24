@@ -5,16 +5,40 @@ echo "=== 小红书MCP服务器部署脚本 ==="
 
 # 配置变量
 DEPLOY_DIR="/opt/xiaohongshu-mcp"
-VERSION="v2026.01.24.2135-64dc373"
 GITHUB_REPO="vmxmy/xiaohongshu-mcp"
 
-# 1. 安装依赖
-echo "步骤1: 安装依赖..."
+# 获取最新版本
+echo "获取最新版本..."
+VERSION=$(gh release view --repo $GITHUB_REPO --json tagName --jq '.tagName')
+if [ -z "$VERSION" ]; then
+    echo "错误: 无法获取最新版本"
+    exit 1
+fi
+echo "最新版本: $VERSION"
+
+# 1. 检查必要工具
+echo "步骤1: 检查必要工具..."
+
+# 检查 gh CLI
+if ! command -v gh &> /dev/null; then
+    echo "错误: 未安装 gh CLI，请先安装:"
+    echo "  Ubuntu/Debian: sudo apt install gh"
+    echo "  CentOS/RHEL: sudo dnf install gh"
+    exit 1
+fi
+
+# 检查 gh 登录状态
+if ! gh auth status &> /dev/null; then
+    echo "错误: gh CLI 未登录，请运行: gh auth login"
+    exit 1
+fi
+
+# 安装浏览器依赖
 if command -v apt &> /dev/null; then
     sudo apt update
-    sudo apt install -y chromium-browser curl wget
+    sudo apt install -y chromium-browser curl
 elif command -v yum &> /dev/null; then
-    sudo yum install -y chromium curl wget
+    sudo yum install -y chromium curl
 fi
 
 # 2. 安装PM2
@@ -36,7 +60,11 @@ cd $DEPLOY_DIR
 
 # 4. 下载二进制文件
 echo "步骤4: 下载MCP服务器..."
-wget "https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/xiaohongshu-mcp-linux-amd64" -O xiaohongshu-mcp
+gh release download "${VERSION}" \
+    --repo "${GITHUB_REPO}" \
+    --pattern "xiaohongshu-mcp-linux-amd64" \
+    --clobber
+mv xiaohongshu-mcp-linux-amd64 xiaohongshu-mcp
 chmod +x xiaohongshu-mcp
 
 # 5. 创建目录
