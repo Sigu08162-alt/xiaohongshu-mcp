@@ -62,9 +62,13 @@ cd $DEPLOY_DIR
 echo "步骤4: 下载MCP服务器..."
 gh release download "${VERSION}" \
     --repo "${GITHUB_REPO}" \
-    --pattern "xiaohongshu-mcp-linux-amd64" \
+    --pattern "xiaohongshu-mcp-linux-amd64.tar.gz" \
     --clobber
-mv xiaohongshu-mcp-linux-amd64 xiaohongshu-mcp
+
+# 解压
+echo "解压文件..."
+tar -xzf xiaohongshu-mcp-linux-amd64.tar.gz
+rm xiaohongshu-mcp-linux-amd64.tar.gz
 chmod +x xiaohongshu-mcp
 
 # 5. 创建目录
