@@ -59,11 +59,11 @@ selectors:
     topic_container: "#creator-editor-topic-container"
     topic_item: ".item"
 
-    # 发布按钮 - 精确匹配"发布"按钮
-    submit_button: "button:has-text('发布')"
+    # 发布按钮 - 使用 Playwright 文本选择器
+    submit_button: "button >> text=发布"
 
-    # 暂存按钮 - 精确匹配"暂存离开"按钮
-    save_draft_button: "button:has-text('暂存离开')"
+    # 暂存按钮 - 使用 Playwright 文本选择器
+    save_draft_button: "button >> text=暂存离开"
 
     # 定时发布
     radio_label: "span.el-radio__label"
