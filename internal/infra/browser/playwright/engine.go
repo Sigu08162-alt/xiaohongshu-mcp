@@ -32,9 +32,23 @@ func New(cfg Config) *Engine {
 }
 
 func (e *Engine) Start() error {
+	// 尝试运行playwright，如果驱动未安装则自动安装
 	pw, err := playwright.Run()
 	if err != nil {
-		return wrapPlaywrightError(err)
+		// 检查是否是驱动未安装的错误
+		if strings.Contains(err.Error(), "driver not installed") || strings.Contains(err.Error(), "please install") {
+			// 自动安装驱动
+			if installErr := playwright.Install(); installErr != nil {
+				return fmt.Errorf("自动安装playwright驱动失败: %w", installErr)
+			}
+			// 重试运行
+			pw, err = playwright.Run()
+			if err != nil {
+				return wrapPlaywrightError(err)
+			}
+		} else {
+			return wrapPlaywrightError(err)
+		}
 	}
 	b, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(e.cfg.Headless),

@@ -59,11 +59,11 @@ selectors:
     topic_container: "#creator-editor-topic-container"
     topic_item: ".item"
 
-    # 发布按钮 - 使用文本选择器
-    submit_button: "text=发布"
+    # 发布按钮 - 使用class选择器（精确定位图文发布按钮）
+    submit_button: "button.publishBtn"
 
-    # 暂存按钮 - 使用文本选择器
-    save_draft_button: "text=暂存离开"
+    # 暂存按钮 - 使用class选择器
+    save_draft_button: "button.cancelBtn"
 
     # 定时发布
     radio_label: "span.el-radio__label"

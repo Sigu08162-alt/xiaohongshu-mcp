@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -31,51 +32,167 @@ func NewGateway(cfg Config, engine browser.Engine) (*Gateway, error) {
 	if engine == nil {
 		return nil, errors.New("engine missing")
 	}
+	// 输出配置信息
+	logrus.Infof("🔧 Gateway配置:")
+	logrus.Infof("  - 图文发布URL: %s", cfg.PublishImageURL)
+	logrus.Infof("  - 视频发布URL: %s", cfg.PublishVideoURL)
 	return &Gateway{cfg: cfg, engine: engine}, nil
 }
 
 func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent) error {
+	logrus.Info(strings.Repeat("=", 60))
+	logrus.Info("🚀 开始图文发布流程")
+	logrus.Info(strings.Repeat("=", 60))
+
+	logrus.Info("📋 发布内容:")
+	logrus.Infof("  - 标题: %s", content.Title)
+	logrus.Infof("  - 内容: %s", content.Content)
+	logrus.Infof("  - 图片数量: %d", len(content.ImagePaths))
+
+	logrus.Info("🌐 启动浏览器引擎...")
 	if err := g.engine.Start(); err != nil {
+		logrus.Errorf("❌ 浏览器引擎启动失败: %v", err)
 		return err
 	}
 	defer g.engine.Close()
+	logrus.Info("✅ 浏览器引擎启动成功")
 
+	logrus.Info("📄 创建新页面...")
 	page, err := g.engine.NewPage()
 	if err != nil {
+		logrus.Errorf("❌ 创建页面失败: %v", err)
 		return err
 	}
 	defer page.Close()
+	logrus.Info("✅ 页面创建成功")
 
+	// 访问发布页面
+	logrus.Info("🔗 准备访问图文发布页面...")
+	logrus.Infof("📍 目标URL: %s", g.cfg.PublishImageURL)
 	if err := page.Goto(g.cfg.PublishImageURL); err != nil {
+		logrus.Errorf("❌ 访问页面失败: %v", err)
 		return fmt.Errorf("publish image goto url: %w", err)
 	}
-	// 等待上传输入框可见
+	logrus.Info("✅ 页面导航完成（可能正在重定向验证cookie）")
+
+	// 等待页面完全稳定（允许cookie验证重定向完成）
+	logrus.Info("⏳ 等待页面稳定（包括cookie验证重定向）...")
+	time.Sleep(3 * time.Second)
+	logrus.Info("✅ 页面稳定")
+
+	// 等待上传输入框
+	logrus.Infof("⏳ 等待上传输入框可见 (选择器: %s)...", g.cfg.Selectors["upload_input"])
 	if err := page.WaitVisible(g.cfg.Selectors["upload_input"]); err != nil {
+		logrus.Errorf("❌ 上传输入框未出现: %v", err)
 		return fmt.Errorf("publish image wait upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
 	}
+	logrus.Info("✅ 上传输入框已可见")
+
+	// 上传图片前检查URL
+	beforeUploadURL := page.URL()
+	logrus.Infof("📍 上传前URL: %s", beforeUploadURL)
+	if !strings.Contains(beforeUploadURL, "target=image") {
+		logrus.Errorf("❌ 警告：准备上传时URL已变化")
+		logrus.Errorf("📍 预期包含: target=image")
+		logrus.Errorf("📍 实际URL: %s", beforeUploadURL)
+		return fmt.Errorf("上传前URL异常: %s", beforeUploadURL)
+	}
+
+	// 上传图片
+	logrus.Infof("📤 开始上传图片 (共%d张)...", len(content.ImagePaths))
+	for i, path := range content.ImagePaths {
+		logrus.Infof("  [%d/%d] %s", i+1, len(content.ImagePaths), path)
+	}
 	if err := page.SetFiles(g.cfg.Selectors["upload_input"], content.ImagePaths); err != nil {
+		logrus.Errorf("❌ 图片上传失败: %v", err)
 		return fmt.Errorf("publish image upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
 	}
-	// 等待标题输入框可见（图片上传后才出现）
+	logrus.Info("✅ 图片���传成功")
+
+	// 上传图片后立即检查URL
+	afterUploadURL := page.URL()
+	logrus.Infof("📍 上传后URL: %s", afterUploadURL)
+	if !strings.Contains(afterUploadURL, "target=image") {
+		logrus.Errorf("❌ 严重错误：上传图片后URL变为视频页面！")
+		logrus.Errorf("📍 预期包含: target=image")
+		logrus.Errorf("📍 实际URL: %s", afterUploadURL)
+		screenshotPath := fmt.Sprintf("debug_after_upload_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		logrus.Errorf("📸 已保存截图: %s", screenshotPath)
+		return fmt.Errorf("上传后URL跳转到视频页面: %s", afterUploadURL)
+	}
+	logrus.Info("✅ 上传后URL仍在图文页面")
+
+	// 等待标题输入框
+
+	// 填写标题后检查URL
+	afterTitleURL := page.URL()
+	logrus.Infof("📍 填写标题后URL: %s", afterTitleURL)
+	if !strings.Contains(afterTitleURL, "target=image") {
+		logrus.Errorf("❌ 错误：填写标题后URL已变化")
+		logrus.Errorf("📍 实际URL: %s", afterTitleURL)
+		return fmt.Errorf("填写标题后URL异常: %s", afterTitleURL)
+	}
+	logrus.Infof("⏳ 等待标题输入框可见 (选择器: %s)...", g.cfg.Selectors["title_input"])
 	if err := page.WaitVisible(g.cfg.Selectors["title_input"]); err != nil {
+		logrus.Errorf("❌ 标题输入框未出现: %v", err)
 		return fmt.Errorf("publish image wait title_input(%s): %w", g.cfg.Selectors["title_input"], err)
 	}
+	logrus.Info("✅ 标题输入框已可见")
+
+	// 填写标题
+	logrus.Infof("✍️ 填写标题: '%s'", content.Title)
 	if err := page.Fill(g.cfg.Selectors["title_input"], content.Title); err != nil {
+		logrus.Errorf("❌ 标题填写失败: %v", err)
 		return fmt.Errorf("publish image title_input(%s): %w", g.cfg.Selectors["title_input"], err)
 	}
-	// 等待内容编辑器可见
+	logrus.Info("✅ 标题填写完成")
+
+	// 等待内容编辑器
+	logrus.Infof("⏳ 等待内容编辑器可见 (选择器: %s)...", g.cfg.Selectors["content"])
 	if err := page.WaitVisible(g.cfg.Selectors["content"]); err != nil {
+		logrus.Errorf("❌ 内容编辑器未出现: %v", err)
 		return fmt.Errorf("publish image wait content(%s): %w", g.cfg.Selectors["content"], err)
 	}
+	logrus.Info("✅ 内容编辑器已可见")
+
+	// 填写内容
+	logrus.Infof("✍️ 填写内容: '%s'", content.Content)
 	if err := page.Fill(g.cfg.Selectors["content"], content.Content); err != nil {
+		logrus.Errorf("❌ 内容填写失败: %v", err)
 		return fmt.Errorf("publish image content(%s): %w", g.cfg.Selectors["content"], err)
 	}
+	logrus.Info("✅ 内容填写完成")
 
-	// 提交前短暂等待，确保内容已输入完成
-	logrus.Info("内容填写完成，等待2秒让页面渲染完成...")
+	// 填写内容后检查URL
+	afterContentURL := page.URL()
+	logrus.Infof("📍 填写内容后URL: %s", afterContentURL)
+	if !strings.Contains(afterContentURL, "target=image") {
+		logrus.Errorf("❌ 错误：填写内容后URL已变化")
+		logrus.Errorf("📍 实际URL: %s", afterContentURL)
+		screenshotPath := fmt.Sprintf("debug_after_content_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		return fmt.Errorf("填写内容后URL异常: %s", afterContentURL)
+	}
+	logrus.Info("✅ 填写内容后URL仍在图文页面")
+
+	// 提交前等待
+	logrus.Info("⏱️ 等待2秒让页面渲染完成...")
 	time.Sleep(2 * time.Second)
+	logrus.Info("✅ 等待完成")
 
-	// 点击发布按钮
+	// 点击发布按钮前最后检查URL
+	beforeClickURL := page.URL()
+	logrus.Infof("📍 点击发布按钮前URL: %s", beforeClickURL)
+	if !strings.Contains(beforeClickURL, "target=image") {
+		logrus.Errorf("❌ 严重错误：准备点击发布按钮时URL已变化！")
+		logrus.Errorf("📍 实际URL: %s", beforeClickURL)
+		screenshotPath := fmt.Sprintf("debug_before_click_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		return fmt.Errorf("点击前URL异常: %s", beforeClickURL)
+	}
+
+	// 点���发布按钮
 	submitSelector := g.cfg.Selectors["submit"]
 	logrus.Infof("=== 准备点击发布按钮 ===")
 	logrus.Infof("选择器: %s", submitSelector)
@@ -85,22 +202,65 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 		logrus.Warnf("等待发布按钮可见失败: %v (继续尝试)", err)
 	}
 
-	// 等待按钮稳定
-	time.Sleep(1 * time.Second)
-
-	logrus.Info(">>> 使用强制点击发布按钮（JavaScript）...")
-	if err := page.ClickForce(submitSelector); err != nil {
-		return fmt.Errorf("publish image submit(%s): %w", submitSelector, err)
+	// 使用普通点击（更可靠，能正确触发Vue事件）
+	logrus.Info("点击发布按钮...")
+	if err := page.Click(submitSelector); err != nil {
+		return fmt.Errorf("点击发布按钮失败: %w", err)
 	}
-	logrus.Info(">>> 发布按钮已点击！")
+	logrus.Info("发布按钮已点击")
 
-	// 等待足够长的时间让小红书处理提交
-	logrus.Info("等待10秒，让小红书处理提交...")
-	time.Sleep(10 * time.Second)
+	// 点击后立即检查URL
+	afterClickURL := page.URL()
+	logrus.Infof("📍 点击发布按钮后URL: %s", afterClickURL)
+	if strings.Contains(afterClickURL, "target=video") {
+		logrus.Errorf("❌ 严重错误：点击发布按钮后跳转到视频页面！")
+		logrus.Errorf("📍 选择器: %s", submitSelector)
+		logrus.Errorf("📍 点击后URL: %s", afterClickURL)
+		screenshotPath := fmt.Sprintf("debug_wrong_button_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		return fmt.Errorf("点击的按钮错误，跳转到视频页面: %s", afterClickURL)
+	}
 
-	logrus.Info("提交完成，关闭浏览器")
+	// 等待��布完成 - 通过URL变化来验证
+	logrus.Info("等待发布完成（检查URL变化）...")
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
 
-	return nil
+	for time.Since(startTime) < maxWait {
+		currentURL := page.URL()
+		logrus.Debugf("当前URL: %s", currentURL)
+
+		// 检查URL是否包含 published=true，这是发布成功的标志
+		if strings.Contains(currentURL, "published=true") {
+			logrus.Info("✅ 发布成功！URL已更新为发布完成状态")
+			logrus.Infof("发布完成URL: %s", currentURL)
+			return nil
+		}
+
+		// 检查是否有错误消息
+		if hasError, _ := page.Has(".error-message"); hasError {
+			if errText, err := page.Text(".error-message"); err == nil {
+				logrus.Errorf("❌ 发布失败：%s", errText)
+				return fmt.Errorf("发布失败: %s", errText)
+			}
+		}
+
+		time.Sleep(checkInterval)
+	}
+
+	// 超时了，记录最终URL帮助调试
+	finalURL := page.URL()
+	logrus.Warnf("⚠️ 发布超时：30秒内未检测到发布成功")
+	logrus.Warnf("最终URL: %s", finalURL)
+
+	// 尝试截图保存当前状态
+	screenshotPath := fmt.Sprintf("debug_timeout_%d.png", time.Now().Unix())
+	if err := page.Screenshot(screenshotPath); err == nil {
+		logrus.Infof("已保存超时时的截图: %s", screenshotPath)
+	}
+
+	return fmt.Errorf("发布超时：30秒内未检测到发布成功，最终URL: %s", finalURL)
 }
 
 func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent) error {
@@ -154,22 +314,53 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 		logrus.Warnf("等待发布按钮可见失败: %v (继续尝试)", err)
 	}
 
-	// 等待按钮稳定
-	time.Sleep(1 * time.Second)
-
-	logrus.Info(">>> 使用强制点击发布按钮...")
-	if err := page.ClickForce(submitSelector); err != nil {
-		return fmt.Errorf("publish video submit(%s): %w", submitSelector, err)
+	// 使用普通点击（更可靠，能正确触发Vue事件）
+	logrus.Info("点击发布按钮...")
+	if err := page.Click(submitSelector); err != nil {
+		return fmt.Errorf("点击发布按钮失败: %w", err)
 	}
-	logrus.Info(">>> 发布按钮已点击！")
+	logrus.Info("发布按钮已点击")
 
-	// 等待提交完成
-	logrus.Info("等待10秒，让小红书处理提交...")
-	time.Sleep(10 * time.Second)
+	// 等待发布完成 - 通过URL变化来验证
+	logrus.Info("等待发布完成（检查URL变化）...")
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
 
-	logrus.Info("提交完成，关闭浏览器")
+	for time.Since(startTime) < maxWait {
+		currentURL := page.URL()
+		logrus.Debugf("当前URL: %s", currentURL)
 
-	return nil
+		// 检查URL是否包含 published=true，这是发布成功的标志
+		if strings.Contains(currentURL, "published=true") {
+			logrus.Info("✅ 发布成功！URL已更新为发布完成状态")
+			logrus.Infof("发布完成URL: %s", currentURL)
+			return nil
+		}
+
+		// 检查是否有错误消息
+		if hasError, _ := page.Has(".error-message"); hasError {
+			if errText, err := page.Text(".error-message"); err == nil {
+				logrus.Errorf("❌ 发布失败：%s", errText)
+				return fmt.Errorf("发布失败: %s", errText)
+			}
+		}
+
+		time.Sleep(checkInterval)
+	}
+
+	// 超时了，记录最终URL帮助调试
+	finalURL := page.URL()
+	logrus.Warnf("⚠️ 发布超时：30秒内未检测到发布成功")
+	logrus.Warnf("最终URL: %s", finalURL)
+
+	// 尝试截图保存当前状态
+	screenshotPath := fmt.Sprintf("debug_timeout_%d.png", time.Now().Unix())
+	if err := page.Screenshot(screenshotPath); err == nil {
+		logrus.Infof("已保存超时时的截图: %s", screenshotPath)
+	}
+
+	return fmt.Errorf("发布超时：30秒内未检测到发布成功，最终URL: %s", finalURL)
 }
 
 func (g *Gateway) SaveImageDraft(ctx context.Context, content publish.ImageContent) error {
