@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/xpzouying/headless_browser"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
@@ -129,12 +130,49 @@ func (p *page) Fill(selector, value string) error {
 		return err
 	}
 
-	// 先清空
-	if err := elem.SelectAllText(); err != nil {
+	// 检查元素类型
+	tagName, err := elem.Eval(`() => this.tagName.toLowerCase()`)
+	if err != nil {
 		return err
 	}
 
-	// 输入新值
+	tag := tagName.Value.Str()
+
+	// 对于 input/textarea 元素，使用标准方法
+	if tag == "input" || tag == "textarea" {
+		// 先选中所有文本
+		if err := elem.SelectAllText(); err != nil {
+			// 如果 SelectAllText 失败，尝试直接清空
+			_, evalErr := elem.Eval(`() => this.value = ''`)
+			if evalErr != nil {
+				return evalErr
+			}
+		}
+		return elem.Input(value)
+	}
+
+	// 对于 contenteditable 元素（如 div[role="textbox"]），使用不同的方法
+	// 先点击聚焦
+	if err := elem.Click(proto.InputMouseButtonLeft, 1); err != nil {
+		return err
+	}
+
+	// 全选并替换内容
+	// 使用 Ctrl+A (或 Cmd+A on Mac) 选中全部，然后输入
+	keyActions, err := elem.KeyActions()
+	if err != nil {
+		return err
+	}
+
+	if err := keyActions.
+		Press(input.ControlLeft).
+		Type('a').
+		Release(input.ControlLeft).
+		Do(); err != nil {
+		return err
+	}
+
+	// 输入新内容
 	return elem.Input(value)
 }
 
