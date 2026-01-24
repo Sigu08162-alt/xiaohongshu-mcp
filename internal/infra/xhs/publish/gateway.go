@@ -80,18 +80,9 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	logrus.Infof("=== 准备点击发布按钮 ===")
 	logrus.Infof("选择器: %s", submitSelector)
 
-	// 先检查按钮是否可见
-	isVisible, err := page.IsVisible(submitSelector)
-	if err != nil {
-		logrus.Errorf("检查发布按钮可见性失败: %v", err)
-	} else {
-		logrus.Infof("发布按钮可见性: %v", isVisible)
-	}
-
-	// 滚动到按钮位置（对无头模式很重要）
-	logrus.Info("滚动到发布按钮位置...")
-	if err := page.ScrollIntoView(submitSelector); err != nil {
-		logrus.Warnf("滚动到发布按钮失败: %v (继续尝试)", err)
+	// 等待按钮出现并可点击
+	if err := page.WaitVisible(submitSelector); err != nil {
+		logrus.Warnf("等待发布按钮可见失败: %v (继续尝试)", err)
 	}
 
 	// 等待按钮稳定
@@ -158,18 +149,9 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 	logrus.Infof("=== 准备点击发布按钮 ===")
 	logrus.Infof("选择器: %s", submitSelector)
 
-	// 检查按钮可见性
-	isVisible, err := page.IsVisible(submitSelector)
-	if err != nil {
-		logrus.Errorf("检查发布按钮可见性失败: %v", err)
-	} else {
-		logrus.Infof("发布按钮可见性: %v", isVisible)
-	}
-
-	// 滚动到按钮位置
-	logrus.Info("滚动到发布按钮位置...")
-	if err := page.ScrollIntoView(submitSelector); err != nil {
-		logrus.Warnf("滚动到发布按钮失败: %v (继续尝试)", err)
+	// 等待按钮出现并可点击
+	if err := page.WaitVisible(submitSelector); err != nil {
+		logrus.Warnf("等待发布按钮可见失败: %v (继续尝试)", err)
 	}
 
 	// 等待按钮稳定
