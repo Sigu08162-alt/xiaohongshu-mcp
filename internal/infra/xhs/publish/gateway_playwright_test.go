@@ -10,18 +10,18 @@ import (
 )
 
 type fakePage struct {
-	Calls                 []string
-	ElementCalls          []string
-	ElementsCalls         []string
-	WaitForFunctionCalls  int
-	EvalCalls             []string
-	URLValue              string
-	ElementResults        map[string]*fakeElement
-	ElementsResults       map[string][]*fakeElement
-	HasResults            map[string]bool
-	TextResults           map[string]string
-	EvalResult            interface{}
-	IsVisibleResults      map[string]bool
+	Calls                []string
+	ElementCalls         []string
+	ElementsCalls        []string
+	WaitForFunctionCalls int
+	EvalCalls            []string
+	URLValue             string
+	ElementResults       map[string]*fakeElement
+	ElementsResults      map[string][]*fakeElement
+	HasResults           map[string]bool
+	TextResults          map[string]string
+	EvalResult           interface{}
+	IsVisibleResults     map[string]bool
 }
 
 func (p *fakePage) Goto(url string) error {
@@ -275,25 +275,25 @@ type fakeElement struct {
 	Visible  bool
 }
 
-func (e *fakeElement) Click() error                          { return nil }
-func (e *fakeElement) ClickForce() error                     { return nil }
-func (e *fakeElement) DoubleClick() error                    { return nil }
-func (e *fakeElement) Hover() error                          { return nil }
-func (e *fakeElement) Focus() error                          { return nil }
-func (e *fakeElement) Fill(value string) error               { return nil }
-func (e *fakeElement) Type(value string) error               { return nil }
-func (e *fakeElement) Press(key string) error                { return nil }
-func (e *fakeElement) Input(value string) error              { return nil }
-func (e *fakeElement) SetFiles(files []string) error         { return nil }
-func (e *fakeElement) ScrollIntoView() error                 { return nil }
-func (e *fakeElement) WaitVisible() error                    { return nil }
-func (e *fakeElement) WaitHidden() error                     { return nil }
+func (e *fakeElement) Click() error                            { return nil }
+func (e *fakeElement) ClickForce() error                       { return nil }
+func (e *fakeElement) DoubleClick() error                      { return nil }
+func (e *fakeElement) Hover() error                            { return nil }
+func (e *fakeElement) Focus() error                            { return nil }
+func (e *fakeElement) Fill(value string) error                 { return nil }
+func (e *fakeElement) Type(value string) error                 { return nil }
+func (e *fakeElement) Press(key string) error                  { return nil }
+func (e *fakeElement) Input(value string) error                { return nil }
+func (e *fakeElement) SetFiles(files []string) error           { return nil }
+func (e *fakeElement) ScrollIntoView() error                   { return nil }
+func (e *fakeElement) WaitVisible() error                      { return nil }
+func (e *fakeElement) WaitHidden() error                       { return nil }
 func (e *fakeElement) WaitStable(duration time.Duration) error { return nil }
-func (e *fakeElement) IsVisible() (bool, error)              { return e.Visible, nil }
-func (e *fakeElement) Text() (string, error)                 { return e.TextVal, nil }
-func (e *fakeElement) HTML() (string, error)                 { return "", nil }
-func (e *fakeElement) Attribute(name string) (string, error) { return "", nil }
-func (e *fakeElement) Value() (string, error)                { return "", nil }
+func (e *fakeElement) IsVisible() (bool, error)                { return e.Visible, nil }
+func (e *fakeElement) Text() (string, error)                   { return e.TextVal, nil }
+func (e *fakeElement) HTML() (string, error)                   { return "", nil }
+func (e *fakeElement) Attribute(name string) (string, error)   { return "", nil }
+func (e *fakeElement) Value() (string, error)                  { return "", nil }
 func (e *fakeElement) Eval(expression string, args ...interface{}) (interface{}, error) {
 	return nil, nil
 }
