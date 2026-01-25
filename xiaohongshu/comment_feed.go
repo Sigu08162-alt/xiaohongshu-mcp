@@ -45,10 +45,27 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 	if err := page.Goto(url); err != nil {
 		return fmt.Errorf("导航失败: %w", err)
 	}
-	if err := page.WaitDOMStable(5*time.Second, 0.1); err != nil {
-		logrus.Warnf("等待 DOM 稳定失败: %v", err)
+
+	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
+	// Feed 详情页有动态内容（评论实时加载、推荐内容），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasNoteData, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.note &&
+			       window.__INITIAL_STATE__.note.noteDetailMap !== undefined;
+		}`)
+		if err == nil && hasNoteData == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
-	time.Sleep(1 * time.Second)
+
+	// 额外等待500ms确保笔记数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	// 检测页面是否可访问
 	if err := checkPageAccessible_browser(page); err != nil {
@@ -195,7 +212,6 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 
 // ReplyToComment 回复指定评论
 func (f *CommentFeedAction) ReplyToComment(ctx context.Context, feedID, xsecToken, commentID, userID, content string) error {
-	// 增加超时时间，因为需要滚动查找评论
 	page := f.page.WithTimeout(5 * time.Minute)
 	url := makeFeedDetailURL_browser(feedID, xsecToken)
 	logrus.Infof("打开 feed 详情页进行回复: %s", url)
@@ -204,10 +220,27 @@ func (f *CommentFeedAction) ReplyToComment(ctx context.Context, feedID, xsecToke
 	if err := page.Goto(url); err != nil {
 		return fmt.Errorf("导航失败: %w", err)
 	}
-	if err := page.WaitDOMStable(5*time.Second, 0.1); err != nil {
-		logrus.Warnf("等待 DOM 稳定失败: %v", err)
+
+	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
+	// Feed 详情页有动态内容（评论实时加载、推荐内容），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasNoteData, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.note &&
+			       window.__INITIAL_STATE__.note.noteDetailMap !== undefined;
+		}`)
+		if err == nil && hasNoteData == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
-	time.Sleep(1 * time.Second)
+
+	// 额外等待500ms确保笔记数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	// 检测页面是否可访问
 	if err := checkPageAccessible_browser(page); err != nil {

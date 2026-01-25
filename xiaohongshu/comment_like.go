@@ -45,10 +45,27 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 	if err := page.Goto(url); err != nil {
 		return fmt.Errorf("导航失败: %w", err)
 	}
-	if err := page.WaitDOMStable(5*time.Second, 0.1); err != nil {
-		logrus.Warnf("等待 DOM 稳定失败: %v", err)
+
+	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
+	// Feed 详情页有动态内容（评论实时加载、推荐内容），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasNoteData, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.note &&
+			       window.__INITIAL_STATE__.note.noteDetailMap !== undefined;
+		}`)
+		if err == nil && hasNoteData == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
-	time.Sleep(1 * time.Second)
+
+	// 额外等待500ms确保笔记数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	// 检查页面是否可访问
 	if err := checkPageAccessible(page); err != nil {

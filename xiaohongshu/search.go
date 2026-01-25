@@ -172,13 +172,27 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	if err := page.Goto(searchURL); err != nil {
 		return nil, fmt.Errorf("导航到搜索页失败: %w", err)
 	}
-	if err := page.WaitDOMStable(10*time.Second, 0.1); err != nil {
-		return nil, fmt.Errorf("等待页面稳定失败: %w", err)
+
+	// 等待 __INITIAL_STATE__ 中的搜索数据加载，而不是等待 DOM 稳定
+	// 搜索结果页有动态内容（推荐内容、实时更新、无限滚动），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasSearchData, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.search &&
+			       window.__INITIAL_STATE__.search.feeds !== undefined;
+		}`)
+		if err == nil && hasSearchData == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
 
-	if err := page.WaitForFunction(`() => window.__INITIAL_STATE__ !== undefined`, 30*time.Second); err != nil {
-		return nil, fmt.Errorf("等待 __INITIAL_STATE__ 失败: %w", err)
-	}
+	// 额外等待500ms确保搜索数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	// 如果有筛选条件，则应用筛选
 	if len(filters) > 0 {
@@ -218,14 +232,26 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 			}
 		}
 
-		// 等待页面更新
-		if err := page.WaitDOMStable(10*time.Second, 0.1); err != nil {
-			return nil, fmt.Errorf("等待筛选后页面稳定失败: %w", err)
+		// 等待筛选后的搜索数据更新，而不是等待 DOM 稳定
+		// 筛选后的搜索结果同样有动态内容
+		maxWait := 30 * time.Second
+		checkInterval := 500 * time.Millisecond
+		startTime := time.Now()
+
+		for time.Since(startTime) < maxWait {
+			hasSearchData, err := page.Eval(`() => {
+				return window.__INITIAL_STATE__ &&
+				       window.__INITIAL_STATE__.search &&
+				       window.__INITIAL_STATE__.search.feeds !== undefined;
+			}`)
+			if err == nil && hasSearchData == true {
+				break
+			}
+			time.Sleep(checkInterval)
 		}
-		// 重新等待 __INITIAL_STATE__ 更新
-		if err := page.WaitForFunction(`() => window.__INITIAL_STATE__ !== undefined`, 30*time.Second); err != nil {
-			return nil, fmt.Errorf("等待筛选后 __INITIAL_STATE__ 失败: %w", err)
-		}
+
+		// 额外等待500ms确保筛选后的数据完全加载
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	resultRaw, err := page.Eval(`() => {
