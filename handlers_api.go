@@ -39,6 +39,13 @@ func respondSuccess(c *gin.Context, data any, message string) {
 }
 
 // checkLoginStatusHandler 检查登录状态
+// @Summary 检查登录状态
+// @Description 检查当前是否已登录小红书
+// @Tags 登录认证
+// @Produce json
+// @Success 200 {object} SuccessResponse "登录状态信息"
+// @Failure 500 {object} ErrorResponse "服务器内部错误"
+// @Router /login/status [get]
 func (s *AppServer) checkLoginStatusHandler(c *gin.Context) {
 	status, err := s.xiaohongshuService.CheckLoginStatus(c.Request.Context())
 	if err != nil {
@@ -53,6 +60,13 @@ func (s *AppServer) checkLoginStatusHandler(c *gin.Context) {
 
 // getLoginQrcodeHandler 处理 [GET /api/login/qrcode] 请求。
 // 用于生成并返回登录二维码（Base64 图片 + 超时时间），供前端展示给用户扫码登录。
+// @Summary 获取登录二维码
+// @Description 生成小红书登录二维码，返回 Base64 编码的图片和超时时间
+// @Tags 登录认证
+// @Produce json
+// @Success 200 {object} SuccessResponse "二维码信息"
+// @Failure 500 {object} ErrorResponse "服务器内部错误"
+// @Router /login/qrcode [get]
 func (s *AppServer) getLoginQrcodeHandler(c *gin.Context) {
 	result, err := s.xiaohongshuService.GetLoginQrcode(c.Request.Context())
 	if err != nil {
@@ -65,6 +79,13 @@ func (s *AppServer) getLoginQrcodeHandler(c *gin.Context) {
 }
 
 // deleteCookiesHandler 删除 cookies，重置登录状态
+// @Summary 删除 Cookies
+// @Description 删除本地保存的 cookies 文件，重置登录状态
+// @Tags 登录认证
+// @Produce json
+// @Success 200 {object} SuccessResponse "删除成功"
+// @Failure 500 {object} ErrorResponse "删除失败"
+// @Router /login/cookies [delete]
 func (s *AppServer) deleteCookiesHandler(c *gin.Context) {
 	err := s.xiaohongshuService.DeleteCookies(c.Request.Context())
 	if err != nil {
@@ -81,6 +102,16 @@ func (s *AppServer) deleteCookiesHandler(c *gin.Context) {
 }
 
 // publishHandler 发布内容
+// @Summary 发布图文笔记
+// @Description 发布小红书图文内容，支持标题、正文、图片、标签等
+// @Tags 内容发布
+// @Accept json
+// @Produce json
+// @Param request body PublishRequest true "发布请求参数"
+// @Success 200 {object} SuccessResponse "发布成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "发布失败"
+// @Router /publish [post]
 func (s *AppServer) publishHandler(c *gin.Context) {
 	var req PublishRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -101,6 +132,16 @@ func (s *AppServer) publishHandler(c *gin.Context) {
 }
 
 // publishVideoHandler 发布视频内容
+// @Summary 发布视频笔记
+// @Description 发布小红书视频内容
+// @Tags 内容发布
+// @Accept json
+// @Produce json
+// @Param request body PublishVideoRequest true "视频发布请求参数"
+// @Success 200 {object} SuccessResponse "发布成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "发布失败"
+// @Router /publish_video [post]
 func (s *AppServer) publishVideoHandler(c *gin.Context) {
 	var req PublishVideoRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -121,6 +162,13 @@ func (s *AppServer) publishVideoHandler(c *gin.Context) {
 }
 
 // listFeedsHandler 获取Feeds列表
+// @Summary 获取首页 Feeds 列表
+// @Description 获取小红书首页推荐 Feed 流
+// @Tags 内容发现
+// @Produce json
+// @Success 200 {object} SuccessResponse "Feed 列表"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /feeds/list [get]
 func (s *AppServer) listFeedsHandler(c *gin.Context) {
 	// 获取 Feeds 列表
 	result, err := s.xiaohongshuService.ListFeeds(c.Request.Context())
@@ -135,6 +183,18 @@ func (s *AppServer) listFeedsHandler(c *gin.Context) {
 }
 
 // searchFeedsHandler 搜索Feeds
+// @Summary 搜索笔记
+// @Description 搜索小红书笔记，支持关键词和多维度筛选
+// @Tags 内容发现
+// @Accept json
+// @Produce json
+// @Param keyword query string false "搜索关键词(GET)"
+// @Param request body SearchFeedsRequest false "搜索请求参数(POST)"
+// @Success 200 {object} SuccessResponse "搜索结果"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "搜索失败"
+// @Router /feeds/search [get]
+// @Router /feeds/search [post]
 func (s *AppServer) searchFeedsHandler(c *gin.Context) {
 	var keyword string
 	var filters xiaohongshu.FilterOption
@@ -173,6 +233,16 @@ func (s *AppServer) searchFeedsHandler(c *gin.Context) {
 }
 
 // getFeedDetailHandler 获取Feed详情
+// @Summary 获取笔记详情
+// @Description 获取小红书笔记完整详情和评论列表
+// @Tags 内容发现
+// @Accept json
+// @Produce json
+// @Param request body FeedDetailRequest true "详情请求参数"
+// @Success 200 {object} SuccessResponse "笔记详情"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /feeds/detail [post]
 func (s *AppServer) getFeedDetailHandler(c *gin.Context) {
 	var req FeedDetailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -209,6 +279,16 @@ func (s *AppServer) getFeedDetailHandler(c *gin.Context) {
 }
 
 // userProfileHandler 用户主页
+// @Summary 获取用户主页
+// @Description 获取指定用户的主页信息和笔记列表
+// @Tags 用户信息
+// @Accept json
+// @Produce json
+// @Param request body UserProfileRequest true "用户主页请求参数"
+// @Success 200 {object} SuccessResponse "用户主页信息"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /user/profile [post]
 func (s *AppServer) userProfileHandler(c *gin.Context) {
 	var req UserProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -230,6 +310,16 @@ func (s *AppServer) userProfileHandler(c *gin.Context) {
 }
 
 // postCommentHandler 发表评论到Feed
+// @Summary 发表评论
+// @Description 在小红书笔记下发表评论
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body PostCommentRequest true "评论请求参数"
+// @Success 200 {object} SuccessResponse "评论成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "评论失败"
+// @Router /feeds/comment [post]
 func (s *AppServer) postCommentHandler(c *gin.Context) {
 	var req PostCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -251,6 +341,16 @@ func (s *AppServer) postCommentHandler(c *gin.Context) {
 }
 
 // replyCommentHandler 回复指定评论
+// @Summary 回复评论
+// @Description 回复笔记下的指定评论
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body ReplyCommentRequest true "回复请求参数"
+// @Success 200 {object} SuccessResponse "回复成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "回复失败"
+// @Router /feeds/comment/reply [post]
 func (s *AppServer) replyCommentHandler(c *gin.Context) {
 	var req ReplyCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -281,6 +381,13 @@ func healthHandler(c *gin.Context) {
 }
 
 // myProfileHandler 我的信息
+// @Summary 获取我的资料
+// @Description 获取当前登录用户的主页信息
+// @Tags 用户信息
+// @Produce json
+// @Success 200 {object} SuccessResponse "用户信息"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /user/me [get]
 func (s *AppServer) myProfileHandler(c *gin.Context) {
 	// 获取当前登录用户信息
 	result, err := s.xiaohongshuService.GetMyProfile(c.Request.Context())

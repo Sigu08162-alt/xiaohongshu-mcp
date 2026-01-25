@@ -896,7 +896,7 @@ ls -lh bin/
 
 #### 4. 配置MCP客户端
 
-在你的MCP客户端配置文件中添加：
+在你的MCP客户端配置文件中添加:
 
 ```json
 {
@@ -906,6 +906,38 @@ ls -lh bin/
     }
   }
 }
+```
+
+### 📚 REST API 文档 (Swagger)
+
+xiaohongshu-mcp 提供了完整的 Swagger/OpenAPI 文档,可以像 FastAPI 一样交互式地测试 API。
+
+**访问文档**: 启动服务后,在浏览器中打开 [http://localhost:18060/swagger/index.html](http://localhost:18060/swagger/index.html)
+
+**功能特性**:
+- ✅ 交互式 API 测试 - 在线测试所有接口
+- ✅ 完整的参数说明 - 表单式参数填写
+- ✅ 实时响应查看 - 查看请求和响应数据
+- ✅ OpenAPI 规范 - 可导入 Postman/Insomnia
+
+**可用 API**:
+- 登录认证 (3个): 状态检查、二维码登录、Cookie管理
+- 内容发布 (2个): 图文笔记、视频笔记
+- 内容发现 (4个): Feed列表、搜索、详情、用户主页
+- 内容互动 (2个): 评论、回复
+
+详细文档请查看: [docs/SWAGGER.md](./docs/SWAGGER.md)
+
+**curl 调用示例**:
+
+```bash
+# 检查登录状态
+curl http://localhost:18060/api/v1/login/status
+
+# 搜索笔记
+curl -X POST http://localhost:18060/api/v1/feeds/search \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "深圳美食", "filters": {"sort_by": "最新"}}'
 ```
 
 ### 可用的MCP工具（22个）

@@ -2,9 +2,11 @@ package xiaohongshu
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,11 +17,20 @@ import (
 
 // PublishImageContent 发布图文内容
 type PublishImageContent struct {
-	Title        string
-	Content      string
-	Tags         []string
-	ImagePaths   []string
-	ScheduleTime *time.Time // 定时发布时间，nil 表示立即发布
+	Title         string
+	Content       string
+	Tags          []string
+	ImagePaths    []string
+	Location      string     // 地点名称
+	Collection    string     // 合集名称
+	GroupChat     string     // 群聊名称
+	MarkerTags    []string   // 标记的地点或用户（支持多个）
+	OriginalClaim bool       // 是否声明原创
+	ContentType   string     // 内容类型声明: 虚构演绎/AI合成/来源声明
+	VisibleScope  string     // 可见范围: 公开可见/仅自己可见/仅互关好友可见/只给谁看/不给谁看
+	AllowDuet     *bool      // 是否允许合拍，nil 使用默认值
+	AllowCopy     *bool      // 是否允许正文复制，nil 使用默认值
+	ScheduleTime  *time.Time // 定时发布时间，nil 表示立即发布
 }
 
 type PublishAction struct {
@@ -85,9 +96,9 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 		tags = tags[:10]
 	}
 
-	logrus.Infof("发布内容: title=%s, images=%v, tags=%v, schedule=%v", content.Title, len(content.ImagePaths), tags, content.ScheduleTime)
+	logrus.Infof("发布内容: title=%s, images=%v, tags=%v, location=%s, schedule=%v", content.Title, len(content.ImagePaths), tags, content.Location, content.ScheduleTime)
 
-	if err := submitPublish(page, content.Title, content.Content, tags, content.ScheduleTime); err != nil {
+	if err := submitPublish(page, content.Title, content.Content, tags, content.Location, content, content.ScheduleTime); err != nil {
 		return errors.Wrap(err, "小红书发布失败")
 	}
 
@@ -279,7 +290,7 @@ func waitForUploadComplete(page browser.Page, expectedCount int) error {
 	return errors.New("上传超时，请检查网络连接和图片大小")
 }
 
-func submitPublish(page browser.Page, title, content string, tags []string, scheduleTime *time.Time) error {
+func submitPublish(page browser.Page, title, content string, tags []string, location string, settings PublishImageContent, scheduleTime *time.Time) error {
 
 	titleElem, err := page.Element("div.d-input input")
 	if err != nil {
@@ -316,6 +327,78 @@ func submitPublish(page browser.Page, title, content string, tags []string, sche
 		return err
 	}
 	slog.Info("检查正文长度：通过")
+
+	// 设置地点
+	if location != "" {
+		if err := setLocation(page, location); err != nil {
+			return errors.Wrap(err, "设置地点失败")
+		}
+		slog.Info("地点设置完成", "location", location)
+	}
+
+	// 设置合集
+	if settings.Collection != "" {
+		if err := setCollection(page, settings.Collection); err != nil {
+			return errors.Wrap(err, "设置合集失败")
+		}
+		slog.Info("合集设置完成", "collection", settings.Collection)
+	}
+
+	// 设置群聊
+	if settings.GroupChat != "" {
+		if err := setGroupChat(page, settings.GroupChat); err != nil {
+			return errors.Wrap(err, "设置群聊失败")
+		}
+		slog.Info("群聊设置完成", "groupChat", settings.GroupChat)
+	}
+
+	// 设置标记（地点或用户）
+	if len(settings.MarkerTags) > 0 {
+		if err := setMarkerTags(page, settings.MarkerTags); err != nil {
+			return errors.Wrap(err, "设置标记失败")
+		}
+		slog.Info("标记设置完成", "markers", settings.MarkerTags)
+	}
+
+	// 设置原创声明
+	if settings.OriginalClaim {
+		if err := setOriginalClaim(page); err != nil {
+			return errors.Wrap(err, "设置原创声明失败")
+		}
+		slog.Info("原创声明设置完成")
+	}
+
+	// 设置内容类型声明
+	if settings.ContentType != "" {
+		if err := setContentType(page, settings.ContentType); err != nil {
+			return errors.Wrap(err, "设置内容类型失败")
+		}
+		slog.Info("内容类型设置完成", "contentType", settings.ContentType)
+	}
+
+	// 设置可见范围
+	if settings.VisibleScope != "" {
+		if err := setVisibleScope(page, settings.VisibleScope); err != nil {
+			return errors.Wrap(err, "设置可见范围失败")
+		}
+		slog.Info("可见范围设置完成", "visibleScope", settings.VisibleScope)
+	}
+
+	// 设置允许合拍
+	if settings.AllowDuet != nil {
+		if err := setCheckbox(page, "允许合拍", *settings.AllowDuet); err != nil {
+			return errors.Wrap(err, "设置允许合拍失败")
+		}
+		slog.Info("允许合拍设置完成", "allowDuet", *settings.AllowDuet)
+	}
+
+	// 设置允许复制
+	if settings.AllowCopy != nil {
+		if err := setCheckbox(page, "允许正文复制", *settings.AllowCopy); err != nil {
+			return errors.Wrap(err, "设置允许复制失败")
+		}
+		slog.Info("允许复制设置完成", "allowCopy", *settings.AllowCopy)
+	}
 
 	// 处理定时发布
 	if scheduleTime != nil {
@@ -822,4 +905,583 @@ func clickConfirmButton(page browser.Page) error {
 	}
 
 	return errors.New("未找到确定按钮")
+}
+
+// setLocation 设置地点
+func setLocation(page browser.Page, location string) error {
+	// 1. 查找地点输入框
+	locationInput, err := page.Element(".address-box input.d-text")
+	if err != nil {
+		return errors.Wrap(err, "查找地点输入框失败")
+	}
+
+	// 2. 点击并输入地点关键词
+	if err := locationInput.Click(); err != nil {
+		return errors.Wrap(err, "点击地点输入框失败")
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	if err := locationInput.Fill(location); err != nil {
+		return errors.Wrap(err, "输入地点关键词失败")
+	}
+	slog.Info("已输入地点关键词", "location", location)
+
+	// 3. 等待下拉列表出现
+	time.Sleep(1500 * time.Millisecond)
+
+	// 4. 查找并点击第一个地点选项
+	dropdown, err := findVisibleLocationDropdown(page, location)
+	if err != nil {
+		return errors.Wrap(err, "查找地点下拉列表失败")
+	}
+
+	firstItem, err := dropdown.Element(".item")
+	if err != nil {
+		return errors.Wrap(err, "查找地点选项失败")
+	}
+
+	if err := firstItem.Click(); err != nil {
+		return errors.Wrap(err, "点击地点选项失败")
+	}
+	slog.Info("已选择地点", "location", location)
+
+	time.Sleep(500 * time.Millisecond)
+	return nil
+}
+
+// findVisibleLocationDropdown 查找可见的地点下拉列表
+func findVisibleLocationDropdown(page browser.Page, keyword string) (browser.Element, error) {
+	dropdowns, err := page.Elements(".d-dropdown-wrapper")
+	if err != nil {
+		return nil, err
+	}
+
+	for _, dropdown := range dropdowns {
+		visible, err := dropdown.IsVisible()
+		if err != nil || !visible {
+			continue
+		}
+
+		text, err := dropdown.Text()
+		if err != nil {
+			continue
+		}
+
+		if strings.Contains(text, keyword) {
+			return dropdown, nil
+		}
+	}
+
+	return nil, errors.New("未找到可见的地点下拉列表")
+}
+
+// setCollection 设置合集
+func setCollection(page browser.Page, collection string) error {
+	// 查找合集选择器
+	formItems, err := page.Elements(".d-new-form-item")
+	if err != nil {
+		return errors.Wrap(err, "查找form-item失败")
+	}
+
+	for _, item := range formItems {
+		title, err := item.Text()
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(title, "添加合集") {
+			continue
+		}
+
+		// 点击合集选择器
+		selectEl, err := item.Element(".d-select")
+		if err != nil {
+			return errors.Wrap(err, "查找合集选择器失败")
+		}
+
+		if err := selectEl.Click(); err != nil {
+			return errors.Wrap(err, "点击合集选择器失败")
+		}
+		time.Sleep(500 * time.Millisecond)
+
+		// 在下拉列表中查找并点击合集
+		dropdown, err := page.Element(".collection-drop-down")
+		if err != nil {
+			return errors.Wrap(err, "合集下拉列表未出现")
+		}
+
+		// 查找匹配的合集项
+		items, err := dropdown.Elements(".d-option, .item")
+		if err != nil || len(items) == 0 {
+			return errors.New("未找到合集选项，请先在APP端创建合集")
+		}
+
+		for _, option := range items {
+			text, err := option.Text()
+			if err != nil {
+				continue
+			}
+			if strings.Contains(text, collection) {
+				if err := option.Click(); err != nil {
+					return errors.Wrap(err, "点击合集选项失败")
+				}
+				time.Sleep(300 * time.Millisecond)
+				return nil
+			}
+		}
+
+		return errors.Errorf("未找到名为 '%s' 的合集", collection)
+	}
+
+	return errors.New("未找到合集设置区域")
+}
+
+// setGroupChat 设置群聊
+func setGroupChat(page browser.Page, groupChat string) error {
+	// 查找群聊选择器
+	formItems, err := page.Elements(".d-new-form-item")
+	if err != nil {
+		return errors.Wrap(err, "查找form-item失败")
+	}
+
+	for _, item := range formItems {
+		title, err := item.Text()
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(title, "关联群聊") {
+			continue
+		}
+
+		// 点击群聊选择器
+		selectEl, err := item.Element(".d-select")
+		if err != nil {
+			return errors.Wrap(err, "查找群聊选择器失败")
+		}
+
+		if err := selectEl.Click(); err != nil {
+			return errors.Wrap(err, "点击群聊选择器失败")
+		}
+		time.Sleep(500 * time.Millisecond)
+
+		// 在下拉列表中查找并点击群聊
+		dropdowns, err := page.Elements(".d-dropdown")
+		if err != nil {
+			return errors.Wrap(err, "群聊下拉列表未出现")
+		}
+
+		for _, dropdown := range dropdowns {
+			visible, _ := dropdown.IsVisible()
+			if !visible {
+				continue
+			}
+
+			items, err := dropdown.Elements(".d-option, .item")
+			if err != nil {
+				continue
+			}
+
+			for _, option := range items {
+				text, err := option.Text()
+				if err != nil {
+					continue
+				}
+				if strings.Contains(text, groupChat) {
+					if err := option.Click(); err != nil {
+						return errors.Wrap(err, "点击群聊选项失败")
+					}
+					time.Sleep(300 * time.Millisecond)
+					return nil
+				}
+			}
+		}
+
+		return errors.Errorf("未找到名为 '%s' 的群聊", groupChat)
+	}
+
+	return errors.New("未找到群聊设置区域")
+}
+
+// setOriginalClaim 设置原创声明
+func setOriginalClaim(page browser.Page) error {
+	// 查找"去声明"按钮
+	buttons, err := page.Elements("span, button")
+	if err != nil {
+		return errors.Wrap(err, "查找按钮失败")
+	}
+
+	for _, btn := range buttons {
+		text, err := btn.Text()
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(text) == "去声明" {
+			if err := btn.Click(); err != nil {
+				return errors.Wrap(err, "点击去声明按钮失败")
+			}
+			slog.Info("已点击去声明按钮")
+			time.Sleep(1 * time.Second)
+
+			// 可能会弹出确认对话框，需要点击确认
+			// 这里简单等待，实际使用中可能需要处理弹窗
+			return nil
+		}
+	}
+
+	return errors.New("未找到去声明按钮")
+}
+
+// setContentType 设置内容类型声明
+func setContentType(page browser.Page, contentType string) error {
+	// 查找内容类型声明选择器
+	formItems, err := page.Elements(".d-new-form-item")
+	if err != nil {
+		return errors.Wrap(err, "查找form-item失败")
+	}
+
+	for _, item := range formItems {
+		title, err := item.Text()
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(title, "内容类型声明") {
+			continue
+		}
+
+		// 点击选择器
+		selectEl, err := item.Element(".d-select")
+		if err != nil {
+			return errors.Wrap(err, "查找内容类型选择器失败")
+		}
+
+		if err := selectEl.Click(); err != nil {
+			return errors.Wrap(err, "点击内容类型选择器失败")
+		}
+		time.Sleep(500 * time.Millisecond)
+
+		// 在下拉列表中查找并点击选项
+		dropdowns, err := page.Elements(".d-dropdown")
+		if err != nil {
+			return errors.Wrap(err, "内容类型下拉列表未出现")
+		}
+
+		for _, dropdown := range dropdowns {
+			visible, _ := dropdown.IsVisible()
+			if !visible {
+				continue
+			}
+
+			items, err := dropdown.Elements(".d-option")
+			if err != nil {
+				continue
+			}
+
+			for _, option := range items {
+				text, err := option.Text()
+				if err != nil {
+					continue
+				}
+				if strings.Contains(text, contentType) {
+					if err := option.Click(); err != nil {
+						return errors.Wrap(err, "点击内容类型选项失败")
+					}
+					time.Sleep(300 * time.Millisecond)
+					return nil
+				}
+			}
+		}
+
+		return errors.Errorf("未找到内容类型 '%s'", contentType)
+	}
+
+	return errors.New("未找到内容类型设置区域")
+}
+
+// setVisibleScope 设置可见范围
+func setVisibleScope(page browser.Page, scope string) error {
+	// 查找可见范围选择器
+	formItems, err := page.Elements(".d-new-form-item")
+	if err != nil {
+		return errors.Wrap(err, "查找form-item失败")
+	}
+
+	for _, item := range formItems {
+		title, err := item.Text()
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(title, "可见范围") {
+			continue
+		}
+
+		// 点击选择器
+		selectEl, err := item.Element(".d-select")
+		if err != nil {
+			return errors.Wrap(err, "查找可见范围选择器失败")
+		}
+
+		if err := selectEl.Click(); err != nil {
+			return errors.Wrap(err, "点击可见范围选择器失败")
+		}
+		time.Sleep(500 * time.Millisecond)
+
+		// 在下拉列表中查找并点击选项
+		dropdowns, err := page.Elements(".d-dropdown")
+		if err != nil {
+			return errors.Wrap(err, "可见范围下拉列表未出现")
+		}
+
+		for _, dropdown := range dropdowns {
+			visible, _ := dropdown.IsVisible()
+			if !visible {
+				continue
+			}
+
+			items, err := dropdown.Elements(".d-option, .custom-option")
+			if err != nil {
+				continue
+			}
+
+			for _, option := range items {
+				text, err := option.Text()
+				if err != nil {
+					continue
+				}
+				if strings.Contains(text, scope) {
+					if err := option.Click(); err != nil {
+						return errors.Wrap(err, "点击可见范围选项失败")
+					}
+					time.Sleep(300 * time.Millisecond)
+					return nil
+				}
+			}
+		}
+
+		return errors.Errorf("未找到可见范围 '%s'", scope)
+	}
+
+	return errors.New("未找到可见范围设置区域")
+}
+
+// setCheckbox 设置checkbox状态
+func setCheckbox(page browser.Page, labelText string, checked bool) error {
+	// 查找对应的checkbox
+	formItems, err := page.Elements(".d-new-form-item")
+	if err != nil {
+		return errors.Wrap(err, "查找form-item失败")
+	}
+
+	for _, item := range formItems {
+		title, err := item.Text()
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(title, labelText) {
+			continue
+		}
+
+		// 查找checkbox
+		checkbox, err := item.Element("input[type='checkbox']")
+		if err != nil {
+			return errors.Wrapf(err, "查找 %s checkbox失败", labelText)
+		}
+
+		// 检查当前状态
+		isChecked, err := checkbox.Eval(`() => this.checked`)
+		if err != nil {
+			return errors.Wrap(err, "获取checkbox状态失败")
+		}
+
+		currentChecked := false
+		if b, ok := isChecked.(bool); ok {
+			currentChecked = b
+		}
+
+		// 如果状态不匹配，点击切换
+		if currentChecked != checked {
+			if err := checkbox.Click(); err != nil {
+				return errors.Wrapf(err, "点击 %s checkbox失败", labelText)
+			}
+			slog.Info("已切换checkbox状态", "label", labelText, "checked", checked)
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		return nil
+	}
+
+	return errors.Errorf("未找到 %s checkbox", labelText)
+}
+
+// setMarkerTags 设置标记（地点或用户）
+// markers 列表中的每个元素会被搜索，自动从地点和用户两个选项卡中查找匹配项
+func setMarkerTags(page browser.Page, markers []string) error {
+	// 查找并点击"添加标记"按钮
+	formItems, err := page.Elements(".d-new-form-item")
+	if err != nil {
+		return errors.Wrap(err, "查找form-item失败")
+	}
+
+	var markerButton browser.Element
+	for _, item := range formItems {
+		text, err := item.Text()
+		if err != nil {
+			continue
+		}
+		if strings.Contains(text, "标记地点或标记朋友") {
+			// 查找"添加标记"或"修改"按钮
+			btn, err := item.Element("button")
+			if err != nil {
+				continue
+			}
+			markerButton = btn
+			break
+		}
+	}
+
+	if markerButton == nil {
+		return errors.New("未找到标记按钮")
+	}
+
+	// 点击按钮打开标记对话框
+	if err := markerButton.Click(); err != nil {
+		return errors.Wrap(err, "点击标记按钮失败")
+	}
+	time.Sleep(800 * time.Millisecond)
+
+	// 等待对话框出现
+	if err := page.WaitForFunction(`() => document.querySelector('div[role="dialog"]') !== null`, 5*time.Second); err != nil {
+		return errors.Wrap(err, "标记对话框未出现")
+	}
+
+	// 对每个标记进行搜索和选择
+	for _, marker := range markers {
+		// 先尝试在"地点"选项卡中搜索
+		found, err := searchAndSelectInTab(page, "地点", marker)
+		if err != nil {
+			slog.Warn("在地点选项卡搜索失败", "marker", marker, "error", err)
+		}
+		if found {
+			slog.Info("在地点选项卡找到标记", "marker", marker)
+			continue
+		}
+
+		// 如果地点中未找到，尝试在"用户"选项卡中搜索
+		found, err = searchAndSelectInTab(page, "用户", marker)
+		if err != nil {
+			slog.Warn("在用户选项卡搜索失败", "marker", marker, "error", err)
+		}
+		if found {
+			slog.Info("在用户选项卡找到标记", "marker", marker)
+			continue
+		}
+
+		// 如果两个选项卡都未找到
+		slog.Warn("未找到标记", "marker", marker)
+	}
+
+	// 点击"确定"按钮
+	confirmButton, err := page.Element("div[role=\"dialog\"] button:has-text(\"确定\")")
+	if err != nil {
+		return errors.Wrap(err, "未找到确定按钮")
+	}
+
+	if err := confirmButton.Click(); err != nil {
+		return errors.Wrap(err, "点击确定按钮失败")
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	return nil
+}
+
+// searchAndSelectInTab 在指定选项卡（"用户"或"地点"）中搜索并选择标记
+// 返回是否找到匹配项
+func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, error) {
+	// 点击选项卡
+	tabs, err := page.Elements("div[role=\"dialog\"] div[role=\"banner\"] ~ *")
+	if err != nil {
+		return false, errors.Wrap(err, "查找选项卡失败")
+	}
+
+	var targetTab browser.Element
+	for _, tab := range tabs {
+		text, err := tab.Text()
+		if err != nil {
+			continue
+		}
+		if strings.Contains(text, tabName) {
+			targetTab = tab
+			break
+		}
+	}
+
+	if targetTab == nil {
+		return false, errors.Errorf("未找到 %s 选项卡", tabName)
+	}
+
+	if err := targetTab.Click(); err != nil {
+		return false, errors.Wrapf(err, "点击 %s 选项卡失败", tabName)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	// 查找搜索框并输入关键词
+	searchInput, err := page.Element("div[role=\"dialog\"] input[type=\"text\"]")
+	if err != nil {
+		return false, errors.Wrap(err, "未找到搜索框")
+	}
+
+	// 清空并输入关键词
+	if err := searchInput.Click(); err != nil {
+		return false, errors.Wrap(err, "点击搜索框失败")
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := searchInput.Fill(keyword); err != nil {
+		return false, errors.Wrap(err, "输入关键词失败")
+	}
+	time.Sleep(1500 * time.Millisecond) // 等待搜索结果加载
+
+	// 查找搜索结果列表
+	// 检查是否有"没有找到"提示
+	hasNoResult, _ := page.Has("div[role=\"dialog\"]:has-text(\"没有找到\")")
+	if hasNoResult {
+		return false, nil
+	}
+
+	// 查找结果列表中包含关键词的第一个项
+	// 使用 JavaScript 在对话框内查找匹配的文本元素
+	result, err := page.Eval(fmt.Sprintf(`() => {
+		const dialog = document.querySelector('div[role="dialog"]');
+		if (!dialog) return null;
+
+		// 查找所有可能的结果项（StaticText元素）
+		const items = Array.from(dialog.querySelectorAll('div'));
+
+		// 过滤出包含关键词的项
+		const matches = items.filter(item => {
+			const text = item.textContent;
+			return text && text.includes(%s) &&
+				   !text.includes('搜索') &&
+				   !text.includes('没有找到') &&
+				   !text.includes('加载中') &&
+				   !text.includes('为你推荐');
+		});
+
+		// 返回第一个匹配项的文本（用于验证）
+		if (matches.length > 0) {
+			matches[0].click();
+			return matches[0].textContent;
+		}
+		return null;
+	}`, strconv.Quote(keyword)))
+
+	if err != nil {
+		return false, errors.Wrap(err, "查找搜索结果失败")
+	}
+
+	if result == nil {
+		return false, nil
+	}
+
+	slog.Info("已选择搜索结果", "keyword", keyword, "selected", result)
+	time.Sleep(500 * time.Millisecond)
+	return true, nil
 }

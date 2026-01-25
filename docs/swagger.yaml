@@ -1,0 +1,521 @@
+basePath: /api/v1
+definitions:
+  main.CommentLoadConfig:
+    properties:
+      click_more_replies:
+        description: 是否点击"更多回复"按钮
+        type: boolean
+      max_comment_items:
+        description: 最大加载评论数（.parent-comment数量），0表示加载所有
+        type: integer
+      max_replies_threshold:
+        description: 回复数量阈值，超过这个数量的"更多"按钮将被跳过（0表示不跳过任何）
+        type: integer
+      scroll_speed:
+        description: '滚动速度等级: slow(慢速), normal(正常), fast(快速)'
+        type: string
+    type: object
+  main.ErrorResponse:
+    properties:
+      code:
+        type: string
+      details: {}
+      error:
+        type: string
+    type: object
+  main.FeedDetailRequest:
+    properties:
+      comment_config:
+        $ref: '#/definitions/main.CommentLoadConfig'
+      feed_id:
+        type: string
+      load_all_comments:
+        type: boolean
+      xsec_token:
+        type: string
+    required:
+    - feed_id
+    - xsec_token
+    type: object
+  main.PostCommentRequest:
+    properties:
+      content:
+        type: string
+      feed_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - content
+    - feed_id
+    - xsec_token
+    type: object
+  main.PublishRequest:
+    properties:
+      content:
+        type: string
+      images:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      schedule_at:
+        description: 定时发布时间，ISO8601格式，为空则立即发布
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+    required:
+    - content
+    - images
+    - title
+    type: object
+  main.PublishVideoRequest:
+    properties:
+      content:
+        type: string
+      schedule_at:
+        description: 定时发布时间，ISO8601格式，为空则立即发布
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+      video:
+        type: string
+    required:
+    - content
+    - title
+    - video
+    type: object
+  main.ReplyCommentRequest:
+    properties:
+      comment_id:
+        type: string
+      content:
+        type: string
+      feed_id:
+        type: string
+      user_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - content
+    - feed_id
+    - xsec_token
+    type: object
+  main.SearchFeedsRequest:
+    properties:
+      filters:
+        $ref: '#/definitions/xiaohongshu.FilterOption'
+      keyword:
+        type: string
+    required:
+    - keyword
+    type: object
+  main.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  main.UserProfileRequest:
+    properties:
+      user_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - user_id
+    - xsec_token
+    type: object
+  xiaohongshu.FilterOption:
+    properties:
+      location:
+        type: string
+      note_type:
+        type: string
+      publish_time:
+        type: string
+      search_scope:
+        type: string
+      sort_by:
+        type: string
+    type: object
+host: localhost:18060
+info:
+  contact:
+    name: API Support
+    url: https://github.com/xpzouying/xiaohongshu-mcp
+  description: |-
+    小红书 MCP 服务的 REST API 接口文档
+
+    提供完整的小红书内容发布、互动和数据分析功能
+
+    ## 功能模块
+    - **登录认证**: 登录状态检查、二维码登录、Cookie 管理
+    - **内容发布**: 图文笔记、视频笔记发布
+    - **内容发现**: Feed 列表、搜索、笔记详情
+    - **用户信息**: 用户主页、个人资料
+    - **内容互动**: 评论、点赞、收藏、关注
+
+    ## MCP 协议
+    本服务同时提供 MCP (Model Context Protocol) 接口供 AI 工具使用
+    - MCP 端点: /mcp
+    - REST 端点: /api/v1/*
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: 小红书 MCP API
+  version: 2.0.0
+paths:
+  /feeds/comment:
+    post:
+      consumes:
+      - application/json
+      description: 在小红书笔记下发表评论
+      parameters:
+      - description: 评论请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PostCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 评论成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 评论失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 发表评论
+      tags:
+      - 内容互动
+  /feeds/comment/reply:
+    post:
+      consumes:
+      - application/json
+      description: 回复笔记下的指定评论
+      parameters:
+      - description: 回复请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.ReplyCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 回复成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 回复失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 回复评论
+      tags:
+      - 内容互动
+  /feeds/detail:
+    post:
+      consumes:
+      - application/json
+      description: 获取小红书笔记完整详情和评论列表
+      parameters:
+      - description: 详情请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.FeedDetailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 笔记详情
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取笔记详情
+      tags:
+      - 内容发现
+  /feeds/list:
+    get:
+      description: 获取小红书首页推荐 Feed 流
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Feed 列表
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取首页 Feeds 列表
+      tags:
+      - 内容发现
+  /feeds/search:
+    get:
+      consumes:
+      - application/json
+      description: 搜索小红书笔记，支持关键词和多维度筛选
+      parameters:
+      - description: 搜索关键词(GET)
+        in: query
+        name: keyword
+        type: string
+      - description: 搜索请求参数(POST)
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/main.SearchFeedsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 搜索结果
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 搜索失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 搜索笔记
+      tags:
+      - 内容发现
+    post:
+      consumes:
+      - application/json
+      description: 搜索小红书笔记，支持关键词和多维度筛选
+      parameters:
+      - description: 搜索关键词(GET)
+        in: query
+        name: keyword
+        type: string
+      - description: 搜索请求参数(POST)
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/main.SearchFeedsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 搜索结果
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 搜索失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 搜索笔记
+      tags:
+      - 内容发现
+  /login/cookies:
+    delete:
+      description: 删除本地保存的 cookies 文件，重置登录状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 删除失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 删除 Cookies
+      tags:
+      - 登录认证
+  /login/qrcode:
+    get:
+      description: 生成小红书登录二维码，返回 Base64 编码的图片和超时时间
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 二维码信息
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取登录二维码
+      tags:
+      - 登录认证
+  /login/status:
+    get:
+      description: 检查当前是否已登录小红书
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录状态信息
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 服务器内部错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 检查登录状态
+      tags:
+      - 登录认证
+  /publish:
+    post:
+      consumes:
+      - application/json
+      description: 发布小红书图文内容，支持标题、正文、图片、标签等
+      parameters:
+      - description: 发布请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PublishRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 发布成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 发布失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 发布图文笔记
+      tags:
+      - 内容发布
+  /publish_video:
+    post:
+      consumes:
+      - application/json
+      description: 发布小红书视频内容
+      parameters:
+      - description: 视频发布请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.PublishVideoRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 发布成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 发布失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 发布视频笔记
+      tags:
+      - 内容发布
+  /user/me:
+    get:
+      description: 获取当前登录用户的主页信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户信息
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取我的资料
+      tags:
+      - 用户信息
+  /user/profile:
+    post:
+      consumes:
+      - application/json
+      description: 获取指定用户的主页信息和笔记列表
+      parameters:
+      - description: 用户主页请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.UserProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户主页信息
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取用户主页
+      tags:
+      - 用户信息
+swagger: "2.0"
+tags:
+- description: 登录状态管理和认证相关接口
+  name: 登录认证
+- description: 发布图文和视频笔记
+  name: 内容发布
+- description: 浏览和搜索小红书内容
+  name: 内容发现
+- description: 获取用户资料和主页信息
+  name: 用户信息
+- description: 评论、点赞、收藏等互动操作
+  name: 内容互动
