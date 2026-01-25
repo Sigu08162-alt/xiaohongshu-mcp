@@ -384,3 +384,79 @@ func TestGateway_PublishVideo_UsesSelectors(t *testing.T) {
 		t.Fatalf("expected page calls")
 	}
 }
+
+func TestGateway_PublishImage_SetsLocation(t *testing.T) {
+	dropdown := &fakeElement{TextVal: "深圳湾公园", Visible: true}
+	engine := &fakeEngine{page: &fakePage{
+		ElementsResults: map[string][]*fakeElement{
+			".d-dropdown-wrapper": {dropdown},
+		},
+	}}
+	cfg := Config{
+		PublishImageURL: "https://example.com",
+		PublishVideoURL: "https://example.com",
+		Selectors: map[string]string{
+			"upload_input": "input[type=file]",
+			"title_input":  "input[name=title]",
+			"content":      "textarea[name=content]",
+			"submit":       "button[type=submit]",
+		},
+	}
+	gw, err := NewGateway(cfg, engine)
+	if err != nil {
+		t.Fatalf("new gateway err: %v", err)
+	}
+	err = gw.PublishImage(context.Background(), publish.ImageContent{
+		Title:      "t",
+		Content:    "c",
+		ImagePaths: []string{"1.jpg"},
+		Location:   "深圳湾公园",
+	})
+	if err != nil {
+		t.Fatalf("publish err: %v", err)
+	}
+	if !engine.page.HasElementCall(".address-box input.d-text") {
+		t.Fatalf("expected location input call")
+	}
+}
+
+func TestGateway_PublishImage_SetsMarkerTags(t *testing.T) {
+	engine := &fakeEngine{page: &fakePage{
+		ElementsResults: map[string][]*fakeElement{
+			".d-new-form-item": {
+				{TextVal: "标记地点或标记朋友"},
+			},
+			"div[role=\"dialog\"] div[role=\"banner\"] ~ *": {
+				{TextVal: "地点"},
+				{TextVal: "用户"},
+			},
+		},
+		EvalResult: "selected",
+	}}
+	cfg := Config{
+		PublishImageURL: "https://example.com",
+		PublishVideoURL: "https://example.com",
+		Selectors: map[string]string{
+			"upload_input": "input[type=file]",
+			"title_input":  "input[name=title]",
+			"content":      "textarea[name=content]",
+			"submit":       "button[type=submit]",
+		},
+	}
+	gw, err := NewGateway(cfg, engine)
+	if err != nil {
+		t.Fatalf("new gateway err: %v", err)
+	}
+	err = gw.PublishImage(context.Background(), publish.ImageContent{
+		Title:      "t",
+		Content:    "c",
+		ImagePaths: []string{"1.jpg"},
+		MarkerTags: []string{"深圳湾公园"},
+	})
+	if err != nil {
+		t.Fatalf("publish err: %v", err)
+	}
+	if !engine.page.HasWaitForFunctionCall() {
+		t.Fatalf("expected marker dialog wait")
+	}
+}

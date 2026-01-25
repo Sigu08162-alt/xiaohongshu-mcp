@@ -176,6 +176,18 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	}
 	logrus.Info("✅ 填写内容后URL仍在图文页面")
 
+	if content.Location != "" {
+		if err := setLocation(page, content.Location); err != nil {
+			return fmt.Errorf("设置地点失败: %w", err)
+		}
+	}
+
+	if len(content.MarkerTags) > 0 {
+		if err := setMarkerTags(page, content.MarkerTags); err != nil {
+			return fmt.Errorf("设置标记失败: %w", err)
+		}
+	}
+
 	// 提交前等待
 	logrus.Info("⏱️ 等待2秒让页面渲染完成...")
 	time.Sleep(2 * time.Second)
