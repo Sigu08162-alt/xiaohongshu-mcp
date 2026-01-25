@@ -83,13 +83,13 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	logrus.Infof("配置: 点击更多=%v, 回复阈值=%d, 最大评论数=%d, 滚动速度=%s",
 		config.ClickMoreReplies, config.MaxRepliesThreshold, config.MaxCommentItems, config.ScrollSpeed)
 
-	// 使用retry-go处理页面导航和DOM稳定等待
+	// 使用retry-go处理页面导航
 	err := retry.Do(
 		func() error {
 			if err := page.Goto(url); err != nil {
 				return err
 			}
-			if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
+			if err := page.WaitLoad(); err != nil {
 				return err
 			}
 			return nil
@@ -105,7 +105,27 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		logrus.Errorf("页面导航失败: %v", err)
 		return nil, err
 	}
-	sleepRandom(1000, 1000)
+
+	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
+	// Feed 详情页有动态内容（评论加载、实时更新、推荐内容），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasNoteData, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.note &&
+			       window.__INITIAL_STATE__.note.noteDetailMap !== undefined;
+		}`)
+		if err == nil && hasNoteData == true {
+			break
+		}
+		time.Sleep(checkInterval)
+	}
+
+	// 额外等待500ms确保笔记数据完全加载
+	sleepRandom(500, 1000)
 
 	if err := checkPageAccessible(page); err != nil {
 		return nil, err
