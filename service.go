@@ -47,6 +47,8 @@ type PublishRequest struct {
 	Content    string   `json:"content" binding:"required"`
 	Images     []string `json:"images" binding:"required,min=1"`
 	Tags       []string `json:"tags,omitempty"`
+	Location   string   `json:"location,omitempty"`
+	MarkerTags []string `json:"marker_tags,omitempty"`
 	ScheduleAt string   `json:"schedule_at,omitempty"` // 定时发布时间，ISO8601格式，为空则立即发布
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
@@ -52,5 +53,15 @@ func TestSyncCookies_WritesFile(t *testing.T) {
 	}
 	if string(content) != string(data) {
 		t.Fatalf("unexpected content")
+	}
+}
+
+func TestPublishRequest_HasLocationAndMarkerTagsFields(t *testing.T) {
+	typ := reflect.TypeOf(PublishRequest{})
+	if _, ok := typ.FieldByName("Location"); !ok {
+		t.Fatalf("missing Location field")
+	}
+	if _, ok := typ.FieldByName("MarkerTags"); !ok {
+		t.Fatalf("missing MarkerTags field")
 	}
 }

@@ -10,6 +10,8 @@ type ImageContent struct {
 	Content      string
 	Tags         []string
 	ImagePaths   []string
+	Location     string
+	MarkerTags   []string
 	ScheduleTime *time.Time
 }
 
