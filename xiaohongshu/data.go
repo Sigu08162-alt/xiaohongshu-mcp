@@ -497,8 +497,29 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 		return nil, fmt.Errorf("导航失败: %w", err)
 	}
 
-	// 等待表格加载
-	time.Sleep(3 * time.Second)
+	// 等待表格加载完成
+	logrus.Info("等待数据表格加载...")
+	waitTableJS := `() => {
+		const table = document.querySelector('table tbody tr');
+		return table !== null;
+	}`
+
+	// 最多等待30秒，每500ms检查一次
+	maxWaitTime := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWaitTime {
+		hasTable, err := page.Eval(waitTableJS)
+		if err == nil && hasTable == true {
+			logrus.Info("表格加载成功")
+			break
+		}
+		time.Sleep(checkInterval)
+	}
+
+	// 额外等待1秒，确保数据完全渲染
+	time.Sleep(1 * time.Second)
 
 	// 如果指定了排序字段，先进行排序
 	if sortBy != "" {
