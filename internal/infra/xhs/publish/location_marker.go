@@ -162,111 +162,118 @@ func findVisibleLocationDropdown(page browser.Page, keyword string) (browser.Ele
 }
 
 func setMarkerTags(page browser.Page, markers []string) error {
-	logrus.Infof("🏷️ 开始设置标记 (共%d个): %v", len(markers), markers)
+	// 功能已禁用
+	logrus.Warnf("⚠️  标记功能已禁用，跳过设置 %d 个标记: %v", len(markers), markers)
+	return nil
 
-	// 1. 查找标记按钮
-	logrus.Info("  [1/5] 查找标记按钮...")
-	formItems, err := page.Elements(".d-new-form-item")
-	if err != nil {
-		logrus.Errorf("  ❌ 查找form-item失败: %v", err)
-		return fmt.Errorf("查找form-item失败: %w", err)
-	}
-	logrus.Infof("  📋 找到 %d 个 form-item 元素", len(formItems))
+	// 以下代码已禁用
+	/*
+		logrus.Infof("🏷️ 开始设置标记 (共%d个): %v", len(markers), markers)
 
-	var markerButton browser.Element
-	for i, item := range formItems {
-		text, err := item.Text()
+		// 1. 查找标记按钮
+		logrus.Info("  [1/5] 查找标记按钮...")
+		formItems, err := page.Elements(".d-new-form-item")
 		if err != nil {
-			logrus.Debugf("  [%d/%d] 获取文本失败: %v", i+1, len(formItems), err)
-			continue
+			logrus.Errorf("  ❌ 查找form-item失败: %v", err)
+			return fmt.Errorf("查找form-item失败: %w", err)
 		}
-		logrus.Debugf("  [%d/%d] form-item 文本: %s", i+1, len(formItems), text)
+		logrus.Infof("  📋 找到 %d 个 form-item 元素", len(formItems))
 
-		if strings.Contains(text, "标记地点或标记朋友") {
-			btn, err := item.Element("button")
+		var markerButton browser.Element
+		for i, item := range formItems {
+			text, err := item.Text()
 			if err != nil {
-				logrus.Warnf("  [%d/%d] 查找按钮失败: %v", i+1, len(formItems), err)
+				logrus.Debugf("  [%d/%d] 获取文本失败: %v", i+1, len(formItems), err)
 				continue
 			}
-			markerButton = btn
-			logrus.Infof("  ✅ 找到标记按钮 [%d/%d]", i+1, len(formItems))
-			break
+			logrus.Debugf("  [%d/%d] form-item 文本: %s", i+1, len(formItems), text)
+
+			if strings.Contains(text, "标记地点或标记朋友") {
+				btn, err := item.Element("button")
+				if err != nil {
+					logrus.Warnf("  [%d/%d] 查找按钮失败: %v", i+1, len(formItems), err)
+					continue
+				}
+				markerButton = btn
+				logrus.Infof("  ✅ 找到标记按钮 [%d/%d]", i+1, len(formItems))
+				break
+			}
 		}
-	}
 
-	if markerButton == nil {
-		logrus.Error("  ❌ 未找到标记按钮")
-		screenshotPath := fmt.Sprintf("debug_marker_button_not_found_%d.png", time.Now().Unix())
-		page.Screenshot(screenshotPath)
-		logrus.Infof("  📸 已保存截图: %s", screenshotPath)
-		return fmt.Errorf("未找到标记按钮")
-	}
+		if markerButton == nil {
+			logrus.Error("  ❌ 未找到标记按钮")
+			screenshotPath := fmt.Sprintf("debug_marker_button_not_found_%d.png", time.Now().Unix())
+			page.Screenshot(screenshotPath)
+			logrus.Infof("  📸 已保存截图: %s", screenshotPath)
+			return fmt.Errorf("未找到标记按钮")
+		}
 
-	// 2. 点击标记按钮
-	logrus.Info("  [2/5] 点击标记按钮...")
-	if err := markerButton.Click(); err != nil {
-		logrus.Errorf("  ❌ 点击失败: %v", err)
-		return fmt.Errorf("点击标记按钮失败: %w", err)
-	}
-	logrus.Info("  ✅ 按钮已点击")
-	time.Sleep(800 * time.Millisecond)
+		// 2. 点击标记按钮
+		logrus.Info("  [2/5] 点击标记按钮...")
+		if err := markerButton.Click(); err != nil {
+			logrus.Errorf("  ❌ 点击失败: %v", err)
+			return fmt.Errorf("点击标记按钮失败: %w", err)
+		}
+		logrus.Info("  ✅ 按钮已点击")
+		time.Sleep(800 * time.Millisecond)
 
-	// 3. 等待对话框出现
-	logrus.Info("  [3/5] 等待标记对话框出现...")
-	if err := page.WaitForFunction(`() => document.querySelector('div[role="dialog"]') !== null`, 5*time.Second); err != nil {
-		logrus.Errorf("  ❌ 对话框未出现: %v", err)
-		screenshotPath := fmt.Sprintf("debug_marker_dialog_not_appear_%d.png", time.Now().Unix())
-		page.Screenshot(screenshotPath)
-		logrus.Infof("  📸 已保存截图: %s", screenshotPath)
-		return fmt.Errorf("标记对话框未出现: %w", err)
-	}
-	logrus.Info("  ✅ 对话框已出现")
+		// 3. 等待对话框出现
+		logrus.Info("  [3/5] 等待标记对话框出现...")
+		if err := page.WaitForFunction(`() => document.querySelector('div[role="dialog"]') !== null`, 5*time.Second); err != nil {
+			logrus.Errorf("  ❌ 对话框未出现: %v", err)
+			screenshotPath := fmt.Sprintf("debug_marker_dialog_not_appear_%d.png", time.Now().Unix())
+			page.Screenshot(screenshotPath)
+			logrus.Infof("  📸 已保存截图: %s", screenshotPath)
+			return fmt.Errorf("标记对话框未出现: %w", err)
+		}
+		logrus.Info("  ✅ 对话框已出现")
 
-	// 4. 搜索并选择标记
-	logrus.Info("  [4/5] 搜索并选择标记...")
-	for i, marker := range markers {
-		logrus.Infof("  处理标记 [%d/%d]: %s", i+1, len(markers), marker)
+		// 4. 搜索并选择标记
+		logrus.Info("  [4/5] 搜索并选择标记...")
+		for i, marker := range markers {
+			logrus.Infof("  处理标记 [%d/%d]: %s", i+1, len(markers), marker)
 
-		// 先在地点选项卡搜索
-		found, err := searchAndSelectInTab(page, "地点", marker)
+			// 先在地点选项卡搜索
+			found, err := searchAndSelectInTab(page, "地点", marker)
+			if err != nil {
+				logrus.Warnf("    ⚠️ 在地点选项卡搜索失败: %v", err)
+			}
+			if found {
+				logrus.Infof("    ✅ 在地点选项卡找到: %s", marker)
+				continue
+			}
+
+			// 在用户选项卡搜索
+			found, err = searchAndSelectInTab(page, "用户", marker)
+			if err != nil {
+				logrus.Warnf("    ⚠️ 在用户选项卡搜索失败: %v", err)
+			}
+			if found {
+				logrus.Infof("    ✅ 在用户选项卡找到: %s", marker)
+				continue
+			}
+
+			logrus.Warnf("    ⚠️ 未找到标记: %s", marker)
+		}
+
+		// 5. 点击确定按钮
+		logrus.Info("  [5/5] 点击确定按钮...")
+		confirmButton, err := page.Element("div[role=\"dialog\"] button:has-text(\"确定\")")
 		if err != nil {
-			logrus.Warnf("    ⚠️ 在地点选项卡搜索失败: %v", err)
-		}
-		if found {
-			logrus.Infof("    ✅ 在地点选项卡找到: %s", marker)
-			continue
+			logrus.Errorf("  ❌ 未找到确定按钮: %v", err)
+			return fmt.Errorf("未找到确定按钮: %w", err)
 		}
 
-		// 在用户选项卡搜索
-		found, err = searchAndSelectInTab(page, "用户", marker)
-		if err != nil {
-			logrus.Warnf("    ⚠️ 在用户选项卡搜索失败: %v", err)
+		if err := confirmButton.Click(); err != nil {
+			logrus.Errorf("  ❌ 点击确定按钮失败: %v", err)
+			return fmt.Errorf("点击确定按钮失败: %w", err)
 		}
-		if found {
-			logrus.Infof("    ✅ 在用户选项卡找到: %s", marker)
-			continue
-		}
+		logrus.Info("  ✅ 确定按钮已点击")
+		time.Sleep(500 * time.Millisecond)
 
-		logrus.Warnf("    ⚠️ 未找到标记: %s", marker)
-	}
-
-	// 5. 点击确定按钮
-	logrus.Info("  [5/5] 点击确定按钮...")
-	confirmButton, err := page.Element("div[role=\"dialog\"] button:has-text(\"确定\")")
-	if err != nil {
-		logrus.Errorf("  ❌ 未找到确定按钮: %v", err)
-		return fmt.Errorf("未找到确定按钮: %w", err)
-	}
-
-	if err := confirmButton.Click(); err != nil {
-		logrus.Errorf("  ❌ 点击确定按钮失败: %v", err)
-		return fmt.Errorf("点击确定按钮失败: %w", err)
-	}
-	logrus.Info("  ✅ 确定按钮已点击")
-	time.Sleep(500 * time.Millisecond)
-
-	logrus.Info("✅ 标记设置完成")
-	return nil
+		logrus.Info("✅ 标记设置完成")
+		return nil
+	*/
 }
 
 func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, error) {
