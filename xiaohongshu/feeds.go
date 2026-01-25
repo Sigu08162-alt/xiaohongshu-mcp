@@ -20,9 +20,27 @@ func NewFeedsListAction(page browser.Page) *FeedsListAction {
 	if err := pp.Goto("https://www.xiaohongshu.com"); err != nil {
 		panic(fmt.Sprintf("导航失败: %v", err))
 	}
-	if err := pp.WaitDOMStable(time.Second, 0.1); err != nil {
-		panic(fmt.Sprintf("等待 DOM 稳定失败: %v", err))
+
+	// 等待 __INITIAL_STATE__ 加载，而不是等待 DOM 稳定
+	// 小红书首页有动态内容（轮播、推荐刷新），DOM 永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasState, err := pp.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.feed &&
+			       window.__INITIAL_STATE__.feed.feeds !== undefined;
+		}`)
+		if err == nil && hasState == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
+
+	// 额外等待500ms确保数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	return &FeedsListAction{page: pp}
 }
