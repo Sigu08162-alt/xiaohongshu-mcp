@@ -69,9 +69,9 @@ jobs:
         CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o xiaohongshu-mcp-windows-amd64.exe .
         CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o xiaohongshu-login-windows-amd64.exe ./cmd/login
 
-        # Linux x64
-        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o xiaohongshu-mcp-linux-amd64 .
-        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o xiaohongshu-login-linux-amd64 ./cmd/login
+        # Linux x64 - 使用静态链接标志
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o xiaohongshu-mcp-linux-amd64 .
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o xiaohongshu-login-linux-amd64 ./cmd/login
 
     - name: Package binaries
       run: |
