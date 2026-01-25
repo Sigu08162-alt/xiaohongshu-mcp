@@ -26,6 +26,18 @@ func (f *FakePublishGateway) PublishVideo(ctx context.Context, content publish.V
 	return f.Err
 }
 
+func (f *FakePublishGateway) SaveImageDraft(ctx context.Context, content publish.ImageContent) error {
+	f.ImageCalls++
+	f.LastImage = content
+	return f.Err
+}
+
+func (f *FakePublishGateway) SaveVideoDraft(ctx context.Context, content publish.VideoContent) error {
+	f.VideoCalls++
+	f.LastVideo = content
+	return f.Err
+}
+
 type FakeSelectorStore struct {
 	Selectors map[string]string
 }
