@@ -4,8 +4,10 @@ set -e
 echo "=== 小红书MCP服务器部署脚本 ==="
 
 # 配置变量
-DEPLOY_DIR="/opt/xiaohongshu-mcp"
+DEPLOY_DIR="${DEPLOY_DIR:-$(pwd)}"  # 默认使用当前目录，可通过环境变量覆盖
 GITHUB_REPO="vmxmy/xiaohongshu-mcp"
+
+echo "部署目录: $DEPLOY_DIR"
 
 # 获取最新版本
 echo "获取最新版本..."
@@ -52,11 +54,10 @@ if ! command -v pm2 &> /dev/null; then
     npm install -g pm2
 fi
 
-# 3. 创建部署目录
-echo "步骤3: 创建部署目录..."
-sudo mkdir -p $DEPLOY_DIR
-sudo chown $USER:$USER $DEPLOY_DIR
-cd $DEPLOY_DIR
+# 3. 进入部署目录
+echo "步骤3: 进入部署目录..."
+mkdir -p "$DEPLOY_DIR"
+cd "$DEPLOY_DIR"
 
 # 4. 下载二进制文件
 echo "步骤4: 下载MCP服务器..."
@@ -77,14 +78,14 @@ mkdir -p logs pids
 
 # 6. 创建配置文件
 echo "步骤6: 创建PM2配置文件..."
-cat > ecosystem.config.js << 'EOFCONFIG'
+cat > ecosystem.config.js << EOFCONFIG
 module.exports = {
   apps: [
     {
       name: 'xiaohongshu-mcp',
       script: './xiaohongshu-mcp',
       args: '--headless=true --port=:18060',
-      cwd: '/opt/xiaohongshu-mcp',
+      cwd: '${DEPLOY_DIR}',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -111,9 +112,15 @@ module.exports = {
 }
 EOFCONFIG
 
-# 7. 启动服务
-echo "步骤7: 启动PM2服务..."
-pm2 start ecosystem.config.js
+# 7. 启动/重启服务
+echo "步骤7: 启动/重启PM2服务..."
+if pm2 list | grep -q "xiaohongshu-mcp"; then
+    echo "检测到已运行的服务，执行重启..."
+    pm2 restart xiaohongshu-mcp
+else
+    echo "首次部署，启动新服务..."
+    pm2 start ecosystem.config.js
+fi
 
 # 8. 配置开机自启
 echo "步骤8: 配置开机自启..."
