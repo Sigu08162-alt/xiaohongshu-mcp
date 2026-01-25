@@ -36,9 +36,18 @@ if ! gh auth status &> /dev/null; then
 fi
 
 # 安装浏览器依赖
+echo "检查浏览器依赖..."
 if command -v apt &> /dev/null; then
     sudo apt update
-    sudo apt install -y chromium-browser curl
+    # 尝试安装 chromium，兼容不同的包名
+    if apt-cache show chromium &> /dev/null; then
+        sudo apt install -y chromium curl
+    elif apt-cache show chromium-browser &> /dev/null; then
+        sudo apt install -y chromium-browser curl
+    else
+        echo "警告: 未找到 chromium 包，Playwright 将自动下载浏览器"
+        sudo apt install -y curl
+    fi
 elif command -v yum &> /dev/null; then
     sudo yum install -y chromium curl
 fi
