@@ -79,7 +79,13 @@ gh release download "${VERSION}" \
 echo "解压文件..."
 tar -xzf xiaohongshu-mcp-linux-amd64.tar.gz
 rm xiaohongshu-mcp-linux-amd64.tar.gz
-chmod +x xiaohongshu-mcp
+
+# 重命名文件（移除平台后缀）
+mv xiaohongshu-mcp-linux-amd64 xiaohongshu-mcp
+mv xiaohongshu-login-linux-amd64 xiaohongshu-login
+
+# 设置执行权限
+chmod +x xiaohongshu-mcp xiaohongshu-login
 
 # 5. 创建目录
 echo "步骤5: 创建必要目录..."

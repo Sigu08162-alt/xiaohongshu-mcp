@@ -77,6 +77,8 @@ type ContentAnalytics struct {
 
 // NoteMetrics 笔记指标
 type NoteMetrics struct {
+	FeedID          string  `json:"feed_id"`           // 笔记ID
+	XsecToken       string  `json:"xsec_token"`        // 访问令牌
 	Title           string  `json:"title"`             // 标题
 	PublishTime     string  `json:"publish_time"`      // 发布时间
 	Exposure        int     `json:"exposure"`          // 曝光数
@@ -554,6 +556,21 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 			const titleElem = firstCell.querySelector('.note-title');
 			const timeElem = firstCell.querySelector('.time');
 
+			// 尝试从标题链接提取 feed_id 和 xsec_token
+			let feedId = '';
+			let xsecToken = '';
+			const linkElem = firstCell.querySelector('a[href*="explore"]');
+			if (linkElem) {
+				const href = linkElem.getAttribute('href');
+				// URL格式: /explore/{feed_id}?xsec_token=xxx&xsec_source=pc_user
+				const match = href.match(/\/explore\/([a-f0-9]+)/);
+				if (match) {
+					feedId = match[1];
+				}
+				const urlParams = new URLSearchParams(href.split('?')[1]);
+				xsecToken = urlParams.get('xsec_token') || feedId;
+			}
+
 			const title = titleElem ? titleElem.textContent.trim() : '';
 			const publishTime = timeElem ? timeElem.textContent.trim() : '';
 
@@ -587,6 +604,8 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 			};
 
 			notes.push({
+				feed_id: feedId,
+				xsec_token: xsecToken,
 				title: title,
 				publish_time: publishTime,
 				exposure: getNumber(1),

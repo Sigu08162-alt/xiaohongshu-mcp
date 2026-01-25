@@ -2,6 +2,7 @@ package xiaohongshu
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
@@ -40,7 +41,7 @@ func (n *NavigateAction) ToExplorePage(ctx context.Context) error {
 func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 	page := n.page.WithContext(ctx)
 
-	// 首先导航到探索页面
+	// 首先导航到探索页面以确保登录状态
 	if err := n.ToExplorePage(ctx); err != nil {
 		return err
 	}
@@ -50,13 +51,30 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 		return err
 	}
 
-	// 查找并点击侧边栏中的"我"频道链接
-	profileLink, err := page.Element(`div.main-container li.user.side-bar-component a.link-wrapper span.channel`)
+	// 从 __INITIAL_STATE__ 获取当前用户ID
+	userID, err := page.Eval(`() => {
+		if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user) {
+			const userInfo = window.__INITIAL_STATE__.user.userInfo;
+			// Vue3的ref，需要访问.value或._value
+			const actualUserInfo = userInfo?.value || userInfo?._value || userInfo?._rawValue;
+			if (actualUserInfo && actualUserInfo.userId) {
+				return actualUserInfo.userId;
+			}
+		}
+		return null;
+	}`)
 	if err != nil {
 		return err
 	}
 
-	if err := profileLink.Click(); err != nil {
+	userIDStr, ok := userID.(string)
+	if !ok || userIDStr == "" {
+		return fmt.Errorf("无法获取用户ID")
+	}
+
+	// 直接导航到个人主页
+	profileURL := "https://www.xiaohongshu.com/user/profile/" + userIDStr
+	if err := page.Goto(profileURL); err != nil {
 		return err
 	}
 
