@@ -14,15 +14,23 @@ import (
 func boolPtr(b bool) *bool { return &b }
 
 func buildPublishContentArgsMap(args PublishContentArgs) map[string]interface{} {
-	return map[string]interface{}{
+	argsMap := map[string]interface{}{
 		"title":       args.Title,
 		"content":     args.Content,
 		"images":      convertStringsToInterfaces(args.Images),
 		"tags":        convertStringsToInterfaces(args.Tags),
 		"location":    args.Location,
 		"marker_tags": convertStringsToInterfaces(args.MarkerTags),
-		"schedule_at": args.ScheduleAt,
 	}
+
+	// 处理可选的 schedule_at 指针
+	if args.ScheduleAt != nil {
+		argsMap["schedule_at"] = *args.ScheduleAt
+	} else {
+		argsMap["schedule_at"] = ""
+	}
+
+	return argsMap
 }
 
 // MCP 工具参数结构体定义
@@ -35,7 +43,7 @@ type PublishContentArgs struct {
 	Tags       []string `json:"tags,omitempty" jsonschema_description:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
 	Location   string   `json:"location,omitempty" jsonschema_description:"地点名称（可选），支持城市、商圈、POI"`
 	MarkerTags []string `json:"marker_tags,omitempty" jsonschema_description:"标记的地点或用户昵称列表（可选）"`
-	ScheduleAt string   `json:"schedule_at,omitempty" jsonschema_description:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
+	ScheduleAt *string  `json:"schedule_at,omitempty" jsonschema_description:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
 }
 
 // PublishVideoArgs 发布视频的参数（仅支持本地单个视频文件）
@@ -44,7 +52,7 @@ type PublishVideoArgs struct {
 	Content    string   `json:"content" jsonschema:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
 	Video      string   `json:"video" jsonschema:"本地视频绝对路径（仅支持单个视频文件，如:/Users/user/video.mp4）"`
 	Tags       []string `json:"tags,omitempty" jsonschema:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
-	ScheduleAt string   `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
+	ScheduleAt *string  `json:"schedule_at,omitempty" jsonschema:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
 }
 
 // SaveDraftArgs 保存图文草稿的参数
@@ -481,12 +489,19 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		},
 		withPanicRecovery("publish_with_video", func(ctx context.Context, req *mcp.CallToolRequest, args PublishVideoArgs) (*mcp.CallToolResult, any, error) {
 			argsMap := map[string]interface{}{
-				"title":       args.Title,
-				"content":     args.Content,
-				"video":       args.Video,
-				"tags":        convertStringsToInterfaces(args.Tags),
-				"schedule_at": args.ScheduleAt,
+				"title":   args.Title,
+				"content": args.Content,
+				"video":   args.Video,
+				"tags":    convertStringsToInterfaces(args.Tags),
 			}
+
+			// 处理可选的 schedule_at 指针
+			if args.ScheduleAt != nil {
+				argsMap["schedule_at"] = *args.ScheduleAt
+			} else {
+				argsMap["schedule_at"] = ""
+			}
+
 			result := appServer.handlePublishVideo(ctx, argsMap)
 			return convertToMCPResult(result), nil, nil
 		}),
