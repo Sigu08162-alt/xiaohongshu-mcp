@@ -328,8 +328,9 @@ func submitPublish(page browser.Page, title, content string, tags []string, loca
 	}
 	slog.Info("检查正文长度：通过")
 
-	// 设置地点 - 暂时禁用以测试基本标签功能
-	if false && location != "" {
+	// 设置地点
+	if location != "" {
+		slog.Info("开始设置地点", "location", location)
 		if err := setLocation(page, location); err != nil {
 			return errors.Wrap(err, "设置地点失败")
 		}

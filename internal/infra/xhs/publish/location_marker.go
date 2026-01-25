@@ -6,66 +6,158 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 )
 
 func setLocation(page browser.Page, location string) error {
+	logrus.Infof("📍 开始设置地点: %s", location)
+
+	// 1. 查找地点输入框
+	logrus.Info("  [1/4] 查找地点输入框 (选择器: .address-box input.d-text)...")
 	locationInput, err := page.Element(".address-box input.d-text")
 	if err != nil {
+		logrus.Errorf("  ❌ 查找地点输入框失败: %v", err)
+		// 尝试截图调试
+		screenshotPath := fmt.Sprintf("debug_location_input_not_found_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		logrus.Infof("  📸 已保存截图: %s", screenshotPath)
 		return fmt.Errorf("查找地点输入框失败: %w", err)
 	}
+	logrus.Info("  ✅ 找到地点输入框")
 
-	if err := locationInput.Click(); err != nil {
+	// 2. 点击输入框
+	logrus.Info("  [2/4] 点击地点输入框...")
+
+	// 先检查元素是否可见
+	visible, err := locationInput.IsVisible()
+	if err != nil {
+		logrus.Warnf("  ⚠️  无法检查输入框可见性: %v", err)
+	} else {
+		logrus.Infof("  📊 输入框可见性: %v", visible)
+	}
+
+	// 尝试滚动到元素
+	logrus.Info("  📜 尝试滚动到元素位置...")
+	if err := locationInput.ScrollIntoView(); err != nil {
+		logrus.Warnf("  ⚠️  滚动失败: %v (继续)", err)
+	} else {
+		logrus.Info("  ✅ 滚动完成")
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	// 直接使用强制点击，避免等待可点击状态超时
+	logrus.Info("  🖱️  强制点击输入框...")
+	if err := locationInput.ClickForce(); err != nil {
+		logrus.Errorf("  ❌ 点击失败: %v", err)
+		// 截图调试
+		screenshotPath := fmt.Sprintf("debug_location_click_failed_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		logrus.Infof("  📸 已保存截图: %s", screenshotPath)
 		return fmt.Errorf("点击地点输入框失败: %w", err)
 	}
+	logrus.Info("  ✅ 点击成功")
 	time.Sleep(300 * time.Millisecond)
 
+	// 3. 输入地点关键词
+	logrus.Infof("  [3/4] 输入地点关键词: '%s'...", location)
 	if err := locationInput.Fill(location); err != nil {
+		logrus.Errorf("  ❌ 输入地点关键词失败: %v", err)
 		return fmt.Errorf("输入地点关键词失败: %w", err)
 	}
+	logrus.Info("  ✅ 关键词已输入")
 
+	// 等待下拉列表出现
+	logrus.Info("  ⏱️  等待下拉列表出现...")
 	time.Sleep(1500 * time.Millisecond)
 
+	// 4. 查找并点击下拉选项
+	logrus.Info("  [4/4] 查找地点下拉列表...")
 	dropdown, err := findVisibleLocationDropdown(page, location)
 	if err != nil {
+		logrus.Errorf("  ❌ 查找地点下拉列表失败: %v", err)
+		// 截图调试
+		screenshotPath := fmt.Sprintf("debug_location_dropdown_not_found_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		logrus.Infof("  📸 已保存截图: %s", screenshotPath)
 		return fmt.Errorf("查找地点下拉列表失败: %w", err)
 	}
+	logrus.Info("  ✅ 找到下拉列表")
 
 	firstItem, err := dropdown.Element(".item")
 	if err != nil {
+		logrus.Errorf("  ❌ 查找地点选项失败: %v", err)
 		return fmt.Errorf("查找地点选项失败: %w", err)
 	}
+	logrus.Info("  ✅ 找到第一个地点选项")
 
 	if err := firstItem.Click(); err != nil {
+		logrus.Errorf("  ❌ 点击地点选项失败: %v", err)
 		return fmt.Errorf("点击地点选项失败: %w", err)
 	}
+	logrus.Info("  ✅ 地点选项已点击")
 
 	time.Sleep(500 * time.Millisecond)
+	logrus.Infof("✅ 地点设置完成: %s", location)
 	return nil
 }
 
 func findVisibleLocationDropdown(page browser.Page, keyword string) (browser.Element, error) {
+	logrus.Infof("  🔍 搜索包含关键词 '%s' 的下拉列表...", keyword)
+
+	// 分解关键词（如 "香港 铜锣湾" -> ["香港", "铜锣湾"]）
+	keywords := strings.Fields(keyword)
+	logrus.Debugf("  📝 分解后的关键词: %v", keywords)
+
 	dropdowns, err := page.Elements(".d-dropdown-wrapper")
 	if err != nil {
+		logrus.Errorf("  ❌ 查找 .d-dropdown-wrapper 元素失败: %v", err)
 		return nil, err
 	}
+	logrus.Infof("  📋 找到 %d 个 .d-dropdown-wrapper 元素", len(dropdowns))
 
-	for _, dropdown := range dropdowns {
+	visibleCount := 0
+	for i, dropdown := range dropdowns {
 		visible, err := dropdown.IsVisible()
-		if err != nil || !visible {
+		if err != nil {
+			logrus.Debugf("  [%d/%d] 检查可见性失败: %v", i+1, len(dropdowns), err)
 			continue
 		}
+
+		if !visible {
+			logrus.Debugf("  [%d/%d] 不可见，跳过", i+1, len(dropdowns))
+			continue
+		}
+
+		visibleCount++
+		logrus.Debugf("  [%d/%d] 可见，检查文本内容...", i+1, len(dropdowns))
 
 		text, err := dropdown.Text()
 		if err != nil {
+			logrus.Debugf("  [%d/%d] 获取文本失败: %v", i+1, len(dropdowns), err)
 			continue
 		}
 
-		if strings.Contains(text, keyword) {
+		logrus.Debugf("  [%d/%d] 文本内容: %s", i+1, len(dropdowns), text)
+
+		// 检查是否包含任一关键词
+		matched := false
+		for _, kw := range keywords {
+			if strings.Contains(text, kw) {
+				matched = true
+				logrus.Debugf("  [%d/%d] 匹配关键词: %s", i+1, len(dropdowns), kw)
+				break
+			}
+		}
+
+		if matched {
+			logrus.Infof("  ✅ 找到匹配的下拉列表 [%d/%d]", i+1, len(dropdowns))
 			return dropdown, nil
 		}
 	}
 
+	logrus.Errorf("  ❌ 未找到包含关键词 %v 的下拉列表", keywords)
+	logrus.Errorf("  📊 统计: 总共 %d 个元素，其中 %d 个可见", len(dropdowns), visibleCount)
 	return nil, fmt.Errorf("未找到可见的地点下拉列表")
 }
 
