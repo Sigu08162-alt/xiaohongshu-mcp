@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 	browser "github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 )
@@ -179,6 +180,8 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	checkInterval := 500 * time.Millisecond
 	startTime := time.Now()
 
+	logrus.Info("等待搜索数据加载...")
+	dataLoaded := false
 	for time.Since(startTime) < maxWait {
 		hasSearchData, err := page.Eval(`() => {
 			return window.__INITIAL_STATE__ &&
@@ -186,9 +189,15 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 			       window.__INITIAL_STATE__.search.feeds !== undefined;
 		}`)
 		if err == nil && hasSearchData == true {
+			logrus.Info("搜索数据已加载")
+			dataLoaded = true
 			break
 		}
 		time.Sleep(checkInterval)
+	}
+
+	if !dataLoaded {
+		logrus.Warn("搜索数据加载超时，尝试继续提取")
 	}
 
 	// 额外等待500ms确保搜索数据完全加载
@@ -275,7 +284,17 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		return nil, fmt.Errorf("JavaScript 返回值类型错误，期望 string，实际为 %T", resultRaw)
 	}
 
+	logrus.Infof("搜索结果 JSON 长度: %d", len(result))
 	if result == "" {
+		// 调试：打印 __INITIAL_STATE__ 的结构
+		debugInfo, _ := page.Eval(`() => {
+			if (!window.__INITIAL_STATE__) return "无 __INITIAL_STATE__";
+			if (!window.__INITIAL_STATE__.search) return "无 search";
+			if (!window.__INITIAL_STATE__.search.feeds) return "无 feeds";
+			const feeds = window.__INITIAL_STATE__.search.feeds;
+			return "feeds 类型: " + typeof feeds + ", keys: " + Object.keys(feeds).join(",");
+		}`)
+		logrus.Warnf("搜索结果为空，调试信息: %v", debugInfo)
 		return nil, errors.ErrNoFeeds
 	}
 
