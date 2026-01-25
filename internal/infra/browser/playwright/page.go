@@ -41,8 +41,11 @@ func (p *page) Close() error {
 }
 
 func (p *page) Goto(url string) error {
+	// 使用 DOMContentLoaded 而不是 Load，避免等待所有资源和动态内容
+	// 这对于有实时更新/动画的页面（如数据分析页面）很重要
 	_, err := p.p.Goto(url, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateLoad,
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(60000), // 60秒超时
 	})
 	return err
 }
