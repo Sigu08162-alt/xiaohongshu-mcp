@@ -621,6 +621,15 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "location": {
+                    "type": "string"
+                },
+                "marker_tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "schedule_at": {
                     "description": "定时发布时间，ISO8601格式，为空则立即发布",
                     "type": "string"

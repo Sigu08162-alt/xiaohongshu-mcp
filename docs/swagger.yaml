@@ -59,6 +59,12 @@ definitions:
           type: string
         minItems: 1
         type: array
+      location:
+        type: string
+      marker_tags:
+        items:
+          type: string
+        type: array
       schedule_at:
         description: 定时发布时间，ISO8601格式，为空则立即发布
         type: string

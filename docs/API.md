@@ -171,7 +171,9 @@ Content-Type: application/json
     "http://example.com/image1.jpg",
     "http://example.com/image2.jpg"
   ],
-  "tags": ["标签1", "标签2"]
+  "tags": ["标签1", "标签2"],
+  "location": "深圳湾公园",
+  "marker_tags": ["深圳湾公园", "张三"]
 }
 ```
 
@@ -180,6 +182,8 @@ Content-Type: application/json
 - `content` (string, required): 笔记内容
 - `images` (array, required): 图片URL数组，至少包含一张图片
 - `tags` (array, optional): 标签数组
+- `location` (string, optional): 地点名称，支持城市/商圈/POI
+- `marker_tags` (array, optional): 标记的地点或用户昵称列表
 
 **响应**
 ```json
