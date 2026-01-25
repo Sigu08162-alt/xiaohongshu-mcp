@@ -278,6 +278,8 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 		Title:        req.Title,
 		Content:      req.Content,
 		Tags:         req.Tags,
+		Location:     req.Location,
+		MarkerTags:   req.MarkerTags,
 		ImagePaths:   imagePaths,
 		ScheduleTime: scheduleTime,
 	}
@@ -289,6 +291,8 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 			Content:      content.Content,
 			Tags:         content.Tags,
 			ImagePaths:   content.ImagePaths,
+			Location:     content.Location,
+			MarkerTags:   content.MarkerTags,
 			ScheduleTime: content.ScheduleTime,
 		}); err != nil {
 			logrus.Errorf("发布内容失败(新用例): title=%s %v", content.Title, err)

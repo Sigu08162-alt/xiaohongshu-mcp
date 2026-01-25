@@ -65,3 +65,25 @@ func TestPublishRequest_HasLocationAndMarkerTagsFields(t *testing.T) {
 		t.Fatalf("missing MarkerTags field")
 	}
 }
+
+func TestPublishContent_MapsLocationAndMarkerTags(t *testing.T) {
+	gw := &testkit.FakePublishGateway{}
+	uc := apppublish.Usecase{Gateway: gw, Limits: domainpublish.Limits{MaxTags: 10, MinImages: 1, MaxImages: 9}}
+	service := NewXiaohongshuServiceWithUsecase(&uc)
+	req := &PublishRequest{
+		Title:      "t",
+		Content:    "c",
+		Images:     []string{"/tmp/placeholder.jpg"},
+		Location:   "深圳湾公园",
+		MarkerTags: []string{"深圳湾公园", "张三"},
+	}
+	if _, err := service.PublishContent(context.Background(), req); err != nil {
+		t.Fatalf("publish err: %v", err)
+	}
+	if gw.LastImage.Location != "深圳湾公园" {
+		t.Fatalf("unexpected location: %s", gw.LastImage.Location)
+	}
+	if len(gw.LastImage.MarkerTags) != 2 {
+		t.Fatalf("unexpected marker tags: %v", gw.LastImage.MarkerTags)
+	}
+}
