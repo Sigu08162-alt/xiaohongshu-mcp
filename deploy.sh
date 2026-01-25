@@ -82,10 +82,17 @@ rm xiaohongshu-mcp-linux-amd64.tar.gz
 
 # 重命名文件（移除平台后缀）
 mv xiaohongshu-mcp-linux-amd64 xiaohongshu-mcp
-mv xiaohongshu-login-linux-amd64 xiaohongshu-login
+
+# xiaohongshu-login 可能不存在（旧版本的 release）
+if [ -f "xiaohongshu-login-linux-amd64" ]; then
+    mv xiaohongshu-login-linux-amd64 xiaohongshu-login
+    chmod +x xiaohongshu-login
+else
+    echo "警告: xiaohongshu-login 不存在，跳过（可能是旧版本）"
+fi
 
 # 设置执行权限
-chmod +x xiaohongshu-mcp xiaohongshu-login
+chmod +x xiaohongshu-mcp
 
 # 5. 创建目录
 echo "步骤5: 创建必要目录..."
