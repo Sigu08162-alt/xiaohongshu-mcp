@@ -35,7 +35,7 @@ type PublishContentArgs struct {
 	Tags       []string `json:"tags,omitempty" jsonschema_description:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
 	Location   string   `json:"location,omitempty" jsonschema_description:"地点名称（可选），支持城市、商圈、POI"`
 	MarkerTags []string `json:"marker_tags,omitempty" jsonschema_description:"标记的地点或用户昵称列表（可选）"`
-	ScheduleAt string   `json:"schedule_at,omitempty" jsonschema_description:"定时发布时间（可选��，ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
+	ScheduleAt string   `json:"schedule_at,omitempty" jsonschema_description:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
 }
 
 // PublishVideoArgs 发布视频的参数（仅支持本地单个视频文件）
