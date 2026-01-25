@@ -128,13 +128,29 @@ func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context) (*UserPr
 
 	// 通过侧边栏导航到个人主页
 	if err := navigate.ToProfilePage(ctx); err != nil {
-		return nil, fmt.Errorf("failed to navigate to profile page via sidebar: %w", err)
+		return nil, fmt.Errorf("导航到个人主页失败: %w", err)
 	}
 
-	// 等待页面加载完成并获取 __INITIAL_STATE__
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
-		return nil, fmt.Errorf("failed to wait for page stable: %w", err)
+	// 等待 __INITIAL_STATE__ 中的用户数据加载，而不是等待 DOM 稳定
+	// 个人主页有动态内容（笔记推荐、实时更新），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasData, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.user &&
+			       window.__INITIAL_STATE__.user.userPageData !== undefined;
+		}`)
+		if err == nil && hasData == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
+
+	// 额外等待500ms确保数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	return u.extractUserProfileData(page)
 }

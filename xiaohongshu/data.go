@@ -245,10 +245,27 @@ func (d *DataAction) GetMyFeeds(ctx context.Context, limit int) ([]Feed, error) 
 	if err := navigate.ToProfilePage(ctx); err != nil {
 		return nil, fmt.Errorf("导航到个人主页失败: %w", err)
 	}
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
-		logrus.Warn("等待 DOM 稳定出现问题", "error", err)
+
+	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
+	// 个人主页有动态内容（笔记推荐、实时更新），DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasNotes, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.user &&
+			       window.__INITIAL_STATE__.user.notes !== undefined;
+		}`)
+		if err == nil && hasNotes == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
-	time.Sleep(3 * time.Second)
+
+	// 额外等待500ms确保笔记数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	// 使用JavaScript提取笔记列表
 	feeds := d.extractFeedsFromPage(page, limit)

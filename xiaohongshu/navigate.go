@@ -46,10 +46,24 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 		return err
 	}
 
-	// 等待 DOM 稳定
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
-		return err
+	// 等待 __INITIAL_STATE__ 加载，而不是等待 DOM 稳定
+	// 探索页面有动态内容，DOM 可能永远不会稳定
+	maxWait := 30 * time.Second
+	checkInterval := 500 * time.Millisecond
+	startTime := time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasState, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user !== undefined;
+		}`)
+		if err == nil && hasState == true {
+			break
+		}
+		time.Sleep(checkInterval)
 	}
+
+	// 额外等待500ms确保数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	// 从 __INITIAL_STATE__ 获取当前用户ID
 	userID, err := page.Eval(`() => {
@@ -82,6 +96,27 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 	if err := page.WaitLoad(); err != nil {
 		return err
 	}
+
+	// 等待个人主页的 __INITIAL_STATE__ 加载，而不是等待 DOM 稳定
+	// 个人主页可能有动态内容（笔记推荐、实时更新），DOM 可能永远不会稳定
+	maxWait = 30 * time.Second
+	checkInterval = 500 * time.Millisecond
+	startTime = time.Now()
+
+	for time.Since(startTime) < maxWait {
+		hasState, err := page.Eval(`() => {
+			return window.__INITIAL_STATE__ &&
+			       window.__INITIAL_STATE__.user &&
+			       window.__INITIAL_STATE__.user.userPageData !== undefined;
+		}`)
+		if err == nil && hasState == true {
+			break
+		}
+		time.Sleep(checkInterval)
+	}
+
+	// 额外等待500ms确保数据完全加载
+	time.Sleep(500 * time.Millisecond)
 
 	return nil
 }
