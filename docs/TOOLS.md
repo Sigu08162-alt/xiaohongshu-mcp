@@ -119,6 +119,8 @@ xiaohongshu-mcp 是一个基于 Model Context Protocol (MCP) 的小红书自动�
   "content": "正文内容（不包含#开头的标签）",
   "images": ["图片路径列表"],
   "tags": ["话题标签列表"],
+  "location": "地点名称（可选）",
+  "marker_tags": ["标记的地点或用户昵称列表（可选）"],
   "schedule_at": "定时发布时间（可选，ISO8601格式）"
 }
 ```
@@ -130,6 +132,8 @@ xiaohongshu-mcp 是一个基于 Model Context Protocol (MCP) 的小红书自动�
   - 支持 HTTP/HTTPS 链接（会自动下载）
   - 支持本地绝对路径（推荐）
 - `tags`: 可选，话题标签列表
+- `location`: 可选，地点名称，支持城市/商圈/POI
+- `marker_tags`: 可选，标记的地点或用户昵称列表
 - `schedule_at`: 可选，定时发布时间
   - 格式：ISO8601，如 `2024-01-20T10:30:00+08:00`
   - 时间范围：1 小时至 14 天内
