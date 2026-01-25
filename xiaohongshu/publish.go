@@ -328,8 +328,8 @@ func submitPublish(page browser.Page, title, content string, tags []string, loca
 	}
 	slog.Info("检查正文长度：通过")
 
-	// 设置地点
-	if location != "" {
+	// 设置地点 - 暂时禁用以测试基本标签功能
+	if false && location != "" {
 		if err := setLocation(page, location); err != nil {
 			return errors.Wrap(err, "设置地点失败")
 		}
@@ -352,8 +352,8 @@ func submitPublish(page browser.Page, title, content string, tags []string, loca
 		slog.Info("群聊设置完成", "groupChat", settings.GroupChat)
 	}
 
-	// 设置标记（地点或用户）
-	if len(settings.MarkerTags) > 0 {
+	// 设置标记（地点或用户）- 暂时禁用以测试基本标签功能
+	if false && len(settings.MarkerTags) > 0 {
 		if err := setMarkerTags(page, settings.MarkerTags); err != nil {
 			return errors.Wrap(err, "设置标记失败")
 		}

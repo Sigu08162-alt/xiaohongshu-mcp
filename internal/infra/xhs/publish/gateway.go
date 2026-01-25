@@ -164,6 +164,17 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	}
 	logrus.Info("✅ 内容填写完成")
 
+	// 输入标签（如果有）
+	if len(content.Tags) > 0 {
+		logrus.Infof("🏷️ 开始输入标签 (共%d个)...", len(content.Tags))
+		if err := inputTags(page, content.Tags); err != nil {
+			logrus.Warnf("⚠️ 标签输入失败: %v", err)
+			// 标签输入失败不影响发布，继续
+		} else {
+			logrus.Info("✅ 标签输入完成")
+		}
+	}
+
 	// 填写内容后检查URL
 	afterContentURL := page.URL()
 	logrus.Infof("📍 填写内容后URL: %s", afterContentURL)
@@ -496,5 +507,79 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	// 等待草稿保存完成
 	time.Sleep(3 * time.Second)
 
+	return nil
+}
+
+// inputTags 在内容编辑器中输入标签
+func inputTags(page browser.Page, tags []string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	// 先获取内容编辑器元素
+	contentElem, err := page.Element("[role=\"textbox\"]")
+	if err != nil {
+		return fmt.Errorf("未找到内容编辑器: %w", err)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	// 按下箭头键移动到底部
+	for i := 0; i < 20; i++ {
+		contentElem.Press("ArrowDown")
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// 按两次回车换行
+	contentElem.Press("Enter")
+	contentElem.Press("Enter")
+
+	time.Sleep(1 * time.Second)
+
+	// 逐个输入标签
+	for i, tag := range tags {
+		tag = strings.TrimLeft(tag, "#")
+		logrus.Infof("  [%d/%d] 输入标签: #%s", i+1, len(tags), tag)
+		if err := inputTag(page, contentElem, tag); err != nil {
+			logrus.Warnf("  ⚠️ 标签输入失败: %v", err)
+			// 继续下一个标签
+		}
+	}
+
+	return nil
+}
+
+// inputTag 输入单个标签
+func inputTag(page browser.Page, contentElem browser.Element, tag string) error {
+	// 输入 # 号
+	contentElem.Input("#")
+	time.Sleep(200 * time.Millisecond)
+
+	// 逐字符输入标签
+	for _, char := range tag {
+		contentElem.Input(string(char))
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	time.Sleep(1 * time.Second)
+
+	// 查找并点击标签联想选项
+	topicContainer, err := page.Element("#creator-editor-topic-container")
+	if err == nil && topicContainer != nil {
+		firstItem, err := topicContainer.Element(".item")
+		if err == nil && firstItem != nil {
+			firstItem.Click()
+			logrus.Infof("    ✅ 成功点击标签联想选项")
+			time.Sleep(200 * time.Millisecond)
+		} else {
+			logrus.Warnf("    ⚠️ 未找到标签联想选项，直接输入空格")
+			contentElem.Input(" ")
+		}
+	} else {
+		logrus.Warnf("    ⚠️ 未找到标签联想下拉框，直接输入空格")
+		contentElem.Input(" ")
+	}
+
+	time.Sleep(500 * time.Millisecond)
 	return nil
 }

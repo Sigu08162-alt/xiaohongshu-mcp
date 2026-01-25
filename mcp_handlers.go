@@ -237,11 +237,25 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 		}
 	}
 
+	// 解析地点
+	location, _ := args["location"].(string)
+
+	// 解析标记标签
+	markerTagsInterface, _ := args["marker_tags"].([]interface{})
+	var markerTags []string
+	for _, marker := range markerTagsInterface {
+		if markerStr, ok := marker.(string); ok {
+			markerTags = append(markerTags, markerStr)
+		}
+	}
+
 	// 解析定时发布参数
 	scheduleAt, _ := args["schedule_at"].(string)
 
-	logrus.Infof("MCP: 发布内容 - 标题: %s, 图片数量: %d, 标签数量: %d, 定时: %s", title, len(imagePaths), len(tags), scheduleAt)
+	logrus.Infof("MCP: 发布内容 - 标题: %s, 图片数量: %d, 标签数量: %d, 地点: %s, 标记数量: %d, 定时: %s",
+		title, len(imagePaths), len(tags), location, len(markerTags), scheduleAt)
 	logrus.Debugf("MCP: 图片路径 - %v", imagePaths)
+	logrus.Debugf("MCP: 标记标签 - %v", markerTags)
 
 	// 构建发布请求
 	req := &PublishRequest{
@@ -249,6 +263,8 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 		Content:    content,
 		Images:     imagePaths,
 		Tags:       tags,
+		Location:   location,
+		MarkerTags: markerTags,
 		ScheduleAt: scheduleAt,
 	}
 
