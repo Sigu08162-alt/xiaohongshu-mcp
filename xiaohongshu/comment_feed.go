@@ -165,44 +165,61 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 		return fmt.Errorf("未找到提交按钮")
 	}
 
-	// 滚动到按钮位置
+	// 滚动到按钮位置，确保在视口中央
 	logrus.Info("滚动到提交按钮...")
 	if err := submitButton.ScrollIntoView(); err != nil {
 		logrus.Warnf("滚动到按钮失败: %v", err)
 	}
 	time.Sleep(500 * time.Millisecond)
 
-	// 等待按钮可见
+	// 额外向上滚动一点，确保按钮不被底部工具栏遮挡
+	_, _ = page.Eval(`() => window.scrollBy(0, -100)`)
+	time.Sleep(300 * time.Millisecond)
+
+	// 等待按钮可见且可交互
 	logrus.Info("等待提交按钮可见...")
 	if err := submitButton.WaitVisible(); err != nil {
 		logrus.Warnf("等待按钮可见失败: %v", err)
 	}
 	time.Sleep(500 * time.Millisecond)
 
-	// 点击提交按钮（优先使用 JS 点击，更可靠）
-	logrus.Info("点击提交按钮...")
+	// 检查按钮是否被禁用
+	disabled, _ := submitButton.Attribute("disabled")
+	if disabled != "" {
+		logrus.Warn("提交按钮被禁用，可能内容为空或不符合要求")
+		return fmt.Errorf("提交按钮被禁用")
+	}
 
-	// 直接使用 JavaScript 点击（避免元素遮挡问题）
-	clicked, err := page.Eval(`() => {
-		const buttons = Array.from(document.querySelectorAll('button'));
-		const submitBtn = buttons.find(btn =>
-			btn.textContent.includes('发布') ||
-			btn.textContent.includes('提交') ||
-			btn.className.includes('submit')
-		);
-		if (submitBtn) {
-			submitBtn.click();
-			return true;
-		}
-		return false;
-	}`)
+	// 点击提交按钮（常规点击优先，模拟真实用户）
+	logrus.Info("点击提交按钮（常规点击）...")
 
-	if err != nil || clicked != true {
-		logrus.Warnf("JS 点击失败，尝试常规点击: %v", err)
-		// 备用方案：使用常规点击（减少超时时间）
-		if err := submitButton.Click(); err != nil {
-			return fmt.Errorf("无法点击提交按钮: %w", err)
+	// 使用较短的超时时间进行常规点击
+	clickErr := submitButton.Click()
+	if clickErr != nil {
+		logrus.Warnf("常规点击失败: %v，等待2秒后尝试 JS 点击", clickErr)
+		time.Sleep(2 * time.Second)
+
+		// 备用方案：使用 JavaScript 点击
+		clicked, err := page.Eval(`() => {
+			const buttons = Array.from(document.querySelectorAll('button'));
+			const submitBtn = buttons.find(btn =>
+				btn.textContent.includes('发布') ||
+				btn.textContent.includes('提交') ||
+				btn.className.includes('submit')
+			);
+			if (submitBtn && !submitBtn.disabled) {
+				submitBtn.click();
+				return true;
+			}
+			return false;
+		}`)
+
+		if err != nil || clicked != true {
+			return fmt.Errorf("所有点击方式都失败: 常规点击=%v, JS点击=%v", clickErr, err)
 		}
+		logrus.Info("JS 点击成功")
+	} else {
+		logrus.Info("常规点击成功")
 	}
 
 	time.Sleep(1 * time.Second)
