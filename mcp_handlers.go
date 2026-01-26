@@ -18,6 +18,19 @@ import (
 
 // MCP 工具处理函数
 
+// parseBool 安全地解析布尔值，兼容 bool 和 string 类型
+func parseBool(v interface{}) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case string:
+		b, _ := strconv.ParseBool(val)
+		return b
+	default:
+		return false
+	}
+}
+
 // handleCheckLoginStatus 处理检查登录状态
 func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 	logrus.Info("MCP: 检查登录状态")
@@ -755,7 +768,7 @@ func (s *AppServer) handleLikeFeed(ctx context.Context, args map[string]interfac
 	if !ok || xsecToken == "" {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少xsec_token参数"}}, IsError: true}
 	}
-	unlike, _ := args["unlike"].(bool)
+	unlike := parseBool(args["unlike"])
 
 	var res *ActionResult
 	var err error
@@ -791,7 +804,7 @@ func (s *AppServer) handleFavoriteFeed(ctx context.Context, args map[string]inte
 	if !ok || xsecToken == "" {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少xsec_token参数"}}, IsError: true}
 	}
-	unfavorite, _ := args["unfavorite"].(bool)
+	unfavorite := parseBool(args["unfavorite"])
 
 	var res *ActionResult
 	var err error
@@ -980,7 +993,7 @@ func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interf
 		}
 	}
 
-	unfollow, _ := args["unfollow"].(bool)
+	unfollow := parseBool(args["unfollow"])
 
 	var res *ActionResult
 	var err error
@@ -1056,7 +1069,7 @@ func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]inter
 		}
 	}
 
-	unlike, _ := args["unlike"].(bool)
+	unlike := parseBool(args["unlike"])
 
 	var res *ActionResult
 	var err error
