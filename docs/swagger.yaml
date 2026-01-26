@@ -23,6 +23,19 @@ definitions:
       error:
         type: string
     type: object
+  main.FavoriteFeedRequest:
+    properties:
+      feed_id:
+        type: string
+      unfavorite:
+        description: true表示取消收藏
+        type: boolean
+      xsec_token:
+        type: string
+    required:
+    - feed_id
+    - xsec_token
+    type: object
   main.FeedDetailRequest:
     properties:
       comment_config:
@@ -30,6 +43,51 @@ definitions:
       feed_id:
         type: string
       load_all_comments:
+        type: boolean
+      xsec_token:
+        type: string
+    required:
+    - feed_id
+    - xsec_token
+    type: object
+  main.FollowUserRequest:
+    properties:
+      unfollow:
+        description: true表示取关
+        type: boolean
+      user_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - user_id
+    - xsec_token
+    type: object
+  main.LikeCommentRequest:
+    properties:
+      comment_id:
+        type: string
+      feed_id:
+        type: string
+      unlike:
+        description: true表示取消点赞
+        type: boolean
+      user_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - comment_id
+    - feed_id
+    - user_id
+    - xsec_token
+    type: object
+  main.LikeFeedRequest:
+    properties:
+      feed_id:
+        type: string
+      unlike:
+        description: true表示取消点赞
         type: boolean
       xsec_token:
         type: string
@@ -213,6 +271,36 @@ paths:
       summary: 发表评论
       tags:
       - 内容互动
+  /feeds/comment/like:
+    post:
+      consumes:
+      - application/json
+      description: 为指定评论点赞或取消点赞
+      parameters:
+      - description: 点赞评论请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.LikeCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 操作失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 点赞评论
+      tags:
+      - 内容互动
   /feeds/comment/reply:
     post:
       consumes:
@@ -273,6 +361,66 @@ paths:
       summary: 获取笔记详情
       tags:
       - 内容发现
+  /feeds/favorite:
+    post:
+      consumes:
+      - application/json
+      description: 收藏或取消收藏指定笔记
+      parameters:
+      - description: 收藏请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.FavoriteFeedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 操作失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 收藏笔记
+      tags:
+      - 内容互动
+  /feeds/like:
+    post:
+      consumes:
+      - application/json
+      description: 为指定笔记点赞或取消点赞
+      parameters:
+      - description: 点赞请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.LikeFeedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 操作失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 点赞笔记
+      tags:
+      - 内容互动
   /feeds/list:
     get:
       description: 获取小红书首页推荐 Feed 流
@@ -466,6 +614,36 @@ paths:
       summary: 发布视频笔记
       tags:
       - 内容发布
+  /user/follow:
+    post:
+      consumes:
+      - application/json
+      description: 关注或取关指定用户
+      parameters:
+      - description: 关注请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.FollowUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 操作成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 操作失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 关注用户
+      tags:
+      - 内容互动
   /user/me:
     get:
       description: 获取当前登录用户的主页信息

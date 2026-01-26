@@ -400,3 +400,155 @@ func (s *AppServer) myProfileHandler(c *gin.Context) {
 	c.Set("account", "ai-report")
 	respondSuccess(c, map[string]any{"data": result}, "获取我的主页成功")
 }
+
+// likeFeedHandler 点赞/取消点赞笔记
+// @Summary 点赞笔记
+// @Description 为指定笔记点赞或取消点赞
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body LikeFeedRequest true "点赞请求参数"
+// @Success 200 {object} SuccessResponse "操作成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "操作失败"
+// @Router /feeds/like [post]
+func (s *AppServer) likeFeedHandler(c *gin.Context) {
+	var req LikeFeedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	var result *ActionResult
+	var err error
+
+	if req.Unlike {
+		result, err = s.xiaohongshuService.UnlikeFeed(c.Request.Context(), req.FeedID, req.XsecToken)
+	} else {
+		result, err = s.xiaohongshuService.LikeFeed(c.Request.Context(), req.FeedID, req.XsecToken)
+	}
+
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "LIKE_FEED_FAILED",
+			"点赞操作失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}
+
+// favoriteFeedHandler 收藏/取消收藏笔记
+// @Summary 收藏笔记
+// @Description 收藏或取消收藏指定笔记
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body FavoriteFeedRequest true "收藏请求参数"
+// @Success 200 {object} SuccessResponse "操作成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "操作失败"
+// @Router /feeds/favorite [post]
+func (s *AppServer) favoriteFeedHandler(c *gin.Context) {
+	var req FavoriteFeedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	var result *ActionResult
+	var err error
+
+	if req.Unfavorite {
+		result, err = s.xiaohongshuService.UnfavoriteFeed(c.Request.Context(), req.FeedID, req.XsecToken)
+	} else {
+		result, err = s.xiaohongshuService.FavoriteFeed(c.Request.Context(), req.FeedID, req.XsecToken)
+	}
+
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "FAVORITE_FEED_FAILED",
+			"收藏操作失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}
+
+// likeCommentHandler 点赞/取消点赞评论
+// @Summary 点赞评论
+// @Description 为指定评论点赞或取消点赞
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body LikeCommentRequest true "点赞评论请求参数"
+// @Success 200 {object} SuccessResponse "操作成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "操作失败"
+// @Router /feeds/comment/like [post]
+func (s *AppServer) likeCommentHandler(c *gin.Context) {
+	var req LikeCommentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	var result *ActionResult
+	var err error
+
+	if req.Unlike {
+		result, err = s.xiaohongshuService.UnlikeComment(c.Request.Context(), req.FeedID, req.XsecToken, req.CommentID, req.UserID)
+	} else {
+		result, err = s.xiaohongshuService.LikeComment(c.Request.Context(), req.FeedID, req.XsecToken, req.CommentID, req.UserID)
+	}
+
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "LIKE_COMMENT_FAILED",
+			"点赞评论操作失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}
+
+// followUserHandler 关注/取关用户
+// @Summary 关注用户
+// @Description 关注或取关指定用户
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body FollowUserRequest true "关注请求参数"
+// @Success 200 {object} SuccessResponse "操作成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "操作失败"
+// @Router /user/follow [post]
+func (s *AppServer) followUserHandler(c *gin.Context) {
+	var req FollowUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	var result *ActionResult
+	var err error
+
+	if req.Unfollow {
+		result, err = s.xiaohongshuService.UnfollowUser(c.Request.Context(), req.UserID, req.XsecToken)
+	} else {
+		result, err = s.xiaohongshuService.FollowUser(c.Request.Context(), req.UserID, req.XsecToken)
+	}
+
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "FOLLOW_USER_FAILED",
+			"关注操作失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}

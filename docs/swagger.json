@@ -62,6 +62,52 @@
                 }
             }
         },
+        "/feeds/comment/like": {
+            "post": {
+                "description": "为指定评论点赞或取消点赞",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容互动"
+                ],
+                "summary": "点赞评论",
+                "parameters": [
+                    {
+                        "description": "点赞评论请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.LikeCommentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "操作失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/feeds/comment/reply": {
             "post": {
                 "description": "回复笔记下的指定评论",
@@ -147,6 +193,98 @@
                     },
                     "500": {
                         "description": "获取失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/feeds/favorite": {
+            "post": {
+                "description": "收藏或取消收藏指定笔记",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容互动"
+                ],
+                "summary": "收藏笔记",
+                "parameters": [
+                    {
+                        "description": "收藏请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.FavoriteFeedRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "操作失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/feeds/like": {
+            "post": {
+                "description": "为指定笔记点赞或取消点赞",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容互动"
+                ],
+                "summary": "点赞笔记",
+                "parameters": [
+                    {
+                        "description": "点赞请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.LikeFeedRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "操作失败",
                         "schema": {
                             "$ref": "#/definitions/main.ErrorResponse"
                         }
@@ -450,6 +588,52 @@
                 }
             }
         },
+        "/user/follow": {
+            "post": {
+                "description": "关注或取关指定用户",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容互动"
+                ],
+                "summary": "关注用户",
+                "parameters": [
+                    {
+                        "description": "关注请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.FollowUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "操作成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "操作失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/user/me": {
             "get": {
                 "description": "获取当前登录用户的主页信息",
@@ -557,6 +741,25 @@
                 }
             }
         },
+        "main.FavoriteFeedRequest": {
+            "type": "object",
+            "required": [
+                "feed_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "feed_id": {
+                    "type": "string"
+                },
+                "unfavorite": {
+                    "description": "true表示取消收藏",
+                    "type": "boolean"
+                },
+                "xsec_token": {
+                    "type": "string"
+                }
+            }
+        },
         "main.FeedDetailRequest": {
             "type": "object",
             "required": [
@@ -571,6 +774,71 @@
                     "type": "string"
                 },
                 "load_all_comments": {
+                    "type": "boolean"
+                },
+                "xsec_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.FollowUserRequest": {
+            "type": "object",
+            "required": [
+                "user_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "unfollow": {
+                    "description": "true表示取关",
+                    "type": "boolean"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "xsec_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.LikeCommentRequest": {
+            "type": "object",
+            "required": [
+                "comment_id",
+                "feed_id",
+                "user_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "comment_id": {
+                    "type": "string"
+                },
+                "feed_id": {
+                    "type": "string"
+                },
+                "unlike": {
+                    "description": "true表示取消点赞",
+                    "type": "boolean"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "xsec_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.LikeFeedRequest": {
+            "type": "object",
+            "required": [
+                "feed_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "feed_id": {
+                    "type": "string"
+                },
+                "unlike": {
+                    "description": "true表示取消点赞",
                     "type": "boolean"
                 },
                 "xsec_token": {

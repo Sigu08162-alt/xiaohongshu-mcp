@@ -109,3 +109,33 @@ type ActionResult struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 }
+
+// LikeFeedRequest 点赞笔记请求
+type LikeFeedRequest struct {
+	FeedID    string `json:"feed_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+	Unlike    bool   `json:"unlike,omitempty"` // true表示取消点赞
+}
+
+// FavoriteFeedRequest 收藏笔记请求
+type FavoriteFeedRequest struct {
+	FeedID     string `json:"feed_id" binding:"required"`
+	XsecToken  string `json:"xsec_token" binding:"required"`
+	Unfavorite bool   `json:"unfavorite,omitempty"` // true表示取消收藏
+}
+
+// LikeCommentRequest 点赞评论请求
+type LikeCommentRequest struct {
+	FeedID    string `json:"feed_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+	CommentID string `json:"comment_id" binding:"required"`
+	UserID    string `json:"user_id" binding:"required"`
+	Unlike    bool   `json:"unlike,omitempty"` // true表示取消点赞
+}
+
+// FollowUserRequest 关注用户请求
+type FollowUserRequest struct {
+	UserID    string `json:"user_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+	Unfollow  bool   `json:"unfollow,omitempty"` // true表示取关
+}
