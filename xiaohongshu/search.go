@@ -184,9 +184,15 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	dataLoaded := false
 	for time.Since(startTime) < maxWait {
 		hasSearchData, err := page.Eval(`() => {
-			return window.__INITIAL_STATE__ &&
-			       window.__INITIAL_STATE__.search &&
-			       window.__INITIAL_STATE__.search.feeds !== undefined;
+			if (!window.__INITIAL_STATE__ ||
+			    !window.__INITIAL_STATE__.search ||
+			    !window.__INITIAL_STATE__.search.feeds) {
+				return false;
+			}
+			const feeds = window.__INITIAL_STATE__.search.feeds;
+			const feedsData = feeds.value !== undefined ? feeds.value : feeds._value;
+			// 检查数组是否存在且有数据
+			return Array.isArray(feedsData) && feedsData.length > 0;
 		}`)
 		if err == nil && hasSearchData == true {
 			logrus.Info("搜索数据已加载")
@@ -249,9 +255,15 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 
 		for time.Since(startTime) < maxWait {
 			hasSearchData, err := page.Eval(`() => {
-				return window.__INITIAL_STATE__ &&
-				       window.__INITIAL_STATE__.search &&
-				       window.__INITIAL_STATE__.search.feeds !== undefined;
+				if (!window.__INITIAL_STATE__ ||
+				    !window.__INITIAL_STATE__.search ||
+				    !window.__INITIAL_STATE__.search.feeds) {
+					return false;
+				}
+				const feeds = window.__INITIAL_STATE__.search.feeds;
+				const feedsData = feeds.value !== undefined ? feeds.value : feeds._value;
+				// 检查数组是否存在且有数据
+				return Array.isArray(feedsData) && feedsData.length > 0;
 			}`)
 			if err == nil && hasSearchData == true {
 				break
