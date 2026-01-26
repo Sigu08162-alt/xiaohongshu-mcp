@@ -1592,9 +1592,9 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "2.0.0",
-	Host:             "localhost:18060",
+	Host:             "",
 	BasePath:         "/api/v1",
-	Schemes:          []string{},
+	Schemes:          []string{"http", "https"},
 	Title:            "小红书 MCP API",
 	Description:      "小红书 MCP 服务的 REST API 接口文档\n\n提供完整的小红书内容发布、互动和数据分析功能\n\n## 功能模块\n- **登录认证**: 登录状态检查、二维码登录、Cookie 管理\n- **内容发布**: 图文笔记、视频笔记发布\n- **内容发现**: Feed 列表、搜索、笔记详情\n- **用户信息**: 用户主页、个人资料\n- **内容互动**: 评论、点赞、收藏、关注\n\n## MCP 协议\n本服务同时提供 MCP (Model Context Protocol) 接口供 AI 工具使用\n- MCP 端点: /mcp\n- REST 端点: /api/v1/*",
 	InfoInstanceName: "swagger",

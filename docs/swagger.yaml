@@ -292,7 +292,6 @@ definitions:
       sort_by:
         type: string
     type: object
-host: localhost:18060
 info:
   contact:
     name: API Support
@@ -1044,6 +1043,9 @@ paths:
       summary: 获取用户主页
       tags:
       - 用户信息
+schemes:
+- http
+- https
 swagger: "2.0"
 tags:
 - description: 登录状态管理和认证相关接口

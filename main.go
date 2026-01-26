@@ -35,8 +35,8 @@ import (
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
 
-// @host localhost:18060
 // @BasePath /api/v1
+// @schemes http https
 
 // @tag.name 登录认证
 // @tag.description 登录状态管理和认证相关接口
