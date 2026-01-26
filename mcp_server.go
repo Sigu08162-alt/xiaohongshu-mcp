@@ -19,8 +19,14 @@ func buildPublishContentArgsMap(args PublishContentArgs) map[string]interface{} 
 		"content":     args.Content,
 		"images":      convertStringsToInterfaces(args.Images),
 		"tags":        convertStringsToInterfaces(args.Tags),
-		"location":    args.Location,
 		"marker_tags": convertStringsToInterfaces(args.MarkerTags),
+	}
+
+	// 处理可选的 location 指针
+	if args.Location != nil {
+		argsMap["location"] = *args.Location
+	} else {
+		argsMap["location"] = ""
 	}
 
 	// 处理可选的 schedule_at 指针
@@ -41,7 +47,7 @@ type PublishContentArgs struct {
 	Content    string   `json:"content" jsonschema_description:"正文内容，不包含以#开头的标签内容，所有话题标签都用tags参数来生成和提供即可"`
 	Images     []string `json:"images" jsonschema_description:"图片路径列表（至少需要1张图片）。支持两种方式：1. HTTP/HTTPS图片链接（自动下载）；2. 本地图片绝对路径（推荐，如:/Users/user/image.jpg）"`
 	Tags       []string `json:"tags,omitempty" jsonschema_description:"话题标签列表（可选参数），如 [美食, 旅行, 生活]"`
-	Location   string   `json:"location,omitempty" jsonschema_description:"地点名称（可选），支持城市、商圈、POI"`
+	Location   *string  `json:"location,omitempty" jsonschema_description:"地点名称（可选），支持城市、商圈、POI"`
 	MarkerTags []string `json:"marker_tags,omitempty" jsonschema_description:"标记的地点或用户昵称列表（可选）"`
 	ScheduleAt *string  `json:"schedule_at,omitempty" jsonschema_description:"定时发布时间（可选），ISO8601格式如 2024-01-20T10:30:00+08:00，支持1小时至14天内。不填则立即发布"`
 }
