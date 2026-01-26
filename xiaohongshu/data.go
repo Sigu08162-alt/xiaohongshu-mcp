@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -236,13 +237,13 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 }
 
 // GetMyFeeds 获取自己发布的笔记列表
-func (d *DataAction) GetMyFeeds(ctx context.Context, limit int) ([]Feed, error) {
+func (d *DataAction) GetMyFeeds(ctx context.Context, limit int, userID string) ([]Feed, error) {
 	page := d.page.WithContext(ctx).WithTimeout(5 * time.Minute)
 
 	// 通过侧边栏导航到个人主页
 	logrus.Info("通过侧边栏导航到个人主页获取笔记...")
 	navigate := NewNavigate(page)
-	if err := navigate.ToProfilePage(ctx); err != nil {
+	if err := navigate.ToProfilePageWithUserID(ctx, userID); err != nil {
 		return nil, fmt.Errorf("导航到个人主页失败: %w", err)
 	}
 
@@ -280,12 +281,104 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 	lastCount := 0
 	stagnantChecks := 0
 	maxAttempts := 20
+	titleMap := map[string]string{}
+	coverMap := map[string]string{}
+
+	if currentURL, err := page.Eval(`() => location.href`); err == nil {
+		logrus.WithField("url", currentURL).Info("开始提取个人主页笔记列表")
+	}
+	if debugSamples, err := page.Eval(`() => {
+		const links = Array.from(document.querySelectorAll('a[href*="xsec_token"]'));
+		const samples = [];
+		for (const link of links.slice(0, 5)) {
+			const card = link.closest('article, section, li, div');
+			const dataset = card ? Object.assign({}, card.dataset) : {};
+			const attrs = card ? {
+				'data-note-id': card.getAttribute('data-note-id'),
+				'data-noteid': card.getAttribute('data-noteid'),
+				'data-id': card.getAttribute('data-id')
+			} : {};
+			const text = card ? card.innerText.split('\\n').map(t => t.trim()).filter(Boolean).slice(0, 6) : [];
+			samples.push({
+				href: link.getAttribute('href') || '',
+				linkText: (link.textContent || '').trim(),
+				cardTag: card ? card.tagName.toLowerCase() : '',
+				cardClass: card ? card.className : '',
+				dataset,
+				attrs,
+				text
+			});
+		}
+		return samples;
+	}`); err == nil {
+		logrus.WithField("samples", debugSamples).Info("个人主页笔记链接样本")
+	}
+
+	stateNotesRaw, err := page.Eval(`() => window.__INITIAL_STATE__?.user?.notes ?? null`)
+	if err != nil {
+		logrus.WithError(err).Debug("获取 __INITIAL_STATE__.user.notes 失败")
+	} else {
+		titleMap, coverMap = buildStateNoteMapsFromRaw(stateNotesRaw)
+	}
 
 	for attempt := 0; attempt < maxAttempts && len(feeds) < limit; attempt++ {
 		// 使用JavaScript提取笔记
 		result, err := page.Eval(`(limit) => {
 			const notes = [];
 			const seen = new Set();
+
+			const normalizeText = (text) => {
+				if (!text) return '';
+				return text.replace(/\s+/g, ' ').trim();
+			};
+
+			const collectCandidate = (list, value) => {
+				const candidate = normalizeText(value);
+				if (!candidate) return;
+				if (list.includes(candidate)) return;
+				list.push(candidate);
+			};
+
+			const parseNumberText = (text) => {
+				const match = normalizeText(text).match(/(\d+(?:\.\d+)?[万亿]?)/);
+				return match ? match[1] : '';
+			};
+
+			const findMetric = (card, keywords) => {
+				if (!card) return '';
+				const keywordRegex = new RegExp(keywords.join('|'), 'i');
+				const candidates = card.querySelectorAll('[aria-label],[title],span,div,em,i');
+				for (const el of candidates) {
+					const aria = el.getAttribute('aria-label') || '';
+					const title = el.getAttribute('title') || '';
+					const text = normalizeText(el.textContent || '');
+					if (keywordRegex.test(aria) || keywordRegex.test(title) || keywordRegex.test(text)) {
+						const num = parseNumberText(aria || title || text);
+						if (num) return num;
+					}
+				}
+
+				const text = normalizeText(card.textContent || '');
+				for (const keyword of keywords) {
+					const re = new RegExp('(\\d+(?:\\.\\d+)?[万亿]?)\\s*' + keyword);
+					const match = text.match(re);
+					if (match) return match[1];
+				}
+				return '';
+			};
+
+			const findPublishTime = (card) => {
+				if (!card) return '';
+				const timeEl = card.querySelector('[class*="time"],[class*="date"]');
+				if (timeEl) {
+					const text = normalizeText(timeEl.textContent || '');
+					if (text) return text;
+				}
+
+				const text = normalizeText(card.textContent || '');
+				const match = text.match(/(\d{4}-\d{2}-\d{2}|\d{2}-\d{2}|刚刚|昨天|前天|\d+分钟前|\d+小时前|\d+天前)/);
+				return match ? match[1] : '';
+			};
 
 			// 查找所有笔记链接 (包含xsec_token的链接)
 			document.querySelectorAll('a[href*="xsec_token"]').forEach(link => {
@@ -297,18 +390,36 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 					const [_, userId, noteId] = match;
 
 					// 提取标题 - 查找链接内的文本
-					let title = '';
-					const titleEl = link.querySelector('span, div');
+					const titleCandidates = [];
+					collectCandidate(titleCandidates, link.getAttribute('title'));
+					collectCandidate(titleCandidates, link.getAttribute('aria-label'));
+					const titleEl = link.querySelector('[class*="title"], [data-testid*="title"], span, div');
 					if (titleEl) {
-						title = titleEl.textContent.trim();
+						collectCandidate(titleCandidates, titleEl.textContent);
+					}
+					collectCandidate(titleCandidates, link.textContent);
+					const imgEl = link.querySelector('img');
+					if (imgEl) {
+						collectCandidate(titleCandidates, imgEl.getAttribute('alt'));
 					}
 
 					// 提取封面图
 					let cover = '';
-					const img = link.querySelector('img');
-					if (img) {
-						cover = img.src || '';
+					if (imgEl) {
+						cover = imgEl.src || '';
 					}
+
+					const card = link.closest('article, section, li, div');
+					const cardTextLines = card
+						? card.innerText.split('\n').map(t => t.trim()).filter(Boolean)
+						: [];
+					if (cardTextLines.length) {
+						collectCandidate(titleCandidates, cardTextLines[0]);
+					}
+					const likedCount = findMetric(card, ['赞', 'like', 'liked']);
+					const commentCount = findMetric(card, ['评论', 'comment']);
+					const collectedCount = findMetric(card, ['收藏', 'collect', 'favorite']);
+					const publishTime = findPublishTime(card);
 
 					// 提取xsec_token
 					const tokenMatch = href.match(/xsec_token=([^&]+)/);
@@ -318,9 +429,14 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 						notes.push({
 							id: noteId,
 							user_id: userId,
-							title: title,
+							title_candidates: titleCandidates,
 							cover: cover,
-							xsec_token: xsecToken
+							xsec_token: xsecToken,
+							liked_count: likedCount,
+							comment_count: commentCount,
+							collected_count: collectedCount,
+							publish_time: publishTime,
+							card_text_lines: cardTextLines
 						});
 					}
 				}
@@ -340,31 +456,12 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 			break
 		}
 
-		var extractedNotes []struct {
-			ID        string `json:"id"`
-			UserID    string `json:"user_id"`
-			Title     string `json:"title"`
-			Cover     string `json:"cover"`
-			XsecToken string `json:"xsec_token"`
-		}
-
-		if err := json.Unmarshal([]byte(resultStr), &extractedNotes); err != nil {
+		parsedFeeds, err := parseFeedsJSON(resultStr)
+		if err != nil {
 			logrus.WithError(err).Error("解析笔记数据失败")
 			break
 		}
-
-		// 转换为Feed结构
-		feeds = make([]Feed, 0, len(extractedNotes))
-		for _, note := range extractedNotes {
-			feed := Feed{
-				ID:        note.ID,
-				XsecToken: note.XsecToken,
-			}
-			feed.NoteCard.DisplayTitle = note.Title
-			feed.NoteCard.Cover.URLDefault = note.Cover
-			feed.NoteCard.User.UserID = note.UserID
-			feeds = append(feeds, feed)
-		}
+		feeds = applyStateNoteMaps(parsedFeeds, titleMap, coverMap)
 
 		currentCount := len(feeds)
 		if currentCount != lastCount {
@@ -393,6 +490,176 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 		feeds = feeds[:limit]
 	}
 
+	return feeds
+}
+
+func parseFeedsJSON(resultStr string) ([]Feed, error) {
+	var extractedNotes []struct {
+		ID              string   `json:"id"`
+		UserID          string   `json:"user_id"`
+		Title           string   `json:"title"`
+		TitleCandidates []string `json:"title_candidates"`
+		CardTextLines   []string `json:"card_text_lines"`
+		Cover           string   `json:"cover"`
+		XsecToken       string   `json:"xsec_token"`
+		LikedCount      string   `json:"liked_count"`
+		CommentCount    string   `json:"comment_count"`
+		CollectedCount  string   `json:"collected_count"`
+		PublishTime     string   `json:"publish_time"`
+	}
+
+	if err := json.Unmarshal([]byte(resultStr), &extractedNotes); err != nil {
+		return nil, err
+	}
+
+	feeds := make([]Feed, 0, len(extractedNotes))
+	for _, note := range extractedNotes {
+		feed := Feed{
+			ID:        note.ID,
+			XsecToken: note.XsecToken,
+		}
+		displayTitle := pickTitle(note.TitleCandidates)
+		if displayTitle == "" {
+			displayTitle = pickTitleFromLines(note.CardTextLines)
+		}
+		if displayTitle == "" {
+			displayTitle = note.Title
+		}
+		feed.NoteCard.DisplayTitle = displayTitle
+		feed.NoteCard.Cover.URLDefault = note.Cover
+		feed.NoteCard.User.UserID = note.UserID
+		feed.NoteCard.InteractInfo.LikedCount = note.LikedCount
+		feed.NoteCard.InteractInfo.CommentCount = note.CommentCount
+		feed.NoteCard.InteractInfo.CollectedCount = note.CollectedCount
+		feed.NoteCard.PublishTime = note.PublishTime
+		feeds = append(feeds, feed)
+	}
+	return feeds, nil
+}
+
+func pickTitle(candidates []string) string {
+	for _, candidate := range candidates {
+		trimmed := strings.TrimSpace(candidate)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func pickTitleFromLines(lines []string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	first := strings.TrimSpace(lines[0])
+	if first == "" {
+		return ""
+	}
+	return first
+}
+
+type stateNote struct {
+	ID    string
+	Title string
+	Cover string
+}
+
+func normalizeStateNotesRaw(raw any) []stateNote {
+	switch value := raw.(type) {
+	case nil:
+		return nil
+	case []any:
+		return normalizeStateNotesSlice(value)
+	case map[string]any:
+		if list, ok := value["_value"].([]any); ok {
+			return normalizeStateNotesSlice(list)
+		}
+		if list, ok := value["list"].([]any); ok {
+			return normalizeStateNotesSlice(list)
+		}
+		items := make([]any, 0, len(value))
+		for _, item := range value {
+			items = append(items, item)
+		}
+		return normalizeStateNotesSlice(items)
+	default:
+		return nil
+	}
+}
+
+func normalizeStateNotesSlice(items []any) []stateNote {
+	notes := make([]stateNote, 0, len(items))
+	for _, item := range items {
+		noteMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		note := stateNote{
+			ID:    getFirstString(noteMap, []string{"id", "noteId", "note_id"}),
+			Title: getFirstString(noteMap, []string{"displayTitle", "title", "noteTitle"}),
+			Cover: getCoverURL(noteMap),
+		}
+		if note.ID == "" {
+			continue
+		}
+		notes = append(notes, note)
+	}
+	return notes
+}
+
+func getFirstString(source map[string]any, keys []string) string {
+	for _, key := range keys {
+		if value, ok := source[key]; ok {
+			if str, ok := value.(string); ok && strings.TrimSpace(str) != "" {
+				return strings.TrimSpace(str)
+			}
+		}
+	}
+	return ""
+}
+
+func getCoverURL(source map[string]any) string {
+	coverValue, ok := source["cover"]
+	if !ok {
+		return ""
+	}
+	coverMap, ok := coverValue.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if url := getFirstString(coverMap, []string{"urlDefault"}); url != "" {
+		return url
+	}
+	return getFirstString(coverMap, []string{"url"})
+}
+
+func buildStateNoteMapsFromRaw(raw any) (map[string]string, map[string]string) {
+	titleMap := map[string]string{}
+	coverMap := map[string]string{}
+	for _, note := range normalizeStateNotesRaw(raw) {
+		if note.Title != "" {
+			titleMap[note.ID] = note.Title
+		}
+		if note.Cover != "" {
+			coverMap[note.ID] = note.Cover
+		}
+	}
+	return titleMap, coverMap
+}
+
+func applyStateNoteMaps(feeds []Feed, titleMap, coverMap map[string]string) []Feed {
+	for i := range feeds {
+		if feeds[i].NoteCard.DisplayTitle == "" {
+			if title, ok := titleMap[feeds[i].ID]; ok {
+				feeds[i].NoteCard.DisplayTitle = title
+			}
+		}
+		if feeds[i].NoteCard.Cover.URLDefault == "" {
+			if cover, ok := coverMap[feeds[i].ID]; ok {
+				feeds[i].NoteCard.Cover.URLDefault = cover
+			}
+		}
+	}
 	return feeds
 }
 

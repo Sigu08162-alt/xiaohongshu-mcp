@@ -183,8 +183,9 @@ type DeleteCommentArgs struct {
 
 // GetMyFeedsArgs 获取自己笔记列表参数
 type GetMyFeedsArgs struct {
-	Placeholder bool `json:"_,omitempty"`
-	Limit       int  `json:"limit,omitempty" jsonschema:"限制返回数量，默认20，最大100"`
+	Placeholder bool   `json:"_,omitempty"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"限制返回数量，默认20，最大100"`
+	UserID      string `json:"user_id,omitempty" jsonschema:"可选，传入则读取该用户主页"`
 }
 
 // GetFanAnalyticsArgs 获取粉丝分析参数
@@ -727,7 +728,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 			if args.Limit > 100 {
 				args.Limit = 100
 			}
-			result := appServer.handleGetMyFeeds(ctx, args.Limit)
+			result := appServer.handleGetMyFeeds(ctx, args.Limit, args.UserID)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)

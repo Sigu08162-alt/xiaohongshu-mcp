@@ -3,8 +3,10 @@ package xiaohongshu
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 )
 
@@ -39,6 +41,10 @@ func (n *NavigateAction) ToExplorePage(ctx context.Context) error {
 }
 
 func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
+	return n.ToProfilePageWithUserID(ctx, "")
+}
+
+func (n *NavigateAction) ToProfilePageWithUserID(ctx context.Context, userID string) error {
 	page := n.page.WithContext(ctx)
 
 	// 首先导航到探索页面以确保登录状态
@@ -66,7 +72,7 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 	time.Sleep(500 * time.Millisecond)
 
 	// 从 __INITIAL_STATE__ 获取当前用户ID
-	userID, err := page.Eval(`() => {
+	currentUserID, err := page.Eval(`() => {
 		if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.user) {
 			const userInfo = window.__INITIAL_STATE__.user.userInfo;
 			// Vue3的ref，需要访问.value或._value
@@ -81,15 +87,19 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 		return err
 	}
 
-	userIDStr, ok := userID.(string)
-	if !ok || userIDStr == "" {
+	currentUserIDStr, ok := currentUserID.(string)
+	if !ok || currentUserIDStr == "" {
 		return fmt.Errorf("无法获取用户ID")
 	}
 
+	resolvedUserID := resolveProfileUserID(currentUserIDStr, userID)
 	// 直接导航到个人主页
-	profileURL := "https://www.xiaohongshu.com/user/profile/" + userIDStr
+	profileURL := buildProfileURL(resolvedUserID)
 	if err := page.Goto(profileURL); err != nil {
 		return err
+	}
+	if currentURL, err := page.Eval(`() => location.href`); err == nil {
+		logrus.WithField("url", currentURL).Info("导航到个人主页完成")
 	}
 
 	// 等待导航完成
@@ -119,4 +129,15 @@ func (n *NavigateAction) ToProfilePage(ctx context.Context) error {
 	time.Sleep(500 * time.Millisecond)
 
 	return nil
+}
+
+func resolveProfileUserID(currentUserID, requestedUserID string) string {
+	if strings.TrimSpace(requestedUserID) != "" {
+		return strings.TrimSpace(requestedUserID)
+	}
+	return currentUserID
+}
+
+func buildProfileURL(userID string) string {
+	return "https://www.xiaohongshu.com/user/profile/" + userID
 }

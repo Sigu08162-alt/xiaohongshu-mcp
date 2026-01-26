@@ -17,6 +17,10 @@ func (f fakeLoginProvider) GetQRCode(ctx context.Context) (loginQRResult, error)
 	return f.result, f.err
 }
 
+func strPtr(s string) *string {
+	return &s
+}
+
 func TestLoginQrcodeHandler_TextForSecurityStage(t *testing.T) {
 	service := &XiaohongshuService{
 		loginManager: fakeLoginProvider{
@@ -119,9 +123,9 @@ func TestBuildPublishContentArgsMap_IncludesLocationAndMarkerTags(t *testing.T) 
 		Content:    "c",
 		Images:     []string{"1.jpg"},
 		Tags:       []string{"标签1"},
-		Location:   "深圳湾公园",
+		Location:   strPtr("深圳湾公园"),
 		MarkerTags: []string{"深圳湾公园", "张三"},
-		ScheduleAt: "2026-01-01T00:00:00Z",
+		ScheduleAt: strPtr("2026-01-01T00:00:00Z"),
 	}
 
 	got := buildPublishContentArgsMap(args)

@@ -787,13 +787,13 @@ func (s *XiaohongshuService) GetMyStats(ctx context.Context) (*xiaohongshu.UserS
 }
 
 // GetMyFeeds 获取自己发布的笔记列表
-func (s *XiaohongshuService) GetMyFeeds(ctx context.Context, limit int) ([]xiaohongshu.Feed, error) {
+func (s *XiaohongshuService) GetMyFeeds(ctx context.Context, limit int, userID string) ([]xiaohongshu.Feed, error) {
 	var feeds []xiaohongshu.Feed
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
 		action := xiaohongshu.NewDataAction(page)
-		feeds, err = action.GetMyFeeds(ctx, limit)
+		feeds, err = action.GetMyFeeds(ctx, limit, userID)
 		return err
 	})
 

@@ -186,7 +186,8 @@ type ShareFeedResponse struct {
 
 // GetMyFeedsRequest 获取自己笔记列表请求
 type GetMyFeedsRequest struct {
-	Limit int `json:"limit,omitempty"` // 默认20，最大100
+	Limit  int    `json:"limit,omitempty"`   // 默认20，最大100
+	UserID string `json:"user_id,omitempty"` // 可选，传入则读取该用户主页
 }
 
 // SyncCookiesRequest 上传cookies请求

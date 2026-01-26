@@ -774,6 +774,7 @@ func (s *AppServer) shareFeedHandler(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param limit query int false "限制返回数量（默认20，最大100）"
+// @Param user_id query string false "可选，传入则读取该用户主页"
 // @Success 200 {object} SuccessResponse "笔记列表"
 // @Failure 500 {object} ErrorResponse "获取失败"
 // @Router /user/me/feeds [get]
@@ -791,7 +792,7 @@ func (s *AppServer) getMyFeedsHandler(c *gin.Context) {
 		req.Limit = 100
 	}
 
-	feeds, err := s.xiaohongshuService.GetMyFeeds(c.Request.Context(), req.Limit)
+	feeds, err := s.xiaohongshuService.GetMyFeeds(c.Request.Context(), req.Limit, req.UserID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "GET_MY_FEEDS_FAILED",
 			"获取我的笔记失败", err.Error())

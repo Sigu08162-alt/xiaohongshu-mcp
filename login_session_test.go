@@ -13,11 +13,13 @@ type fakeLoginSession struct {
 	qr        loginQRCode
 	saved     bool
 	closed    bool
+	openErr   error
+	qrErr     error
 }
 
 func (f *fakeLoginSession) Open(ctx context.Context) error {
 	f.openCalls++
-	return nil
+	return f.openErr
 }
 
 func (f *fakeLoginSession) LoggedIn(ctx context.Context) (bool, error) {
@@ -26,7 +28,7 @@ func (f *fakeLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 
 func (f *fakeLoginSession) QRCode(ctx context.Context) (loginQRCode, error) {
 	f.qrCalls++
-	return f.qr, nil
+	return f.qr, f.qrErr
 }
 
 func (f *fakeLoginSession) SaveCookies() error {
@@ -54,6 +56,23 @@ func TestLoginManager_ReturnsQRCodeAndKeepsSession(t *testing.T) {
 	}
 	if s.openCalls != 1 || s.qrCalls != 1 {
 		t.Fatalf("expected session used once")
+	}
+}
+
+func TestLoginManager_ReusesSessionWithoutReopen(t *testing.T) {
+	clock := time.Date(2026, 1, 23, 10, 0, 0, 0, time.UTC)
+	s := &fakeLoginSession{qr: loginQRCode{Image: "img", Stage: "login"}}
+	m := NewLoginManager(func() (loginSession, error) { return s, nil }, 4*time.Minute)
+	m.now = func() time.Time { return clock }
+
+	if _, err := m.GetQRCode(context.Background()); err != nil {
+		t.Fatalf("GetQRCode err: %v", err)
+	}
+	if _, err := m.GetQRCode(context.Background()); err != nil {
+		t.Fatalf("GetQRCode err: %v", err)
+	}
+	if s.openCalls != 1 {
+		t.Fatalf("expected session opened once, got %d", s.openCalls)
 	}
 }
 
@@ -110,6 +129,34 @@ func TestLoginManager_ExpiresSession(t *testing.T) {
 	}
 	if got.Img != "b" || calls != 2 {
 		t.Fatalf("expected new session after ttl")
+	}
+}
+
+func TestLoginManager_ExpiresSessionAtTTLBoundary(t *testing.T) {
+	clock := time.Date(2026, 1, 23, 10, 0, 0, 0, time.UTC)
+	s1 := &fakeLoginSession{qr: loginQRCode{Image: "a", Stage: "login"}}
+	s2 := &fakeLoginSession{qr: loginQRCode{Image: "b", Stage: "login"}}
+	calls := 0
+	m := NewLoginManager(func() (loginSession, error) {
+		calls++
+		if calls == 1 {
+			return s1, nil
+		}
+		return s2, nil
+	}, 4*time.Minute)
+	m.now = func() time.Time { return clock }
+
+	if _, err := m.GetQRCode(context.Background()); err != nil {
+		t.Fatalf("GetQRCode err: %v", err)
+	}
+
+	m.now = func() time.Time { return clock.Add(4 * time.Minute) }
+	got, err := m.GetQRCode(context.Background())
+	if err != nil {
+		t.Fatalf("GetQRCode err: %v", err)
+	}
+	if got.Img != "b" || calls != 2 {
+		t.Fatalf("expected new session at ttl boundary")
 	}
 }
 

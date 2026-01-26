@@ -30,6 +30,7 @@ type Feed struct {
 type NoteCard struct {
 	Type         string       `json:"type"`
 	DisplayTitle string       `json:"displayTitle"`
+	PublishTime  string       `json:"publishTime"`
 	User         User         `json:"user"`
 	InteractInfo InteractInfo `json:"interactInfo"`
 	Cover        Cover        `json:"cover"`

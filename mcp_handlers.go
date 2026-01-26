@@ -1300,10 +1300,14 @@ func (s *AppServer) handleGetMyStats(ctx context.Context) *MCPToolResult {
 }
 
 // handleGetMyFeeds 处理获取自己的笔记列表
-func (s *AppServer) handleGetMyFeeds(ctx context.Context, limit int) *MCPToolResult {
-	logrus.Infof("MCP: 获取自己的笔记列表，限制: %d", limit)
+func (s *AppServer) handleGetMyFeeds(ctx context.Context, limit int, userID string) *MCPToolResult {
+	if userID != "" {
+		logrus.Infof("MCP: 获取自己的笔记列表，限制: %d, 用户: %s", limit, userID)
+	} else {
+		logrus.Infof("MCP: 获取自己的笔记列表，限制: %d", limit)
+	}
 
-	feeds, err := s.xiaohongshuService.GetMyFeeds(ctx, limit)
+	feeds, err := s.xiaohongshuService.GetMyFeeds(ctx, limit, userID)
 	if err != nil {
 		return &MCPToolResult{
 			Content: []MCPContent{{

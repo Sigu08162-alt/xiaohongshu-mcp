@@ -40,6 +40,7 @@ type LoginManager struct {
 	now        func() time.Time
 	openedAt   time.Time
 	sessionID  string
+	opened     bool
 
 	newSessionID func() string
 }
@@ -74,12 +75,16 @@ func (m *LoginManager) GetQRCode(ctx context.Context) (loginQRResult, error) {
 		m.session = s
 		m.openedAt = m.now()
 		m.sessionID = m.newSessionID()
+		m.opened = false
 		logrus.WithField("session_id", m.sessionID).Info("login session created")
 	}
 
-	if err := m.session.Open(ctx); err != nil {
-		_ = m.closeLocked()
-		return loginQRResult{}, err
+	if !m.opened {
+		if err := m.session.Open(ctx); err != nil {
+			_ = m.closeLocked()
+			return loginQRResult{}, err
+		}
+		m.opened = true
 	}
 
 	loggedIn, err := m.session.LoggedIn(ctx)
@@ -141,7 +146,7 @@ func (m *LoginManager) expiredLocked() bool {
 	if m.ttl <= 0 {
 		return false
 	}
-	return m.now().Sub(m.openedAt) > m.ttl
+	return m.now().Sub(m.openedAt) >= m.ttl
 }
 
 func (m *LoginManager) closeLocked() error {
@@ -151,5 +156,6 @@ func (m *LoginManager) closeLocked() error {
 	err := m.session.Close()
 	m.session = nil
 	m.sessionID = ""
+	m.opened = false
 	return err
 }
