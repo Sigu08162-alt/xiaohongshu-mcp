@@ -12,11 +12,25 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
+	apperrors "github.com/xpzouying/xiaohongshu-mcp/errors"
 	domainpublish "github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
 )
 
 // MCP 工具处理函数
+
+// parseBool 安全地解析布尔值，兼容 bool 和 string 类型
+func parseBool(v interface{}) bool {
+	switch val := v.(type) {
+	case bool:
+		return val
+	case string:
+		b, _ := strconv.ParseBool(val)
+		return b
+	default:
+		return false
+	}
+}
 
 // handleCheckLoginStatus 处理检查登录状态
 func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
@@ -656,6 +670,20 @@ func (s *AppServer) handleGetFeedDetail(ctx context.Context, args map[string]any
 
 	result, err := s.xiaohongshuService.GetFeedDetailWithConfig(ctx, feedID, xsecToken, loadAll, config)
 	if err != nil {
+		// 检查是否是笔记不可访问错误
+		var notAccessibleErr *apperrors.ErrFeedNotAccessible
+		if errors.As(err, &notAccessibleErr) {
+			// 笔记不可访问，返回友好提示而不是错误
+			return &MCPToolResult{
+				Content: []MCPContent{{
+					Type: "text",
+					Text: fmt.Sprintf("⚠️ 笔记不可访问\n\nFeed ID: %s\n原因: %s\n\n可能的原因：\n- 笔记已被作者删除\n- 笔记因违规被平台删除\n- 笔记设置为私密，仅作者可见\n- 笔记暂时无法访问", feedID, notAccessibleErr.Reason),
+				}},
+				IsError: false, // 不标记为错误，因为这是预期的业务场景
+			}
+		}
+
+		// 其他错误正常返回
 		return &MCPToolResult{
 			Content: []MCPContent{{
 				Type: "text",
@@ -755,7 +783,7 @@ func (s *AppServer) handleLikeFeed(ctx context.Context, args map[string]interfac
 	if !ok || xsecToken == "" {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少xsec_token参数"}}, IsError: true}
 	}
-	unlike, _ := args["unlike"].(bool)
+	unlike := parseBool(args["unlike"])
 
 	var res *ActionResult
 	var err error
@@ -791,7 +819,7 @@ func (s *AppServer) handleFavoriteFeed(ctx context.Context, args map[string]inte
 	if !ok || xsecToken == "" {
 		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少xsec_token参数"}}, IsError: true}
 	}
-	unfavorite, _ := args["unfavorite"].(bool)
+	unfavorite := parseBool(args["unfavorite"])
 
 	var res *ActionResult
 	var err error
@@ -980,7 +1008,7 @@ func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interf
 		}
 	}
 
-	unfollow, _ := args["unfollow"].(bool)
+	unfollow := parseBool(args["unfollow"])
 
 	var res *ActionResult
 	var err error
@@ -1056,7 +1084,7 @@ func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]inter
 		}
 	}
 
-	unlike, _ := args["unlike"].(bool)
+	unlike := parseBool(args["unlike"])
 
 	var res *ActionResult
 	var err error
