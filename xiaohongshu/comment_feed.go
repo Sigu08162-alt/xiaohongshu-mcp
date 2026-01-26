@@ -179,27 +179,28 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 	}
 	time.Sleep(500 * time.Millisecond)
 
-	// 点击提交按钮
+	// 点击提交按钮（优先使用 JS 点击，更可靠）
 	logrus.Info("点击提交按钮...")
-	if err := submitButton.Click(); err != nil {
-		logrus.Warnf("点击提交按钮失败: %v，尝试使用 JS 点击", err)
 
-		// 备用方案：使用 JavaScript 点击
-		_, err = page.Eval(`() => {
-			const buttons = Array.from(document.querySelectorAll('button'));
-			const submitBtn = buttons.find(btn =>
-				btn.textContent.includes('发布') ||
-				btn.textContent.includes('提交') ||
-				btn.className.includes('submit')
-			);
-			if (submitBtn) {
-				submitBtn.click();
-				return true;
-			}
-			return false;
-		}`)
+	// 直接使用 JavaScript 点击（避免元素遮挡问题）
+	clicked, err := page.Eval(`() => {
+		const buttons = Array.from(document.querySelectorAll('button'));
+		const submitBtn = buttons.find(btn =>
+			btn.textContent.includes('发布') ||
+			btn.textContent.includes('提交') ||
+			btn.className.includes('submit')
+		);
+		if (submitBtn) {
+			submitBtn.click();
+			return true;
+		}
+		return false;
+	}`)
 
-		if err != nil {
+	if err != nil || clicked != true {
+		logrus.Warnf("JS 点击失败，尝试常规点击: %v", err)
+		// 备用方案：使用常规点击（减少超时时间）
+		if err := submitButton.Click(); err != nil {
 			return fmt.Errorf("无法点击提交按钮: %w", err)
 		}
 	}
