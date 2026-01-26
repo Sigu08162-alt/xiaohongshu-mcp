@@ -284,7 +284,14 @@ func (p *page) ScreenshotFullPage(path string) error {
 }
 
 func (p *page) Element(selector string) (browser.Element, error) {
-	handle, err := p.p.Locator(selector).First().ElementHandle()
+	opts := playwright.LocatorElementHandleOptions{}
+	if p.timeout > 0 {
+		// 将 timeout 转换为毫秒并应用到选项中
+		timeoutMs := float64(p.timeout.Milliseconds())
+		opts.Timeout = &timeoutMs
+	}
+
+	handle, err := p.p.Locator(selector).First().ElementHandle(opts)
 	if err != nil {
 		return nil, err
 	}
