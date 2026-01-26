@@ -43,23 +43,45 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 	// API 路由组
 	api := router.Group("/api/v1")
 	{
+		// 登录认证
 		api.GET("/login/status", appServer.checkLoginStatusHandler)
 		api.GET("/login/qrcode", appServer.getLoginQrcodeHandler)
 		api.DELETE("/login/cookies", appServer.deleteCookiesHandler)
+		api.POST("/login/sync_cookies", appServer.syncCookiesHandler)
+
+		// 内容发布
 		api.POST("/publish", appServer.publishHandler)
 		api.POST("/publish_video", appServer.publishVideoHandler)
+		api.POST("/draft", appServer.saveDraftHandler)
+		api.POST("/draft_video", appServer.saveVideoDraftHandler)
+
+		// 内容发现
 		api.GET("/feeds/list", appServer.listFeedsHandler)
 		api.GET("/feeds/search", appServer.searchFeedsHandler)
 		api.POST("/feeds/search", appServer.searchFeedsHandler)
 		api.POST("/feeds/detail", appServer.getFeedDetailHandler)
-		api.POST("/user/profile", appServer.userProfileHandler)
+
+		// 内容互动
 		api.POST("/feeds/comment", appServer.postCommentHandler)
 		api.POST("/feeds/comment/reply", appServer.replyCommentHandler)
 		api.POST("/feeds/like", appServer.likeFeedHandler)
 		api.POST("/feeds/favorite", appServer.favoriteFeedHandler)
 		api.POST("/feeds/comment/like", appServer.likeCommentHandler)
+		api.POST("/feeds/share", appServer.shareFeedHandler)
+
+		// 内容管理
+		api.DELETE("/feeds/:feed_id", appServer.deleteFeedHandler)
+		api.DELETE("/feeds/:feed_id/comments/:comment_id", appServer.deleteCommentHandler)
+
+		// 用户信息
+		api.POST("/user/profile", appServer.userProfileHandler)
 		api.POST("/user/follow", appServer.followUserHandler)
 		api.GET("/user/me", appServer.myProfileHandler)
+		api.GET("/user/me/feeds", appServer.getMyFeedsHandler)
+
+		// 数据分析
+		api.GET("/analytics/fans", appServer.getFanAnalyticsHandler)
+		api.GET("/analytics/content", appServer.getContentAnalyticsHandler)
 	}
 
 	return router

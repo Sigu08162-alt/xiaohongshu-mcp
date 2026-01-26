@@ -22,6 +22,184 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/analytics/content": {
+            "get": {
+                "description": "获取内容分析数据，包括每篇笔记的详细指标",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据分析"
+                ],
+                "summary": "获取内容分析",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "限制返回笔记数量（默认20，最大100）",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序字段（exposure/views/likes/comments等）",
+                        "name": "sort_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "排序方向（asc/desc，默认desc）",
+                        "name": "sort_order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "内容分析数据",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "获取失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/analytics/fans": {
+            "get": {
+                "description": "获取粉丝分析数据，包括粉丝概览、粉丝画像和活跃粉丝列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "数据分析"
+                ],
+                "summary": "获取粉丝分析",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "统计周期（7d或30d，默认7d）",
+                        "name": "period",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "粉丝分析数据",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "获取失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/draft": {
+            "post": {
+                "description": "保存小红书图文草稿（暂存离开，不立即发布）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容发布"
+                ],
+                "summary": "保存图文草稿",
+                "parameters": [
+                    {
+                        "description": "草稿请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.SaveDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "保存成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "保存失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/draft_video": {
+            "post": {
+                "description": "保存小红书视频草稿（暂存离开，不立即发布）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容发布"
+                ],
+                "summary": "保存视频草稿",
+                "parameters": [
+                    {
+                        "description": "视频草稿请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.SaveVideoDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "保存成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "保存失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/feeds/comment": {
             "post": {
                 "description": "在小红书笔记下发表评论",
@@ -424,6 +602,165 @@ const docTemplate = `{
                 }
             }
         },
+        "/feeds/share": {
+            "post": {
+                "description": "分享指定笔记，获取分享链接",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容互动"
+                ],
+                "summary": "分享笔记",
+                "parameters": [
+                    {
+                        "description": "分享请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.ShareFeedRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "分享成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "分享失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/feeds/{feed_id}": {
+            "delete": {
+                "description": "删除自己发布的笔记",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容管理"
+                ],
+                "summary": "删除笔记",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "笔记ID",
+                        "name": "feed_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "删除请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.DeleteFeedRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "删除失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/feeds/{feed_id}/comments/{comment_id}": {
+            "delete": {
+                "description": "删除自己发表的评论",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "内容管理"
+                ],
+                "summary": "删除评论",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "笔记ID",
+                        "name": "feed_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "评论ID",
+                        "name": "comment_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "删除请求参数",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.DeleteCommentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "删除成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "删除失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/login/cookies": {
             "delete": {
                 "description": "删除本地保存的 cookies 文件，重置登录状态",
@@ -495,6 +832,52 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "服务器内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/login/sync_cookies": {
+            "post": {
+                "description": "上传cookies JSON并写入服务端文件（推荐先本地有头登录后上传）",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "登录认证"
+                ],
+                "summary": "上传Cookies",
+                "parameters": [
+                    {
+                        "description": "Cookies数据",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.SyncCookiesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "上传成功",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "上传失败",
                         "schema": {
                             "$ref": "#/definitions/main.ErrorResponse"
                         }
@@ -666,6 +1049,43 @@ const docTemplate = `{
                 }
             }
         },
+        "/user/me/feeds": {
+            "get": {
+                "description": "获取当前登录用户发布的笔记列表",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "用户信息"
+                ],
+                "summary": "获取我的笔记",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "限制返回数量（默认20，最大100）",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "笔记列表",
+                        "schema": {
+                            "$ref": "#/definitions/main.SuccessResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "获取失败",
+                        "schema": {
+                            "$ref": "#/definitions/main.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/user/profile": {
             "post": {
                 "description": "获取指定用户的主页信息和笔记列表",
@@ -731,6 +1151,42 @@ const docTemplate = `{
                 },
                 "scroll_speed": {
                     "description": "滚动速度等级: slow(慢速), normal(正常), fast(快速)",
+                    "type": "string"
+                }
+            }
+        },
+        "main.DeleteCommentRequest": {
+            "type": "object",
+            "required": [
+                "feed_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "comment_id": {
+                    "type": "string"
+                },
+                "feed_id": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                },
+                "xsec_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.DeleteFeedRequest": {
+            "type": "object",
+            "required": [
+                "feed_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "feed_id": {
+                    "type": "string"
+                },
+                "xsec_token": {
                     "type": "string"
                 }
             }
@@ -967,6 +1423,60 @@ const docTemplate = `{
                 }
             }
         },
+        "main.SaveDraftRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "images",
+                "title"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "images": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "main.SaveVideoDraftRequest": {
+            "type": "object",
+            "required": [
+                "content",
+                "title",
+                "video"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "video": {
+                    "type": "string"
+                }
+            }
+        },
         "main.SearchFeedsRequest": {
             "type": "object",
             "required": [
@@ -981,6 +1491,21 @@ const docTemplate = `{
                 }
             }
         },
+        "main.ShareFeedRequest": {
+            "type": "object",
+            "required": [
+                "feed_id",
+                "xsec_token"
+            ],
+            "properties": {
+                "feed_id": {
+                    "type": "string"
+                },
+                "xsec_token": {
+                    "type": "string"
+                }
+            }
+        },
         "main.SuccessResponse": {
             "type": "object",
             "properties": {
@@ -990,6 +1515,17 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
+                }
+            }
+        },
+        "main.SyncCookiesRequest": {
+            "type": "object",
+            "properties": {
+                "cookies_base64": {
+                    "type": "string"
+                },
+                "cookies_json": {
+                    "type": "string"
                 }
             }
         },

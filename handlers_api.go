@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"net/http"
 
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
@@ -551,4 +552,396 @@ func (s *AppServer) followUserHandler(c *gin.Context) {
 
 	c.Set("account", "ai-report")
 	respondSuccess(c, result, result.Message)
+}
+
+// deleteFeedHandler 删除笔记
+// @Summary 删除笔记
+// @Description 删除自己发布的笔记
+// @Tags 内容管理
+// @Accept json
+// @Produce json
+// @Param feed_id path string true "笔记ID"
+// @Param request body DeleteFeedRequest true "删除请求参数"
+// @Success 200 {object} SuccessResponse "删除成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "删除失败"
+// @Router /feeds/{feed_id} [delete]
+func (s *AppServer) deleteFeedHandler(c *gin.Context) {
+	feedID := c.Param("feed_id")
+
+	var req DeleteFeedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	// 使用路径参数中的 feed_id（优先级更高）
+	if feedID != "" {
+		req.FeedID = feedID
+	}
+
+	result, err := s.xiaohongshuService.DeleteFeed(c.Request.Context(), req.FeedID, req.XsecToken)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "DELETE_FEED_FAILED",
+			"删除笔记失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}
+
+// deleteCommentHandler 删除评论
+// @Summary 删除评论
+// @Description 删除自己发表的评论
+// @Tags 内容管理
+// @Accept json
+// @Produce json
+// @Param feed_id path string true "笔记ID"
+// @Param comment_id path string true "评论ID"
+// @Param request body DeleteCommentRequest true "删除请求参数"
+// @Success 200 {object} SuccessResponse "删除成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "删除失败"
+// @Router /feeds/{feed_id}/comments/{comment_id} [delete]
+func (s *AppServer) deleteCommentHandler(c *gin.Context) {
+	feedID := c.Param("feed_id")
+	commentID := c.Param("comment_id")
+
+	var req DeleteCommentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	// 使用路径参数（优先级更高）
+	if feedID != "" {
+		req.FeedID = feedID
+	}
+	if commentID != "" {
+		req.CommentID = commentID
+	}
+
+	result, err := s.xiaohongshuService.DeleteComment(c.Request.Context(), req.FeedID, req.XsecToken, req.CommentID, req.UserID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "DELETE_COMMENT_FAILED",
+			"删除评论失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}
+
+// saveDraftHandler 保存图文草稿
+// @Summary 保存图文草稿
+// @Description 保存小红书图文草稿（暂存离开，不立即发布）
+// @Tags 内容发布
+// @Accept json
+// @Produce json
+// @Param request body SaveDraftRequest true "草稿请求参数"
+// @Success 200 {object} SuccessResponse "保存成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "保存失败"
+// @Router /draft [post]
+func (s *AppServer) saveDraftHandler(c *gin.Context) {
+	var req SaveDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	// 转换为 interface{} 数组
+	images := make([]interface{}, len(req.Images))
+	for i, img := range req.Images {
+		images[i] = img
+	}
+
+	tags := make([]interface{}, len(req.Tags))
+	for i, tag := range req.Tags {
+		tags[i] = tag
+	}
+
+	// 调用 MCP handler
+	argsMap := map[string]interface{}{
+		"title":   req.Title,
+		"content": req.Content,
+		"images":  images,
+		"tags":    tags,
+	}
+
+	result := s.handleSaveDraft(c.Request.Context(), argsMap)
+	if result.IsError {
+		respondError(c, http.StatusInternalServerError, "SAVE_DRAFT_FAILED",
+			"保存草稿失败", result.Content[0].Text)
+		return
+	}
+
+	respondSuccess(c, map[string]any{
+		"message": result.Content[0].Text,
+	}, "保存草稿成功")
+}
+
+// saveVideoDraftHandler 保存视频草稿
+// @Summary 保存视频草稿
+// @Description 保存小红书视频草稿（暂存离开，不立即发布）
+// @Tags 内容发布
+// @Accept json
+// @Produce json
+// @Param request body SaveVideoDraftRequest true "视频草稿请求参数"
+// @Success 200 {object} SuccessResponse "保存成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "保存失败"
+// @Router /draft_video [post]
+func (s *AppServer) saveVideoDraftHandler(c *gin.Context) {
+	var req SaveVideoDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	// 转换为 interface{} 数组
+	tags := make([]interface{}, len(req.Tags))
+	for i, tag := range req.Tags {
+		tags[i] = tag
+	}
+
+	// 调用 MCP handler
+	argsMap := map[string]interface{}{
+		"title":   req.Title,
+		"content": req.Content,
+		"video":   req.Video,
+		"tags":    tags,
+	}
+
+	result := s.handleSaveVideoDraft(c.Request.Context(), argsMap)
+	if result.IsError {
+		respondError(c, http.StatusInternalServerError, "SAVE_VIDEO_DRAFT_FAILED",
+			"保存视频草稿失败", result.Content[0].Text)
+		return
+	}
+
+	respondSuccess(c, map[string]any{
+		"message": result.Content[0].Text,
+	}, "保存视频草稿成功")
+}
+
+// shareFeedHandler 分享笔记
+// @Summary 分享笔记
+// @Description 分享指定笔记，获取分享链接
+// @Tags 内容互动
+// @Accept json
+// @Produce json
+// @Param request body ShareFeedRequest true "分享请求参数"
+// @Success 200 {object} SuccessResponse "分享成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "分享失败"
+// @Router /feeds/share [post]
+func (s *AppServer) shareFeedHandler(c *gin.Context) {
+	var req ShareFeedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	shareLink, err := s.xiaohongshuService.ShareFeed(c.Request.Context(), req.FeedID, req.XsecToken)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "SHARE_FEED_FAILED",
+			"分享笔记失败", err.Error())
+		return
+	}
+
+	result := ShareFeedResponse{
+		FeedID:    req.FeedID,
+		ShareLink: shareLink,
+		Success:   true,
+		Message:   "分享成功",
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, result, result.Message)
+}
+
+// getMyFeedsHandler 获取自己的笔记列表
+// @Summary 获取我的笔记
+// @Description 获取当前登录用户发布的笔记列表
+// @Tags 用户信息
+// @Accept json
+// @Produce json
+// @Param limit query int false "限制返回数量（默认20，最大100）"
+// @Success 200 {object} SuccessResponse "笔记列表"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /user/me/feeds [get]
+func (s *AppServer) getMyFeedsHandler(c *gin.Context) {
+	var req GetMyFeedsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		// 查询参数绑定失败不是致命错误，使用默认值
+		req.Limit = 20
+	}
+
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+
+	feeds, err := s.xiaohongshuService.GetMyFeeds(c.Request.Context(), req.Limit)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "GET_MY_FEEDS_FAILED",
+			"获取我的笔记失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, map[string]any{
+		"feeds": feeds,
+		"count": len(feeds),
+	}, "获取我的笔记成功")
+}
+
+// syncCookiesHandler 上传cookies
+// @Summary 上传Cookies
+// @Description 上传cookies JSON并写入服务端文件（推荐先本地有头登录后上传）
+// @Tags 登录认证
+// @Accept json
+// @Produce json
+// @Param request body SyncCookiesRequest true "Cookies数据"
+// @Success 200 {object} SuccessResponse "上传成功"
+// @Failure 400 {object} ErrorResponse "请求参数错误"
+// @Failure 500 {object} ErrorResponse "上传失败"
+// @Router /login/sync_cookies [post]
+func (s *AppServer) syncCookiesHandler(c *gin.Context) {
+	var req SyncCookiesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "INVALID_REQUEST",
+			"请求参数错误", err.Error())
+		return
+	}
+
+	if req.CookiesBase64 == "" && req.CookiesJSON == "" {
+		respondError(c, http.StatusBadRequest, "MISSING_COOKIES",
+			"缺少cookies数据", "cookies_base64 or cookies_json is required")
+		return
+	}
+
+	var cookiesData []byte
+	var err error
+
+	if req.CookiesBase64 != "" {
+		// 使用 Base64 编码的数据
+		cookiesData, err = base64.StdEncoding.DecodeString(req.CookiesBase64)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "INVALID_BASE64",
+				"Base64解码失败", err.Error())
+			return
+		}
+	} else {
+		// 使用 JSON 字符串
+		cookiesData = []byte(req.CookiesJSON)
+	}
+
+	cookiePath, fileSize, err := s.xiaohongshuService.SyncCookies(c.Request.Context(), cookiesData)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "SYNC_COOKIES_FAILED",
+			"上传cookies失败", err.Error())
+		return
+	}
+
+	result := SyncCookiesResponse{
+		Success:    true,
+		CookiePath: cookiePath,
+		FileSize:   fileSize,
+		Message:    "Cookies已成功上传并写入服务端文件",
+	}
+
+	respondSuccess(c, result, result.Message)
+}
+
+// getFanAnalyticsHandler 获取粉丝分析
+// @Summary 获取粉丝分析
+// @Description 获取粉丝分析数据，包括粉丝概览、粉丝画像和活跃粉丝列表
+// @Tags 数据分析
+// @Accept json
+// @Produce json
+// @Param period query string false "统计周期（7d或30d，默认7d）"
+// @Success 200 {object} SuccessResponse "粉丝分析数据"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /analytics/fans [get]
+func (s *AppServer) getFanAnalyticsHandler(c *gin.Context) {
+	var req GetFanAnalyticsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		req.Period = "7d"
+	}
+
+	if req.Period == "" {
+		req.Period = "7d"
+	}
+
+	analytics, err := s.xiaohongshuService.GetFanAnalytics(c.Request.Context(), req.Period)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "GET_FAN_ANALYTICS_FAILED",
+			"获取粉丝分析失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, analytics, "获取粉丝分析成功")
+}
+
+// getContentAnalyticsHandler 获取内容分析
+// @Summary 获取内容分析
+// @Description 获取内容分析数据，包括每篇笔记的详细指标
+// @Tags 数据分析
+// @Accept json
+// @Produce json
+// @Param limit query int false "限制返回笔记数量（默认20，最大100）"
+// @Param sort_by query string false "排序字段（exposure/views/likes/comments等）"
+// @Param sort_order query string false "排序方向（asc/desc，默认desc）"
+// @Success 200 {object} SuccessResponse "内容分析数据"
+// @Failure 500 {object} ErrorResponse "获取失败"
+// @Router /analytics/content [get]
+func (s *AppServer) getContentAnalyticsHandler(c *gin.Context) {
+	var req GetContentAnalyticsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		req.Limit = 20
+	}
+
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+	if req.SortOrder == "" {
+		req.SortOrder = "desc"
+	}
+
+	// 转换为 xiaohongshu 包的类型
+	var sortBy xiaohongshu.SortField
+	if req.SortBy != "" {
+		sortBy = xiaohongshu.SortField(req.SortBy)
+	}
+
+	var sortOrder xiaohongshu.SortOrder
+	if req.SortOrder == "asc" {
+		sortOrder = xiaohongshu.SortAsc
+	} else {
+		sortOrder = xiaohongshu.SortDesc
+	}
+
+	analytics, err := s.xiaohongshuService.GetContentAnalytics(c.Request.Context(), req.Limit, sortBy, sortOrder)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "GET_CONTENT_ANALYTICS_FAILED",
+			"获取内容分析失败", err.Error())
+		return
+	}
+
+	c.Set("account", "ai-report")
+	respondSuccess(c, analytics, "获取内容分析成功")
 }

@@ -139,3 +139,78 @@ type FollowUserRequest struct {
 	XsecToken string `json:"xsec_token" binding:"required"`
 	Unfollow  bool   `json:"unfollow,omitempty"` // true表示取关
 }
+
+// DeleteFeedRequest 删除笔记请求
+type DeleteFeedRequest struct {
+	FeedID    string `json:"feed_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+}
+
+// DeleteCommentRequest 删除评论请求
+type DeleteCommentRequest struct {
+	FeedID    string `json:"feed_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+	CommentID string `json:"comment_id,omitempty"`
+	UserID    string `json:"user_id,omitempty"`
+}
+
+// SaveDraftRequest 保存图文草稿请求
+type SaveDraftRequest struct {
+	Title   string   `json:"title" binding:"required"`
+	Content string   `json:"content" binding:"required"`
+	Images  []string `json:"images" binding:"required,min=1"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// SaveVideoDraftRequest 保存视频草稿请求
+type SaveVideoDraftRequest struct {
+	Title   string   `json:"title" binding:"required"`
+	Content string   `json:"content" binding:"required"`
+	Video   string   `json:"video" binding:"required"`
+	Tags    []string `json:"tags,omitempty"`
+}
+
+// ShareFeedRequest 分享笔记请求
+type ShareFeedRequest struct {
+	FeedID    string `json:"feed_id" binding:"required"`
+	XsecToken string `json:"xsec_token" binding:"required"`
+}
+
+// ShareFeedResponse 分享笔记响应
+type ShareFeedResponse struct {
+	FeedID    string `json:"feed_id"`
+	ShareLink string `json:"share_link"`
+	Success   bool   `json:"success"`
+	Message   string `json:"message"`
+}
+
+// GetMyFeedsRequest 获取自己笔记列表请求
+type GetMyFeedsRequest struct {
+	Limit int `json:"limit,omitempty"` // 默认20，最大100
+}
+
+// SyncCookiesRequest 上传cookies请求
+type SyncCookiesRequest struct {
+	CookiesBase64 string `json:"cookies_base64,omitempty"`
+	CookiesJSON   string `json:"cookies_json,omitempty"`
+}
+
+// SyncCookiesResponse 上传cookies响应
+type SyncCookiesResponse struct {
+	Success    bool   `json:"success"`
+	CookiePath string `json:"cookie_path"`
+	FileSize   int64  `json:"file_size"`
+	Message    string `json:"message"`
+}
+
+// GetFanAnalyticsRequest 获取粉丝分析请求
+type GetFanAnalyticsRequest struct {
+	Period string `json:"period,omitempty"` // 7d或30d，默认7d
+}
+
+// GetContentAnalyticsRequest 获取内容分析请求
+type GetContentAnalyticsRequest struct {
+	Limit     int    `json:"limit,omitempty"`      // 默认20，最大100
+	SortBy    string `json:"sort_by,omitempty"`    // 排序字段
+	SortOrder string `json:"sort_order,omitempty"` // asc或desc
+}

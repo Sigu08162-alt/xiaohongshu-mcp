@@ -15,6 +15,30 @@ definitions:
         description: '滚动速度等级: slow(慢速), normal(正常), fast(快速)'
         type: string
     type: object
+  main.DeleteCommentRequest:
+    properties:
+      comment_id:
+        type: string
+      feed_id:
+        type: string
+      user_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - feed_id
+    - xsec_token
+    type: object
+  main.DeleteFeedRequest:
+    properties:
+      feed_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - feed_id
+    - xsec_token
+    type: object
   main.ErrorResponse:
     properties:
       code:
@@ -174,6 +198,43 @@ definitions:
     - feed_id
     - xsec_token
     type: object
+  main.SaveDraftRequest:
+    properties:
+      content:
+        type: string
+      images:
+        items:
+          type: string
+        minItems: 1
+        type: array
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+    required:
+    - content
+    - images
+    - title
+    type: object
+  main.SaveVideoDraftRequest:
+    properties:
+      content:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+      video:
+        type: string
+    required:
+    - content
+    - title
+    - video
+    type: object
   main.SearchFeedsRequest:
     properties:
       filters:
@@ -183,6 +244,16 @@ definitions:
     required:
     - keyword
     type: object
+  main.ShareFeedRequest:
+    properties:
+      feed_id:
+        type: string
+      xsec_token:
+        type: string
+    required:
+    - feed_id
+    - xsec_token
+    type: object
   main.SuccessResponse:
     properties:
       data: {}
@@ -190,6 +261,13 @@ definitions:
         type: string
       success:
         type: boolean
+    type: object
+  main.SyncCookiesRequest:
+    properties:
+      cookies_base64:
+        type: string
+      cookies_json:
+        type: string
     type: object
   main.UserProfileRequest:
     properties:
@@ -241,6 +319,197 @@ info:
   title: 小红书 MCP API
   version: 2.0.0
 paths:
+  /analytics/content:
+    get:
+      consumes:
+      - application/json
+      description: 获取内容分析数据，包括每篇笔记的详细指标
+      parameters:
+      - description: 限制返回笔记数量（默认20，最大100）
+        in: query
+        name: limit
+        type: integer
+      - description: 排序字段（exposure/views/likes/comments等）
+        in: query
+        name: sort_by
+        type: string
+      - description: 排序方向（asc/desc，默认desc）
+        in: query
+        name: sort_order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 内容分析数据
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取内容分析
+      tags:
+      - 数据分析
+  /analytics/fans:
+    get:
+      consumes:
+      - application/json
+      description: 获取粉丝分析数据，包括粉丝概览、粉丝画像和活跃粉丝列表
+      parameters:
+      - description: 统计周期（7d或30d，默认7d）
+        in: query
+        name: period
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 粉丝分析数据
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取粉丝分析
+      tags:
+      - 数据分析
+  /draft:
+    post:
+      consumes:
+      - application/json
+      description: 保存小红书图文草稿（暂存离开，不立即发布）
+      parameters:
+      - description: 草稿请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.SaveDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 保存成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 保存失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 保存图文草稿
+      tags:
+      - 内容发布
+  /draft_video:
+    post:
+      consumes:
+      - application/json
+      description: 保存小红书视频草稿（暂存离开，不立即发布）
+      parameters:
+      - description: 视频草稿请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.SaveVideoDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 保存成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 保存失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 保存视频草稿
+      tags:
+      - 内容发布
+  /feeds/{feed_id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除自己发布的笔记
+      parameters:
+      - description: 笔记ID
+        in: path
+        name: feed_id
+        required: true
+        type: string
+      - description: 删除请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.DeleteFeedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 删除失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 删除笔记
+      tags:
+      - 内容管理
+  /feeds/{feed_id}/comments/{comment_id}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除自己发表的评论
+      parameters:
+      - description: 笔记ID
+        in: path
+        name: feed_id
+        required: true
+        type: string
+      - description: 评论ID
+        in: path
+        name: comment_id
+        required: true
+        type: string
+      - description: 删除请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.DeleteCommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 删除失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 删除评论
+      tags:
+      - 内容管理
   /feeds/comment:
     post:
       consumes:
@@ -503,6 +772,36 @@ paths:
       summary: 搜索笔记
       tags:
       - 内容发现
+  /feeds/share:
+    post:
+      consumes:
+      - application/json
+      description: 分享指定笔记，获取分享链接
+      parameters:
+      - description: 分享请求参数
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.ShareFeedRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 分享成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 分享失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 分享笔记
+      tags:
+      - 内容互动
   /login/cookies:
     delete:
       description: 删除本地保存的 cookies 文件，重置登录状态
@@ -552,6 +851,36 @@ paths:
           schema:
             $ref: '#/definitions/main.ErrorResponse'
       summary: 检查登录状态
+      tags:
+      - 登录认证
+  /login/sync_cookies:
+    post:
+      consumes:
+      - application/json
+      description: 上传cookies JSON并写入服务端文件（推荐先本地有头登录后上传）
+      parameters:
+      - description: Cookies数据
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.SyncCookiesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 上传成功
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 上传失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 上传Cookies
       tags:
       - 登录认证
   /publish:
@@ -659,6 +988,30 @@ paths:
           schema:
             $ref: '#/definitions/main.ErrorResponse'
       summary: 获取我的资料
+      tags:
+      - 用户信息
+  /user/me/feeds:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前登录用户发布的笔记列表
+      parameters:
+      - description: 限制返回数量（默认20，最大100）
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 笔记列表
+          schema:
+            $ref: '#/definitions/main.SuccessResponse'
+        "500":
+          description: 获取失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取我的笔记
       tags:
       - 用户信息
   /user/profile:
