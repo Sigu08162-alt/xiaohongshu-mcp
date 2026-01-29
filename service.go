@@ -241,11 +241,8 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 		return nil, fmt.Errorf("标题长度超过限制")
 	}
 
-	// 处理图片：下载URL图片或使用本地路径
-	imagePaths, err := s.processImages(req.Images)
-	if err != nil {
-		return nil, err
-	}
+	// 注意：不再在这里处理图片，交给 Usecase 层统一处理
+	// imagePaths, err := s.processImages(req.Images)
 
 	// 解析定时发布时间
 	var scheduleTime *time.Time
@@ -273,14 +270,14 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 		logrus.Infof("设置定时发布时间: %s", t.Format("2006-01-02 15:04"))
 	}
 
-	// 构建发布内容
+	// 构建发布内容（使用原始图片路径，Usecase层会处理）
 	content := xiaohongshu.PublishImageContent{
 		Title:        req.Title,
 		Content:      req.Content,
 		Tags:         req.Tags,
 		Location:     req.Location,
 		MarkerTags:   req.MarkerTags,
-		ImagePaths:   imagePaths,
+		ImagePaths:   req.Images, // 使用原始路径，不再预处理
 		ScheduleTime: scheduleTime,
 	}
 
@@ -290,7 +287,7 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 			Title:        content.Title,
 			Content:      content.Content,
 			Tags:         content.Tags,
-			ImagePaths:   content.ImagePaths,
+			ImagePaths:   content.ImagePaths, // Usecase会调用ImageProcessor处理
 			Location:     content.Location,
 			MarkerTags:   content.MarkerTags,
 			ScheduleTime: content.ScheduleTime,
@@ -308,14 +305,15 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 	response := &PublishResponse{
 		Title:   req.Title,
 		Content: req.Content,
-		Images:  len(imagePaths),
+		Images:  len(req.Images), // 使用原始图片数量
 		Status:  "发布完成",
 	}
 
 	return response, nil
 }
 
-// processImages 处理图片列表，支持URL下载和本地路径
+// processImages 已废弃，图片处理逻辑已移到 Usecase 层
+// 保留此函数以兼容旧代码，但不再使用
 func (s *XiaohongshuService) processImages(images []string) ([]string, error) {
 	processor := downloader.NewImageProcessor()
 	return processor.ProcessImages(images)

@@ -6,6 +6,7 @@ import (
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/config"
 	xhspublish "github.com/xpzouying/xiaohongshu-mcp/internal/infra/xhs/publish"
+	"github.com/xpzouying/xiaohongshu-mcp/pkg/downloader"
 )
 
 func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, engine browser.Engine) (*apppublish.Usecase, error) {
@@ -24,5 +25,6 @@ func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, engine
 			MinImages: cfg.Limits.MinImages,
 			MaxImages: cfg.Limits.MaxImages,
 		},
+		ImageProcessor: downloader.NewImageProcessor(), // 注入图片处理器
 	}, nil
 }
