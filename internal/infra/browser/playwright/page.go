@@ -449,17 +449,22 @@ func newElement(handle playwright.ElementHandle, parent *page) browser.Element {
 }
 
 func (e *element) Click() error {
-	return e.handle.Click()
+	return e.handle.Click(playwright.ElementHandleClickOptions{
+		Timeout: timeoutFloat(e.parent.effectiveTimeout(0)),
+	})
 }
 
 func (e *element) ClickForce() error {
 	return e.handle.Click(playwright.ElementHandleClickOptions{
-		Force: playwright.Bool(true),
+		Force:   playwright.Bool(true),
+		Timeout: timeoutFloat(e.parent.effectiveTimeout(0)),
 	})
 }
 
 func (e *element) DoubleClick() error {
-	return e.handle.Dblclick()
+	return e.handle.Dblclick(playwright.ElementHandleDblclickOptions{
+		Timeout: timeoutFloat(e.parent.effectiveTimeout(0)),
+	})
 }
 
 func (e *element) Hover() error {
@@ -498,11 +503,21 @@ func (e *element) ScrollIntoView() error {
 }
 
 func (e *element) WaitVisible() error {
-	return e.handle.WaitForElementState(elementStateValue(playwright.ElementStateVisible))
+	return e.handle.WaitForElementState(
+		elementStateValue(playwright.ElementStateVisible),
+		playwright.ElementHandleWaitForElementStateOptions{
+			Timeout: timeoutFloat(e.parent.effectiveTimeout(0)),
+		},
+	)
 }
 
 func (e *element) WaitHidden() error {
-	return e.handle.WaitForElementState(elementStateValue(playwright.ElementStateHidden))
+	return e.handle.WaitForElementState(
+		elementStateValue(playwright.ElementStateHidden),
+		playwright.ElementHandleWaitForElementStateOptions{
+			Timeout: timeoutFloat(e.parent.effectiveTimeout(0)),
+		},
+	)
 }
 
 func (e *element) WaitStable(duration time.Duration) error {

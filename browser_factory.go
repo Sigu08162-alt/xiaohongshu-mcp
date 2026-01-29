@@ -14,7 +14,8 @@ func newBrowserEngine() browser.Engine {
 	cfg := playwright.DefaultConfig()
 	cfg.Headless = configs.IsHeadless()
 	cfg.CookiePath = cookies.GetCookiesFilePath()
-	cfg.ActionTimeout = 30 * time.Second
+	// 降低全局操作超时从30秒到10秒，重要操作通过 WithTimeout 单独控制
+	cfg.ActionTimeout = 10 * time.Second
 	cfg.NavigationTimeout = 60 * time.Second
 
 	return playwright.New(cfg)

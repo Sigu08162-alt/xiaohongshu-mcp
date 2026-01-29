@@ -155,33 +155,23 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 
 	time.Sleep(1 * time.Second)
 
+	// 提交阶段使用短超时（5秒），避免在不可操作的元素上浪费时间
+	submitCtx := page.WithTimeout(5 * time.Second)
+
 	// 直接使用传统方式查找提交按钮（更可靠）
 	var submitButton browser.Element
 	logrus.Info("查找提交按钮...")
-	submitButton, err = f.findSubmitButtonFallback(page)
+	submitButton, err = f.findSubmitButtonFallback(submitCtx)
 
 	if submitButton == nil {
 		logrus.Warnf("Failed to find submit button with all selectors")
 		return fmt.Errorf("未找到提交按钮")
 	}
 
-	// 滚动到按钮位置，确保在视口中央
-	logrus.Info("滚动到提交按钮...")
-	if err := submitButton.ScrollIntoView(); err != nil {
-		logrus.Warnf("滚动到按钮失败: %v", err)
+	// 准备点击：移除遮挡层、优化滚动、等待稳定
+	if err := f.prepareButtonForClick(submitCtx, submitButton); err != nil {
+		logrus.Warnf("准备点击失败: %v，尝试继续", err)
 	}
-	time.Sleep(500 * time.Millisecond)
-
-	// 额外向上滚动一点，确保按钮不被底部工具栏遮挡
-	_, _ = page.Eval(`() => window.scrollBy(0, -100)`)
-	time.Sleep(300 * time.Millisecond)
-
-	// 等待按钮可见且可交互
-	logrus.Info("等待提交按钮可见...")
-	if err := submitButton.WaitVisible(); err != nil {
-		logrus.Warnf("等待按钮可见失败: %v", err)
-	}
-	time.Sleep(500 * time.Millisecond)
 
 	// 检查按钮是否被禁用
 	disabled, _ := submitButton.Attribute("disabled")
@@ -191,12 +181,12 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 	}
 
 	// 点击提交按钮（常规点击优先，模拟真实用户）
-	logrus.Info("点击提交按钮（常规点击）...")
+	// 使用 submitCtx 的短超时（5秒），而不是全局的30秒
+	logrus.Info("点击提交按钮（常规点击，5秒超时）...")
 
-	// 使用较短的超时时间进行常规点击
 	clickErr := submitButton.Click()
 	if clickErr != nil {
-		logrus.Warnf("常规点击失败: %v，等待2秒后尝试 JS 点击", clickErr)
+		logrus.Warnf("常规点击失败(5秒内): %v，等待2秒后尝试 JS 点击", clickErr)
 		time.Sleep(2 * time.Second)
 
 		// 备用方案：使用 JavaScript 点击
@@ -568,4 +558,121 @@ func checkEndContainer_browser(page browser.Page) bool {
 
 	// 检查文本是否表示已到底部
 	return text == "没有更多了" || text == "已经到底了"
+}
+
+// prepareButtonForClick 准备点击提交按钮：移除遮挡层、优化滚动、等待稳定
+func (f *CommentFeedAction) prepareButtonForClick(page browser.Page, button browser.Element) error {
+	logrus.Info("准备点击：移除遮挡层、优化滚动、等待稳定...")
+
+	// 1. 移除常见的遮挡层（下载App条、隐私弹窗等）
+	f.dismissOverlays(page)
+
+	// 2. 优化滚动策略：将按钮滚动到视口中部（而非底部）
+	logrus.Info("滚动到提交按钮（视口中部）...")
+	if err := button.ScrollIntoView(); err != nil {
+		logrus.Warnf("滚动到按钮失败: %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	// 调整滚动位置：让按钮在视口中部，远离底部浮层
+	_, _ = page.Eval(`() => {
+		const vh = window.innerHeight;
+		window.scrollBy(0, -vh * 0.3); // 向上滚动30%视口高度
+	}`)
+	time.Sleep(300 * time.Millisecond)
+
+	// 3. 等待按钮可见且稳定
+	logrus.Info("等待提交按钮可见...")
+	if err := button.WaitVisible(); err != nil {
+		logrus.Warnf("等待按钮可见失败: %v", err)
+	}
+
+	// 4. 等待位置稳定（避免动画导致的点击失败）
+	logrus.Info("等待按钮位置稳定...")
+	if err := button.WaitStable(300 * time.Millisecond); err != nil {
+		logrus.Warnf("等待按钮稳定失败: %v，尝试继续", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	return nil
+}
+
+// dismissOverlays 移除常见的遮挡层（下载App、隐私弹窗等）
+func (f *CommentFeedAction) dismissOverlays(page browser.Page) {
+	logrus.Info("尝试移除遮挡层...")
+
+	// 检测和关闭下载App底部条
+	// 小红书常见的下载提示选择器
+	downloadBarSelectors := []string{
+		"text=下载App",
+		"text=打开App",
+		".download-bar",
+		".app-download-bar",
+	}
+
+	for _, selector := range downloadBarSelectors {
+		has, err := page.WithTimeout(1 * time.Second).Has(selector)
+		if err == nil && has {
+			logrus.Infof("检测到下载提示: %s，尝试关闭", selector)
+
+			// 尝试点击关闭按钮
+			closeSelectors := []string{
+				selector + " button:has-text('×')",
+				selector + " button[aria-label='关闭']",
+				selector + " .close-icon",
+				selector + " .close-button",
+			}
+
+			closed := false
+			for _, closeSelector := range closeSelectors {
+				if err := page.WithTimeout(500 * time.Millisecond).Click(closeSelector); err == nil {
+					logrus.Info("成功关闭下载提示")
+					closed = true
+					break
+				}
+			}
+
+			// 如果关不掉，直接隐藏（仅在自动化环境下可接受）
+			if !closed {
+				_, _ = page.Eval(fmt.Sprintf(`() => {
+					const el = document.querySelector('%s');
+					if (el) el.style.display = 'none';
+				}`, selector))
+				logrus.Info("强制隐藏下载提示")
+			}
+			break
+		}
+	}
+
+	// 检测和关闭隐私/Cookie弹窗
+	privacySelectors := []string{
+		"text=隐私",
+		"text=我知道了",
+		"text=同意",
+		".privacy-popup",
+		".cookie-consent",
+	}
+
+	for _, selector := range privacySelectors {
+		has, err := page.WithTimeout(1 * time.Second).Has(selector)
+		if err == nil && has {
+			logrus.Infof("检测到隐私弹窗: %s，尝试关闭", selector)
+
+			agreeButtons := []string{
+				selector + " button:has-text('同意')",
+				selector + " button:has-text('我知道了')",
+				selector + " button:has-text('确定')",
+			}
+
+			for _, btnSelector := range agreeButtons {
+				if err := page.WithTimeout(500 * time.Millisecond).Click(btnSelector); err == nil {
+					logrus.Info("成功关闭隐私弹窗")
+					break
+				}
+			}
+			break
+		}
+	}
+
+	time.Sleep(300 * time.Millisecond)
 }
