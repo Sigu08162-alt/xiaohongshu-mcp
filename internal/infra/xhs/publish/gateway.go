@@ -2,8 +2,10 @@ package publish
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -663,19 +665,45 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	// 点击按钮
+	// 点击按钮（先尝试常规点击，失败后使用JS点击兜底）
 	logrus.Infof("点击%s...", buttonName)
 	clickErr := page.Click(buttonSelector)
 	if clickErr != nil {
-		// 如果是保存草稿，尝试强制点击
-		if !isPublish {
-			logrus.Warnf("常规点击失败: %v，尝试强制点击", clickErr)
-			if err := page.ClickForce(buttonSelector); err != nil {
-				return fmt.Errorf("点击%s失败: %w", buttonName, err)
+		logrus.Warnf("常规点击%s失败: %v，等待2秒后尝试 JS 点击", buttonName, clickErr)
+		time.Sleep(2 * time.Second)
+
+		// 备用方案1：强制点击
+		if forceErr := page.ClickForce(buttonSelector); forceErr != nil {
+			logrus.Warnf("强制点击也失败: %v，尝试 JS 点击", forceErr)
+
+			// 备用方案2：使用 JavaScript 点击（最可靠）
+			clicked, err := page.Eval(`() => {
+				const buttons = Array.from(document.querySelectorAll('button'));
+				const submitBtn = buttons.find(btn =>
+					btn.textContent.includes('发布') ||
+					btn.textContent.includes('提交') ||
+					btn.textContent.includes('暂存') ||
+					btn.className.includes('submit')
+				);
+				if (submitBtn && !submitBtn.disabled) {
+					submitBtn.click();
+					return true;
+				}
+				return false;
+			}`)
+
+			if err != nil || clicked != true {
+				// 所有点击方式都失败，采集页面组件信息用于调试
+				logrus.Error("❌ 所有点击方式都失败，开始采集页面组件信息...")
+				g.capturePageComponents(page, "click_failed")
+				return fmt.Errorf("所有点击方式都失败: 常规点击=%v, 强制点击=%v, JS点击=%v", clickErr, forceErr, err)
 			}
+			logrus.Info("✅ JS 点击成功")
 		} else {
-			return fmt.Errorf("点击%s失败: %w", buttonName, clickErr)
+			logrus.Info("✅ 强制点击成功")
 		}
+	} else {
+		logrus.Info("✅ 常规点击成功")
 	}
 	logrus.Infof("%s已点击", buttonName)
 
@@ -703,9 +731,25 @@ func (g *Gateway) waitForCompletion(page browser.Page, isPublish bool) error {
 	}
 
 	logrus.Infof("等待%s完成（检查URL变化和成功标志）...", actionName)
-	maxWait := 30 * time.Second
+	maxWait := 60 * time.Second // 增加到60秒，给小红书更多处理时间
 	checkInterval := 500 * time.Millisecond
 	startTime := time.Now()
+
+	// 保存页面HTML用于调试
+	savePageState := func(reason string) {
+		timestamp := time.Now().Unix()
+		// 保存截图
+		screenshotPath := fmt.Sprintf("debug_%s_%d.png", reason, timestamp)
+		page.Screenshot(screenshotPath)
+		logrus.Infof("📸 已保存截图: %s", screenshotPath)
+
+		// 保存HTML
+		htmlPath := fmt.Sprintf("debug_%s_%d.html", reason, timestamp)
+		if html, err := page.HTML("html"); err == nil {
+			os.WriteFile(htmlPath, []byte(html), 0644)
+			logrus.Infof("📄 已保存页面HTML: %s", htmlPath)
+		}
+	}
 
 	for time.Since(startTime) < maxWait {
 		currentURL := page.URL()
@@ -719,9 +763,30 @@ func (g *Gateway) waitForCompletion(page browser.Page, isPublish bool) error {
 				logrus.Infof("发布完成URL: %s", currentURL)
 				return nil
 			}
+
+			// 新增：检查是否有成功Toast提示
+			successSelectors := []string{
+				"text=发布成功",
+				"text=发送成功",
+				".success-toast",
+				".toast-success",
+				"[class*='success']",
+			}
+			for _, selector := range successSelectors {
+				if hasSuccess, _ := page.Has(selector); hasSuccess {
+					logrus.Info("✅ 发布成功！检测到成功提示")
+					savePageState("success")
+					return nil
+				}
+			}
+
+			// 新增：检查发布按钮是否变为"已发布"或消失
+			if hasPublished, _ := page.Has("text=已发布"); hasPublished {
+				logrus.Info("✅ 发布成功！按钮显示已发布")
+				return nil
+			}
 		} else {
 			// 保存草稿成功：检查是否回到创作者中心或草稿列表
-			// 小红书保存草稿后通常会跳转到 /user/... 或停留在当前页但有成功提示
 			if strings.Contains(currentURL, "/user/") || strings.Contains(currentURL, "draft") {
 				logrus.Info("✅ 草稿保存成功！已跳转到草稿列表或创作者中心")
 				logrus.Infof("保存后URL: %s", currentURL)
@@ -735,31 +800,188 @@ func (g *Gateway) waitForCompletion(page browser.Page, isPublish bool) error {
 			}
 		}
 
+		// 检查是否有验证码
+		captchaSelectors := []string{
+			".captcha",
+			".verify-code",
+			"text=滑动验证",
+			"text=点击验证",
+			"iframe[src*='captcha']",
+		}
+		for _, selector := range captchaSelectors {
+			if hasCaptcha, _ := page.Has(selector); hasCaptcha {
+				logrus.Warn("⚠️ 检测到验证码，可能触发了反机器人检测")
+				savePageState("captcha")
+				g.capturePageComponents(page, "captcha")
+				return fmt.Errorf("%s失败: 检测到验证码，请手动完成验证", actionName)
+			}
+		}
+
 		// 检查是否有错误消息
-		if hasError, _ := page.Has(".error-message, .toast-error"); hasError {
-			if errText, err := page.Text(".error-message, .toast-error"); err == nil {
-				logrus.Errorf("❌ %s失败：%s", actionName, errText)
-				// 保存错误截图
-				screenshotPath := fmt.Sprintf("debug_error_%d.png", time.Now().Unix())
-				page.Screenshot(screenshotPath)
-				logrus.Errorf("📸 已保存错误截图: %s", screenshotPath)
-				return fmt.Errorf("%s失败: %s", actionName, errText)
+		errorSelectors := []string{
+			".error-message",
+			".toast-error",
+			"text=发布失败",
+			"text=提交失败",
+			"[class*='error']",
+		}
+		for _, selector := range errorSelectors {
+			if hasError, _ := page.Has(selector); hasError {
+				if errText, err := page.Text(selector); err == nil && errText != "" {
+					logrus.Errorf("❌ %s失败：%s", actionName, errText)
+					savePageState("error")
+					g.capturePageComponents(page, "error")
+					return fmt.Errorf("%s失败: %s", actionName, errText)
+				}
 			}
 		}
 
 		time.Sleep(checkInterval)
 	}
 
-	// 超时了，记录最终URL并截图
+	// 超时了，记录最终状态
 	finalURL := page.URL()
-	logrus.Warnf("⚠️ %s超时：30秒内未检测到成功标志", actionName)
+	logrus.Warnf("⚠️ %s超时：60秒内未检测到成功标志", actionName)
 	logrus.Warnf("最终URL: %s", finalURL)
 
-	// 保存超时时的截图
-	screenshotPath := fmt.Sprintf("debug_timeout_%d.png", time.Now().Unix())
-	if err := page.Screenshot(screenshotPath); err == nil {
-		logrus.Infof("📸 已保存超时时的截图: %s", screenshotPath)
+	// 保存超时时的完整状态
+	savePageState("timeout")
+
+	// 采集页面真实组件信息用于调试
+	g.capturePageComponents(page, "timeout")
+
+	return fmt.Errorf("%s超时：60秒内未检测到成功，最终URL: %s", actionName, finalURL)
+}
+
+// capturePageComponents 采集页面真实组件信息，用于错误调试和选择器验证
+func (g *Gateway) capturePageComponents(page browser.Page, reason string) {
+	logrus.Infof("🔍 开始采集页面组件信息（原因: %s）...", reason)
+
+	// JavaScript 代码：采集页面所有相关按钮和元素信息
+	jsCode := `() => {
+		const result = {
+			timestamp: new Date().toISOString(),
+			url: window.location.href,
+			buttons: [],
+			inputs: [],
+			containers: []
+		};
+
+		// 1. 采集所有按钮信息
+		const buttons = document.querySelectorAll('button');
+		buttons.forEach((btn, idx) => {
+			const text = btn.textContent?.trim() || '';
+			// 只采集相关按钮（发布、暂存、提交等）
+			if (text.includes('发布') || text.includes('暂存') ||
+			    text.includes('提交') || text.includes('草稿') ||
+			    text.includes('取消') || text.includes('确定')) {
+
+				const classes = btn.className ? btn.className.split(' ').filter(c => c) : [];
+				const computedStyle = window.getComputedStyle(btn);
+
+				result.buttons.push({
+					index: idx,
+					text: text,
+					id: btn.id || '',
+					classes: classes,
+					mainClass: classes[0] || '',
+					selector: btn.className ? 'button.' + classes[0] : 'button',
+					type: btn.type || '',
+					disabled: btn.disabled,
+					visible: btn.offsetParent !== null,
+					display: computedStyle.display,
+					opacity: computedStyle.opacity,
+					position: {
+						top: btn.offsetTop,
+						left: btn.offsetLeft,
+						width: btn.offsetWidth,
+						height: btn.offsetHeight
+					},
+					attributes: {
+						ariaLabel: btn.getAttribute('aria-label') || '',
+						role: btn.getAttribute('role') || '',
+						dataTestId: btn.getAttribute('data-test-id') || ''
+					}
+				});
+			}
+		});
+
+		// 2. 采集输入框信息（标题、内容）
+		const inputs = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+		inputs.forEach((input, idx) => {
+			const computedStyle = window.getComputedStyle(input);
+			result.inputs.push({
+				index: idx,
+				tagName: input.tagName.toLowerCase(),
+				type: input.type || '',
+				id: input.id || '',
+				classes: input.className ? input.className.split(' ').filter(c => c) : [],
+				placeholder: input.placeholder || input.getAttribute('data-placeholder') || '',
+				value: input.value || input.textContent || '',
+				contentEditable: input.contentEditable,
+				visible: input.offsetParent !== null,
+				display: computedStyle.display
+			});
+		});
+
+		// 3. 采集关键容器信息
+		const containers = document.querySelectorAll('.upload-content, .creator-tab, .edit-container, .bottom');
+		containers.forEach((container, idx) => {
+			result.containers.push({
+				index: idx,
+				classes: container.className ? container.className.split(' ').filter(c => c) : [],
+				visible: container.offsetParent !== null,
+				childCount: container.children.length
+			});
+		});
+
+		return result;
+	}`
+
+	// 执行 JavaScript 采集信息
+	info, err := page.Eval(jsCode)
+	if err != nil {
+		logrus.Warnf("采集组件信息失败: %v", err)
+		return
 	}
 
-	return fmt.Errorf("%s超时：30秒内未检测到成功，最终URL: %s", actionName, finalURL)
+	// 保存到 JSON 文件
+	timestamp := time.Now().Unix()
+	filename := fmt.Sprintf("debug_components_%s_%d.json", reason, timestamp)
+
+	if data, err := json.MarshalIndent(info, "", "  "); err == nil {
+		if err := os.WriteFile(filename, data, 0644); err == nil {
+			logrus.Infof("📄 已保存组件信息到: %s", filename)
+		}
+	}
+
+	// 解析并输出关键信息到日志
+	if infoMap, ok := info.(map[string]interface{}); ok {
+		// 输出按钮信息
+		if buttons, ok := infoMap["buttons"].([]interface{}); ok {
+			logrus.Infof("📊 发现 %d 个相关按钮:", len(buttons))
+			for _, btn := range buttons {
+				if btnMap, ok := btn.(map[string]interface{}); ok {
+					text := btnMap["text"]
+					selector := btnMap["selector"]
+					visible := btnMap["visible"]
+					disabled := btnMap["disabled"]
+					logrus.Infof("  - 文本: \"%v\" | 选择器: %v | 可见: %v | 禁用: %v",
+						text, selector, visible, disabled)
+				}
+			}
+		}
+
+		// 输出输入框信息
+		if inputs, ok := infoMap["inputs"].([]interface{}); ok {
+			logrus.Infof("📊 发现 %d 个输入框", len(inputs))
+		}
+
+		// 输出容器信息
+		if containers, ok := infoMap["containers"].([]interface{}); ok {
+			logrus.Infof("📊 发现 %d 个关键容器", len(containers))
+		}
+	}
+
+	logrus.Info("✅ 组件信息采集完成")
 }
