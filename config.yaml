@@ -59,11 +59,12 @@ selectors:
     topic_container: "#creator-editor-topic-container"
     topic_item: ".item"
 
-    # 发布按钮 - 使用class选择器（精确定位图文发布按钮）
-    submit_button: "button.publishBtn"
+    # 发布按钮 - 使用通用class（小红书已更新为d-button，需通过文本区分）
+    # 注意：发布和暂存按钮都是 button.d-button，代码中会用JS文本匹配
+    submit_button: "button.d-button"
 
-    # 暂存按钮 - 使用class选择器
-    save_draft_button: "button.cancelBtn"
+    # 暂存按钮 - 使用通用class（与发布按钮相同，代码中通过文本"暂存"区分）
+    save_draft_button: "button.d-button"
 
     # 定时发布
     radio_label: "span.el-radio__label"

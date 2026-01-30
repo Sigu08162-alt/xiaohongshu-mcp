@@ -652,6 +652,36 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	logrus.Infof("=== 准备点击%s ===", buttonName)
 	logrus.Infof("选择器: %s", buttonSelector)
 
+	// 等待图片上传完成（检查是否有"图片上传中"的错误提示）
+	logrus.Info("检查图片上传状态...")
+	maxUploadWait := 30 * time.Second
+	uploadCheckStart := time.Now()
+	for time.Since(uploadCheckStart) < maxUploadWait {
+		// 检查是否有上传中的提示
+		uploadingSelectors := []string{
+			"text=图片上传中",
+			"text=上传中",
+			".upload-progress",
+			"[class*='uploading']",
+		}
+
+		isUploading := false
+		for _, sel := range uploadingSelectors {
+			if has, _ := page.Has(sel); has {
+				isUploading = true
+				logrus.Info("⏳ 图片仍在上传中，等待...")
+				break
+			}
+		}
+
+		if !isUploading {
+			logrus.Info("✅ 图片上传完成")
+			break
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
 	// 等待按钮出现并可点击
 	if err := page.WaitVisible(buttonSelector); err != nil {
 		logrus.Warnf("等待%s可见失败: %v (继续尝试)", buttonName, err)
@@ -677,20 +707,42 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 			logrus.Warnf("强制点击也失败: %v，尝试 JS 点击", forceErr)
 
 			// 备用方案2：使用 JavaScript 点击（最可靠）
-			clicked, err := page.Eval(`() => {
-				const buttons = Array.from(document.querySelectorAll('button'));
-				const submitBtn = buttons.find(btn =>
-					btn.textContent.includes('发布') ||
-					btn.textContent.includes('提交') ||
-					btn.textContent.includes('暂存') ||
-					btn.className.includes('submit')
-				);
-				if (submitBtn && !submitBtn.disabled) {
-					submitBtn.click();
-					return true;
-				}
-				return false;
-			}`)
+			// 根据 isPublish 精确匹配按钮文本
+			var jsCode string
+			if isPublish {
+				// 发布按钮：匹配"发布"但排除"暂存"
+				jsCode = `() => {
+					const buttons = Array.from(document.querySelectorAll('button'));
+					const submitBtn = buttons.find(btn => {
+						const text = btn.textContent.trim();
+						return (text.includes('发布') || text.includes('提交')) &&
+						       !text.includes('暂存') &&
+						       !btn.disabled;
+					});
+					if (submitBtn) {
+						submitBtn.click();
+						return true;
+					}
+					return false;
+				}`
+			} else {
+				// 暂存按钮：匹配"暂存"或"草稿"
+				jsCode = `() => {
+					const buttons = Array.from(document.querySelectorAll('button'));
+					const draftBtn = buttons.find(btn => {
+						const text = btn.textContent.trim();
+						return (text.includes('暂存') || text.includes('草稿')) &&
+						       !btn.disabled;
+					});
+					if (draftBtn) {
+						draftBtn.click();
+						return true;
+					}
+					return false;
+				}`
+			}
+
+			clicked, err := page.Eval(jsCode)
 
 			if err != nil || clicked != true {
 				// 所有点击方式都失败，采集页面组件信息用于调试
