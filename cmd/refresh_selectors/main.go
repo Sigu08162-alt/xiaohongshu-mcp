@@ -80,6 +80,7 @@ func main() {
 	waitTime := flag.Int("wait", 3, "每个页面加载后等待秒数")
 	cookiePath := flag.String("cookies", "", "Cookie文件路径（默认自动查找）")
 	pagesFile := flag.String("pages", "", "从discovered_pages.yaml加载页面列表")
+	noInteractive := flag.Bool("no-interactive", false, "非交互模式,跳过所有等待输入")
 	flag.Parse()
 
 	logrus.SetLevel(logrus.InfoLevel)
@@ -171,16 +172,18 @@ func main() {
 	}
 
 	// 首次登录提示
-	if finalCookiePath == "" {
-		logrus.Info("\n🔐 请在浏览器中登录小红书（如需要）")
-		logrus.Info("   登录后将保持会话，后续页面无需重复登录")
-		logrus.Info("\n⏸️  按 Enter 继续...")
-		fmt.Scanln()
-	} else {
-		logrus.Info("\n✅ 已加载Cookie文件，无需手动登录")
-		logrus.Info("   如果Cookie已过期，请运行: ./login.sh")
-		logrus.Info("\n⏸️  按 Enter 开始采集...")
-		fmt.Scanln()
+	if !*noInteractive {
+		if finalCookiePath == "" {
+			logrus.Info("\n🔐 请在浏览器中登录小红书（如需要）")
+			logrus.Info("   登录后将保持会话，后续页面无需重复登录")
+			logrus.Info("\n⏸️  按 Enter 继续...")
+			fmt.Scanln()
+		} else {
+			logrus.Info("\n✅ 已加载Cookie文件，无需手动登录")
+			logrus.Info("   如果Cookie已过期，请运行: ./login.sh")
+			logrus.Info("\n⏸️  按 Enter 开始采集...")
+			fmt.Scanln()
+		}
 	}
 
 	// 采集所有页面
@@ -230,8 +233,10 @@ func main() {
 	displaySummary(&allSnapshots)
 
 	logrus.Info("\n✅ 采集完成！")
-	logrus.Info("\n⏸️  按 Enter 关闭浏览器...")
-	fmt.Scanln()
+	if !*noInteractive {
+		logrus.Info("\n⏸️  按 Enter 关闭浏览器...")
+		fmt.Scanln()
+	}
 }
 
 // capturePageComponents 采集单个页面的组件信息

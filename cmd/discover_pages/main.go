@@ -39,6 +39,7 @@ func main() {
 	homeURL := flag.String("home", "https://creator.xiaohongshu.com/new/home?source=official", "创作者中心首页URL")
 	waitTime := flag.Int("wait", 5, "页面加载等待秒数")
 	cookiePath := flag.String("cookies", "", "Cookie文件路径（默认自动查找）")
+	noInteractive := flag.Bool("no-interactive", false, "非交互模式,跳过所有等待输入")
 	flag.Parse()
 
 	logrus.SetLevel(logrus.InfoLevel)
@@ -87,14 +88,16 @@ func main() {
 	}
 
 	// 登录提示
-	if finalCookiePath == "" {
-		logrus.Info("\n🔐 请在浏览器中登录小红书（如需要）")
-		logrus.Info("\n⏸️  按 Enter 继续...")
-		fmt.Scanln()
-	} else {
-		logrus.Info("\n✅ 已加载Cookie文件，无需手动登录")
-		logrus.Info("\n⏸️  按 Enter 开始发现页面...")
-		fmt.Scanln()
+	if !*noInteractive {
+		if finalCookiePath == "" {
+			logrus.Info("\n🔐 请在浏览器中登录小红书（如需要）")
+			logrus.Info("\n⏸️  按 Enter 继续...")
+			fmt.Scanln()
+		} else {
+			logrus.Info("\n✅ 已加载Cookie文件，无需手动登录")
+			logrus.Info("\n⏸️  按 Enter 开始发现页面...")
+			fmt.Scanln()
+		}
 	}
 
 	// 访问首页
@@ -106,6 +109,48 @@ func main() {
 	// 等待页面加载
 	logrus.Infof("⏳ 等待 %d 秒让页面加载完成...", *waitTime)
 	time.Sleep(time.Duration(*waitTime) * time.Second)
+
+	// 保存页面 HTML 和调试信息
+	htmlPath := "debug_homepage.html"
+	debugInfo, err := page.Eval(`() => {
+		return {
+			html: document.documentElement.outerHTML,
+			url: window.location.href,
+			title: document.title,
+			linkCount: document.querySelectorAll('a').length,
+			allElements: document.querySelectorAll('*').length,
+			bodyText: document.body ? document.body.textContent.substring(0, 200) : 'no body'
+		};
+	}`)
+
+	if err != nil {
+		logrus.Warnf("获取页面信息失败: %v", err)
+	} else {
+		jsonData, _ := json.Marshal(debugInfo)
+		var info struct {
+			HTML        string `json:"html"`
+			URL         string `json:"url"`
+			Title       string `json:"title"`
+			LinkCount   int    `json:"linkCount"`
+			AllElements int    `json:"allElements"`
+			BodyText    string `json:"bodyText"`
+		}
+		json.Unmarshal(jsonData, &info)
+
+		logrus.Infof("📄 URL: %s", info.URL)
+		logrus.Infof("📄 Title: %s", info.Title)
+		logrus.Infof("📄 总元素数: %d", info.AllElements)
+		logrus.Infof("📄 <a>标签数: %d", info.LinkCount)
+		logrus.Infof("📄 页面文本: %s...", info.BodyText)
+		logrus.Infof("📄 HTML长度: %d 字节", len(info.HTML))
+
+		if len(info.HTML) > 0 {
+			os.WriteFile(htmlPath, []byte(info.HTML), 0644)
+			logrus.Infof("📄 已保存页面HTML到: %s", htmlPath)
+		} else {
+			logrus.Warn("⚠️  HTML为空,可能页面未正确加载")
+		}
+	}
 
 	// 发现所有链接
 	logrus.Info("\n🔍 开始发现页面链接...")
@@ -140,8 +185,10 @@ func main() {
 	displayResults(&pageLinks)
 
 	logrus.Info("\n✅ 发现完成！")
-	logrus.Info("\n⏸️  按 Enter 关闭浏览器...")
-	fmt.Scanln()
+	if !*noInteractive {
+		logrus.Info("\n⏸️  按 Enter 关闭浏览器...")
+		fmt.Scanln()
+	}
 }
 
 // discoverLinks 发现页面所有链接
@@ -150,43 +197,106 @@ func discoverLinks(page browser.Page) []LinkInfo {
 		const links = [];
 		const visited = new Set();
 
-		// 查找所有链接
-		document.querySelectorAll('a[href]').forEach(link => {
+		// 调试:输出页面信息
+		console.log('=== 开始链接发现 ===');
+		console.log('URL:', window.location.href);
+		console.log('所有 a 标签数量:', document.querySelectorAll('a').length);
+		console.log('菜单项数量:', document.querySelectorAll('.menu-item').length);
+		console.log('所有可点击元素:', document.querySelectorAll('[onclick], [role="link"], [role="button"]').length);
+
+		// 策略1: 尝试查找菜单项(小红书使用div+路由,不是a标签)
+		document.querySelectorAll('.menu-item, [class*="menu"]').forEach((item, idx) => {
+			// 尝试从元素或父元素获取路径信息
+			const text = item.textContent?.trim() || '';
+
+			// 检查data-*属性
+			const dataTo = item.getAttribute('data-to') ||
+			              item.getAttribute('data-path') ||
+			              item.getAttribute('data-href');
+
+			// 检查onClick事件
+			const onClick = item.getAttribute('onclick') || '';
+
+			// 检查Vue/React路由属性
+			const to = item.getAttribute('to') || '';
+
+			if (idx < 20) {
+				console.log('菜单项 ' + idx + ':', {
+					text: text.substring(0, 30),
+					dataTo: dataTo,
+					onClick: onClick.substring(0, 50),
+					to: to,
+					className: item.className
+				});
+			}
+
+			// 如果有文本,尝试提取
+			if (text && text.length > 0 && text.length < 100) {
+				links.push({
+					text: text,
+					url: dataTo || to || '', // 可能为空,后续手动补充
+					classes: item.className ? item.className.split(' ').filter(c => c) : []
+				});
+			}
+		});
+
+		// 策略2: 查找所有带href的a标签(即使数量为0也尝试)
+		document.querySelectorAll('a[href]').forEach((link, idx) => {
 			const href = link.href;
 			const text = link.textContent?.trim() || '';
 
-			// 过滤：只保留创作者中心相关链接
+			if (idx < 10) {
+				console.log('链接 ' + idx + ':', {
+					text: text.substring(0, 30),
+					href: href.substring(0, 80),
+					includes_creator: href.includes('creator.xiaohongshu.com')
+				});
+			}
+
 			if (href.includes('creator.xiaohongshu.com') && !visited.has(href)) {
 				visited.add(href);
-
 				const classes = link.className ? link.className.split(' ').filter(c => c) : [];
-
 				links.push({
-					text: text,
+					text: text || link.getAttribute('aria-label') || link.title || '',
 					url: href,
 					classes: classes,
 					parent_text: link.parentElement?.textContent?.trim().substring(0, 50) || ''
 				});
+				console.log('✓ 添加链接:', text.substring(0, 30), '→', href.substring(0, 60));
 			}
 		});
 
-		// 查找导航菜单
-		const navItems = [];
-		document.querySelectorAll('nav a, .nav a, [class*="nav"] a, [class*="menu"] a').forEach(link => {
-			if (link.href && link.href.includes('creator.xiaohongshu.com')) {
-				navItems.push({
-					text: link.textContent?.trim() || '',
-					url: link.href,
-					category: 'navigation',
-					classes: link.className.split(' ').filter(c => c)
-				});
-			}
-		});
-
-		return {
-			all_links: links,
-			nav_links: navItems
+		// 策略3: 检查页面文本中提到的关键词,手动构建URL
+		const pageText = document.body.textContent || '';
+		const keywords = ['发布笔记', '笔记管理', '数据看板', '内容分析', '粉丝数据'];
+		const urlMap = {
+			'发布笔记': '/publish/publish',
+			'笔记管理': '/creator/content',
+			'数据看板': '/creator/data-board',
+			'内容分析': '/creator/content/data',
+			'粉丝数据': '/creator/fans'
 		};
+
+		keywords.forEach(keyword => {
+			if (pageText.includes(keyword) && urlMap[keyword]) {
+				const url = 'https://creator.xiaohongshu.com' + urlMap[keyword];
+				if (!visited.has(url)) {
+					visited.add(url);
+					links.push({
+						text: keyword,
+						url: url,
+						classes: ['inferred'], // 标记为推测的
+						category: 'inferred'
+					});
+					console.log('✓ 推测链接:', keyword, '→', url);
+				}
+			}
+		});
+
+		console.log('总共发现:', links.length, '个链接');
+		console.log('=== 链接发现完成 ===');
+
+		return links;
 	}`
 
 	info, err := page.Eval(jsCode)
@@ -197,18 +307,12 @@ func discoverLinks(page browser.Page) []LinkInfo {
 
 	// 解析结果
 	jsonData, _ := json.Marshal(info)
-	var result struct {
-		AllLinks []LinkInfo `json:"all_links"`
-		NavLinks []LinkInfo `json:"nav_links"`
-	}
-	json.Unmarshal(jsonData, &result)
+	var links []LinkInfo
+	json.Unmarshal(jsonData, &links)
 
-	logrus.Infof("📊 发现 %d 个创作者中心链接", len(result.AllLinks))
-	logrus.Infof("📊 发现 %d 个导航链接", len(result.NavLinks))
+	logrus.Infof("📊 发现 %d 个链接", len(links))
 
-	// 合并并去重
-	allLinks := append(result.AllLinks, result.NavLinks...)
-	return deduplicateLinks(allLinks)
+	return deduplicateLinks(links)
 }
 
 // deduplicateLinks 去重链接
