@@ -435,3 +435,53 @@ var targetPages = []PageDefinition{
 - 输入框列表（`<input>`, `<textarea>`, `[contenteditable]`）
 - 容器列表（`<div>`, `<section>`, `<main>` with class）
 - 链接列表（`<a href>` 有文本的链接）
+
+## Cookie 自动加载
+
+工具会自动查找并加载 cookie 文件，无需每次手动登录！
+
+### Cookie 文件查找顺序
+
+1. `cookies.json` (当前目录)
+2. `~/.xiaohongshu/cookies.json` (用户目录)
+3. `./xiaohongshu_cookies.json` (备用名称)
+
+### 使用 login.sh 生成 Cookie
+
+```bash
+# 1. 运行登录脚本
+./login.sh
+
+# 2. 浏览器打开，扫码登录
+
+# 3. Cookie 自动保存到 cookies.json
+
+# 4. 直接运行刷新工具（自动使用 cookie）
+make refresh-selectors-run
+```
+
+### 手动指定 Cookie 文件
+
+```bash
+# 使用自定义 cookie 文件
+./bin/refresh_selectors --cookies /path/to/cookies.json
+```
+
+### Cookie 过期处理
+
+如果运行时提示需要登录：
+
+```bash
+# 重新生成 cookie
+./login.sh
+
+# 再次运行刷新工具
+make refresh-selectors-run
+```
+
+### 优势
+
+- ✅ **无需手动登录**：自动加载已保存的 cookie
+- ✅ **多次复用**：一次登录，多次使用
+- ✅ **自动查找**：智能查找多个位置
+- ✅ **灵活指定**：支持自定义 cookie 路径

@@ -82,6 +82,7 @@ func main() {
 	headless := flag.Bool("headless", false, "无头模式（默认有头）")
 	singlePage := flag.String("page", "", "仅采集单个页面 (publish_image|publish_video|creator_home|content_list)")
 	waitTime := flag.Int("wait", 3, "每个页面加载后等待秒数")
+	cookiePath := flag.String("cookies", "", "Cookie文件路径（默认自动查找）")
 	flag.Parse()
 
 	logrus.SetLevel(logrus.InfoLevel)
@@ -97,6 +98,21 @@ func main() {
 	}
 	logrus.Infof("有头模式: %v", !*headless)
 	logrus.Infof("等待时间: %d秒/页面", *waitTime)
+
+	// 查找 cookie 文件
+	var finalCookiePath string
+	if *cookiePath != "" {
+		finalCookiePath = *cookiePath
+	} else {
+		// 自动查找 cookie 文件
+		finalCookiePath = findCookieFile()
+	}
+
+	if finalCookiePath != "" {
+		logrus.Infof("🍪 Cookie文件: %s", finalCookiePath)
+	} else {
+		logrus.Warn("⚠️  未找到Cookie文件，需要手动登录")
+	}
 
 	// 过滤要采集的页面
 	var pagesToCapture []PageDefinition
@@ -127,6 +143,7 @@ func main() {
 		Headless:          *headless,
 		ActionTimeout:     10 * time.Second,
 		NavigationTimeout: 60 * time.Second,
+		CookiePath:        finalCookiePath,
 	})
 	defer engine.Close()
 
@@ -140,10 +157,17 @@ func main() {
 	}
 
 	// 首次登录提示
-	logrus.Info("\n🔐 请在浏览器中登录小红书（如需要）")
-	logrus.Info("   登录后将保持会话，后续页面无需重复登录")
-	logrus.Info("\n⏸️  按 Enter 继续...")
-	fmt.Scanln()
+	if finalCookiePath == "" {
+		logrus.Info("\n🔐 请在浏览器中登录小红书（如需要）")
+		logrus.Info("   登录后将保持会话，后续页面无需重复登录")
+		logrus.Info("\n⏸️  按 Enter 继续...")
+		fmt.Scanln()
+	} else {
+		logrus.Info("\n✅ 已加载Cookie文件，无需手动登录")
+		logrus.Info("   如果Cookie已过期，请运行: ./login.sh")
+		logrus.Info("\n⏸️  按 Enter 开始采集...")
+		fmt.Scanln()
+	}
 
 	// 采集所有页面
 	allSnapshots := AllPagesSnapshot{
@@ -358,4 +382,22 @@ func findElement(elements []ElementInfo, keyword string) *ElementInfo {
 		}
 	}
 	return nil
+}
+
+// findCookieFile 自动查找 cookie 文件
+func findCookieFile() string {
+	// 按优先级查找
+	cookiePaths := []string{
+		"cookies.json", // 当前目录
+		os.Getenv("HOME") + "/.xiaohongshu/cookies.json", // 用户目录
+		"./xiaohongshu_cookies.json",                     // 备用名称
+	}
+
+	for _, path := range cookiePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return ""
 }
