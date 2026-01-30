@@ -83,3 +83,31 @@ help:
 	@echo "  make install       - 安装到GOPATH"
 	@echo "  make run           - 开发模式运行"
 	@echo "  make run-prod      - 生产模式运行"
+
+# 刷新选择器工具
+.PHONY: refresh-selectors
+refresh-selectors:
+	@echo "🔄 构建选择器刷新工具..."
+	@go build -o bin/refresh_selectors ./cmd/refresh_selectors
+	@echo "✅ 工具已构建到 bin/refresh_selectors"
+	@echo ""
+	@echo "使用方法:"
+	@echo "  make refresh-selectors-run    # 采集所有页面"
+	@echo "  make refresh-selectors-image  # 仅采集图文发布页面"
+	@echo "  或直接运行: ./cmd/refresh_selectors/run.sh"
+
+.PHONY: refresh-selectors-run
+refresh-selectors-run: refresh-selectors
+	@./bin/refresh_selectors
+
+.PHONY: refresh-selectors-image
+refresh-selectors-image: refresh-selectors
+	@./bin/refresh_selectors --page publish_image --output selectors_publish_image.yaml
+
+.PHONY: refresh-selectors-video
+refresh-selectors-video: refresh-selectors
+	@./bin/refresh_selectors --page publish_video --output selectors_publish_video.yaml
+
+.PHONY: refresh-selectors-all-json
+refresh-selectors-all-json: refresh-selectors
+	@./bin/refresh_selectors --json selectors_all_pages.json
