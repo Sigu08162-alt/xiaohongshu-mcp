@@ -52,7 +52,8 @@ type PageDefinition struct {
 	Desc string
 }
 
-var targetPages = []PageDefinition{
+// 默认页面列表（硬编码）
+var defaultPages = []PageDefinition{
 	{
 		Name: "publish_image",
 		URL:  "https://creator.xiaohongshu.com/publish/publish?source=official&target=image",
@@ -68,11 +69,6 @@ var targetPages = []PageDefinition{
 		URL:  "https://creator.xiaohongshu.com/new/home?source=official",
 		Desc: "创作者中心首页",
 	},
-	{
-		Name: "content_list",
-		URL:  "https://creator.xiaohongshu.com/content",
-		Desc: "内容管理页面",
-	},
 }
 
 func main() {
@@ -80,9 +76,10 @@ func main() {
 	outputYAML := flag.String("output", "selectors_all_pages.yaml", "输出YAML文件路径")
 	outputJSON := flag.String("json", "", "可选：同时输出JSON文件")
 	headless := flag.Bool("headless", false, "无头模式（默认有头）")
-	singlePage := flag.String("page", "", "仅采集单个页面 (publish_image|publish_video|creator_home|content_list)")
+	singlePage := flag.String("page", "", "仅采集单个页面 (publish_image|publish_video|creator_home)")
 	waitTime := flag.Int("wait", 3, "每个页面加载后等待秒数")
 	cookiePath := flag.String("cookies", "", "Cookie文件路径（默认自动查找）")
+	pagesFile := flag.String("pages", "", "从discovered_pages.yaml加载页面列表")
 	flag.Parse()
 
 	logrus.SetLevel(logrus.InfoLevel)
@@ -112,6 +109,23 @@ func main() {
 		logrus.Infof("🍪 Cookie文件: %s", finalCookiePath)
 	} else {
 		logrus.Warn("⚠️  未找到Cookie文件，需要手动登录")
+	}
+
+	// 加载页面列表
+	var targetPages []PageDefinition
+	if *pagesFile != "" {
+		logrus.Infof("📄 从文件加载页面列表: %s", *pagesFile)
+		var err error
+		targetPages, err = loadPagesFromFile(*pagesFile)
+		if err != nil {
+			logrus.Warnf("加载页面列表失败: %v，使用默认列表", err)
+			targetPages = defaultPages
+		} else {
+			logrus.Infof("✅ 成功加载 %d 个页面", len(targetPages))
+		}
+	} else {
+		targetPages = defaultPages
+		logrus.Info("📋 使用默认页面列表")
 	}
 
 	// 过滤要采集的页面
@@ -400,4 +414,60 @@ func findCookieFile() string {
 	}
 
 	return ""
+}
+
+// DiscoveredPages discovered_pages.yaml 结构
+type DiscoveredPages struct {
+	Links map[string]struct {
+		Text        string `yaml:"text"`
+		URL         string `yaml:"url"`
+		Description string `yaml:"description"`
+		Category    string `yaml:"category"`
+	} `yaml:"links"`
+}
+
+// loadPagesFromFile 从 discovered_pages.yaml 加载页面列表
+func loadPagesFromFile(path string) ([]PageDefinition, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var discovered DiscoveredPages
+	if err := yaml.Unmarshal(data, &discovered); err != nil {
+		return nil, err
+	}
+
+	var pages []PageDefinition
+	for name, link := range discovered.Links {
+		// 过滤掉不需要的页面（如帮助、设置等）
+		if shouldSkip(link.Category) {
+			continue
+		}
+
+		pages = append(pages, PageDefinition{
+			Name: name,
+			URL:  link.URL,
+			Desc: link.Description,
+		})
+	}
+
+	return pages, nil
+}
+
+// shouldSkip 判断是否跳过某个类别
+func shouldSkip(category string) bool {
+	skipCategories := []string{
+		"help",
+		"setting",
+		"other",
+	}
+
+	for _, skip := range skipCategories {
+		if category == skip {
+			return true
+		}
+	}
+
+	return false
 }

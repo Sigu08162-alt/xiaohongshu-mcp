@@ -111,3 +111,23 @@ refresh-selectors-video: refresh-selectors
 .PHONY: refresh-selectors-all-json
 refresh-selectors-all-json: refresh-selectors
 	@./bin/refresh_selectors --json selectors_all_pages.json
+
+# 页面发现工具
+.PHONY: discover-pages
+discover-pages:
+	@echo "🔍 构建页面发现工具..."
+	@go build -o bin/discover_pages ./cmd/discover_pages
+	@echo "✅ 工具已构建到 bin/discover_pages"
+
+.PHONY: discover-pages-run
+discover-pages-run: discover-pages
+	@./bin/discover_pages
+
+# 使用动态发现的页面列表采集组件
+.PHONY: refresh-selectors-from-discovered
+refresh-selectors-from-discovered: refresh-selectors
+	@if [ ! -f discovered_pages.yaml ]; then \
+		echo "❌ 未找到 discovered_pages.yaml，请先运行: make discover-pages-run"; \
+		exit 1; \
+	fi
+	@./bin/refresh_selectors --pages discovered_pages.yaml
