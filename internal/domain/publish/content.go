@@ -2,6 +2,7 @@ package publish
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,25 @@ type Limits struct {
 	MaxTags   int
 	MinImages int
 	MaxImages int
+}
+
+func FilterMarkerTags(markers []string) []string {
+	if len(markers) == 0 {
+		return nil
+	}
+
+	filtered := make([]string, 0, len(markers))
+	for _, marker := range markers {
+		if strings.TrimSpace(marker) == "" {
+			continue
+		}
+		filtered = append(filtered, marker)
+	}
+
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func ValidateImageContent(c ImageContent, limits Limits) error {

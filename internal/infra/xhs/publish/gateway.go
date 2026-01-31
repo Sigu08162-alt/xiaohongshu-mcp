@@ -195,8 +195,9 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 		}
 	}
 
-	if len(content.MarkerTags) > 0 {
-		if err := setMarkerTags(page, content.MarkerTags); err != nil {
+	validMarkers := publish.FilterMarkerTags(content.MarkerTags)
+	if len(validMarkers) > 0 {
+		if err := setMarkerTags(page, validMarkers); err != nil {
 			return fmt.Errorf("设置标记失败: %w", err)
 		}
 	}
@@ -426,6 +427,34 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	return nil
 }
 
+func waitForUploadComplete(page browser.Page, maxWait, interval time.Duration) error {
+	uploadingSelectors := []string{
+		"text=图片上传中",
+		"text=上传中",
+		".upload-progress",
+		"[class*='uploading']",
+	}
+
+	deadline := time.Now().Add(maxWait)
+	for {
+		isUploading := false
+		for _, sel := range uploadingSelectors {
+			if has, _ := page.Has(sel); has {
+				isUploading = true
+				break
+			}
+		}
+
+		if !isUploading {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("图片上传中，请稍后")
+		}
+		time.Sleep(interval)
+	}
+}
+
 // inputTags 在内容编辑器中输入标签
 func inputTags(page browser.Page, tags []string) error {
 	if len(tags) == 0 {
@@ -652,35 +681,13 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	logrus.Infof("=== 准备点击%s ===", buttonName)
 	logrus.Infof("选择器: %s", buttonSelector)
 
-	// 等待图片上传完成（检查是否有"图片上传中"的错误提示）
+	// 等待图片上传完成（条件等待）
 	logrus.Info("检查图片上传状态...")
-	maxUploadWait := 30 * time.Second
-	uploadCheckStart := time.Now()
-	for time.Since(uploadCheckStart) < maxUploadWait {
-		// 检查是否有上传中的提示
-		uploadingSelectors := []string{
-			"text=图片上传中",
-			"text=上传中",
-			".upload-progress",
-			"[class*='uploading']",
-		}
-
-		isUploading := false
-		for _, sel := range uploadingSelectors {
-			if has, _ := page.Has(sel); has {
-				isUploading = true
-				logrus.Info("⏳ 图片仍在上传中，等待...")
-				break
-			}
-		}
-
-		if !isUploading {
-			logrus.Info("✅ 图片上传完成")
-			break
-		}
-
-		time.Sleep(1 * time.Second)
+	if err := waitForUploadComplete(page, 90*time.Second, time.Second); err != nil {
+		logrus.Errorf("❌ 图片仍在上传中，已超时: %v", err)
+		return fmt.Errorf("%s失败: %w", actionName, err)
 	}
+	logrus.Info("✅ 图片上传完成")
 
 	// 等待按钮出现并可点击
 	if err := page.WaitVisible(buttonSelector); err != nil {

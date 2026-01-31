@@ -31,62 +31,26 @@ urls:
   user_profile: "https://www.xiaohongshu.com/user/profile/{userID}?xsec_token={xsecToken}&xsec_source=pc_note"
 
 # ============================================
-# CSS 选择器配置 - 发布功能
+# CSS 选择器配置 - 已废弃
 # ============================================
-selectors:
-  publish:
-    # 页面容器
-    upload_content: "div.upload-content"
-
-    # TAB切换
-    creator_tab: "div.creator-tab"
-
-    # 文件上传
-    upload_input: ".upload-input"
-    uploaded_images: ".img-preview-area .pr"
-
-    # 标题输入
-    title_input: "div.d-input input"
-    title_max_length: "div.title-container div.max_suffix"
-
-    # 内容输入
-    content_editor_ql: '[role="textbox"]'
-    content_editor_textbox: 'div[contenteditable="true"]'
-    content_placeholder: 'p[data-placeholder*="输入正文描述"]'
-    content_max_length: "div.edit-container div.length-error"
-
-    # 标签输入
-    topic_container: "#creator-editor-topic-container"
-    topic_item: ".item"
-
-    # 发布按钮 - 使用通用class（小红书已更新为d-button，需通过文本区分）
-    # 注意：发布和暂存按钮都是 button.d-button，代码中会用JS文本匹配
-    submit_button: "button.d-button"
-
-    # 暂存按钮 - 使用通用class（与发布按钮相同，代码中通过文本"暂存"区分）
-    save_draft_button: "button.d-button"
-
-    # 定时发布
-    radio_label: "span.el-radio__label"
-    datetime_picker: 'input.el-input__inner[placeholder="选择日期和时间"]'
-    date_input: 'input.el-input__inner[placeholder="选择日期"]'
-    time_input: 'input.el-input__inner[placeholder="选择时间"]'
-    confirm_button: "button.el-picker-panel__link-btn"
-
-    # 弹窗
-    popover: "div.d-popover"
-
-    # 提示消息
-    error_message:
-      - ".el-message--error .el-message__content"
-      - ".d-message--error"
-      - ".error-message"
-      - 'div[class*="error"]'
-
-    success_message:
-      - ".el-message--success .el-message__content"
-      - ".d-message--success"
-      - ".success-message"
+# 注意：此配置已废弃！
+# MCP服务器现在直接读取采集器生成的选择器文件：
+#   - selectors_discovered_pages_creator.yaml (创作者系统)
+#   - selectors_discovered_pages_user.yaml (用户系统)
+#
+# 如需更新选择器，请重新运行采集工具：
+#   ./collect_all.sh
+#
+# 以下配置仅作为备用格式示例保留
+#
+# selectors:
+#   publish:
+#     upload_input: ".upload-input"
+#     title_input: "div.d-input input"
+#     content_editor_ql: '[role="textbox"]'
+#     content_editor_textbox: 'div[contenteditable="true"]'
+#     submit_button: "button.d-button"
+#     save_draft_button: "button.d-button"
 
 # ============================================
 # 超时配置 (单位: 秒)

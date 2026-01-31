@@ -1,0 +1,250 @@
+{
+  "buttons": [
+    {
+      "attributes": {
+        "ariaLabel": "",
+        "dataTestId": "",
+        "role": ""
+      },
+      "classes": [
+        "d-button",
+        "d-button-large",
+        "--size-icon-large",
+        "--size-text-h6",
+        "d-button-with-content",
+        "--color-static",
+        "bold",
+        "--color-bg-fill",
+        "--color-text-paragraph",
+        "custom-button",
+        "red",
+        "publishBtn"
+      ],
+      "disabled": false,
+      "display": "block",
+      "id": "",
+      "index": 7,
+      "mainClass": "d-button",
+      "opacity": "1",
+      "position": {
+        "height": 36,
+        "left": 24,
+        "top": 474,
+        "width": 104
+      },
+      "selector": "button.d-button",
+      "text": "发布",
+      "type": "button",
+      "visible": true
+    },
+    {
+      "attributes": {
+        "ariaLabel": "",
+        "dataTestId": "",
+        "role": ""
+      },
+      "classes": [
+        "d-button",
+        "d-button-large",
+        "--size-icon-large",
+        "--size-text-h6",
+        "d-button-with-content",
+        "--color-static",
+        "bold",
+        "--color-bg-fill",
+        "--color-text-paragraph",
+        "custom-button",
+        "cancelBtn"
+      ],
+      "disabled": false,
+      "display": "block",
+      "id": "",
+      "index": 8,
+      "mainClass": "d-button",
+      "opacity": "1",
+      "position": {
+        "height": 36,
+        "left": 148,
+        "top": 474,
+        "width": 104
+      },
+      "selector": "button.d-button",
+      "text": "暂存离开",
+      "type": "button",
+      "visible": true
+    }
+  ],
+  "containers": [
+    {
+      "childCount": 2,
+      "classes": [
+        "edit-container"
+      ],
+      "index": 0,
+      "visible": true
+    },
+    {
+      "childCount": 2,
+      "classes": [
+        "bottom"
+      ],
+      "index": 1,
+      "visible": true
+    },
+    {
+      "childCount": 0,
+      "classes": [
+        "bottom"
+      ],
+      "index": 2,
+      "visible": false
+    },
+    {
+      "childCount": 0,
+      "classes": [
+        "bottom"
+      ],
+      "index": 3,
+      "visible": true
+    }
+  ],
+  "inputs": [
+    {
+      "classes": [],
+      "contentEditable": "inherit",
+      "display": "none",
+      "id": "",
+      "index": 0,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "file",
+      "value": "",
+      "visible": false
+    },
+    {
+      "classes": [],
+      "contentEditable": "inherit",
+      "display": "none",
+      "id": "",
+      "index": 1,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "file",
+      "value": "",
+      "visible": false
+    },
+    {
+      "classes": [
+        "d-text"
+      ],
+      "contentEditable": "inherit",
+      "display": "block",
+      "id": "",
+      "index": 2,
+      "placeholder": "填写标题会有更多赞哦～",
+      "tagName": "input",
+      "type": "text",
+      "value": "",
+      "visible": true
+    },
+    {
+      "classes": [
+        "tiptap",
+        "ProseMirror"
+      ],
+      "contentEditable": "true",
+      "display": "block",
+      "id": "",
+      "index": 3,
+      "placeholder": "",
+      "tagName": "div",
+      "type": "",
+      "value": "",
+      "visible": true
+    },
+    {
+      "classes": [
+        "d-text",
+        "--color-text-title"
+      ],
+      "contentEditable": "inherit",
+      "display": "inline-block",
+      "id": "",
+      "index": 4,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "text",
+      "value": "",
+      "visible": true
+    },
+    {
+      "classes": [
+        "d-text",
+        "--color-text-title"
+      ],
+      "contentEditable": "inherit",
+      "display": "inline-block",
+      "id": "",
+      "index": 5,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "text",
+      "value": "",
+      "visible": true
+    },
+    {
+      "classes": [],
+      "contentEditable": "inherit",
+      "display": "block",
+      "id": "",
+      "index": 6,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "checkbox",
+      "value": "true",
+      "visible": true
+    },
+    {
+      "classes": [],
+      "contentEditable": "inherit",
+      "display": "block",
+      "id": "",
+      "index": 7,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "checkbox",
+      "value": "true",
+      "visible": true
+    },
+    {
+      "classes": [
+        "el-radio__original"
+      ],
+      "contentEditable": "inherit",
+      "display": "block",
+      "id": "",
+      "index": 8,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "radio",
+      "value": "0",
+      "visible": true
+    },
+    {
+      "classes": [
+        "el-radio__original"
+      ],
+      "contentEditable": "inherit",
+      "display": "block",
+      "id": "",
+      "index": 9,
+      "placeholder": "",
+      "tagName": "input",
+      "type": "radio",
+      "value": "1",
+      "visible": true
+    }
+  ],
+  "timestamp": "2026-01-31T05:50:00.828Z",
+  "url": "https://creator.xiaohongshu.com/publish/publish?source=official\u0026from=menu\u0026target=image"
+}

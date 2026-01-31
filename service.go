@@ -270,13 +270,15 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 		logrus.Infof("设置定时发布时间: %s", t.Format("2006-01-02 15:04"))
 	}
 
+	markerTags := domainpublish.FilterMarkerTags(req.MarkerTags)
+
 	// 构建发布内容（使用原始图片路径，Usecase层会处理）
 	content := xiaohongshu.PublishImageContent{
 		Title:        req.Title,
 		Content:      req.Content,
 		Tags:         req.Tags,
 		Location:     req.Location,
-		MarkerTags:   req.MarkerTags,
+		MarkerTags:   markerTags,
 		ImagePaths:   req.Images, // 使用原始路径，不再预处理
 		ScheduleTime: scheduleTime,
 	}
@@ -289,7 +291,7 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 			Tags:         content.Tags,
 			ImagePaths:   content.ImagePaths, // Usecase会调用ImageProcessor处理
 			Location:     content.Location,
-			MarkerTags:   content.MarkerTags,
+			MarkerTags:   markerTags,
 			ScheduleTime: content.ScheduleTime,
 		}); err != nil {
 			logrus.Errorf("发布内容失败(新用例): title=%s %v", content.Title, err)

@@ -212,16 +212,96 @@ func main() {
 		if strings.Contains(pageDef.URL, "/publish/publish") {
 			logrus.Info("📸 检测到发布页面，尝试触发图片上传以加载输入框...")
 
-			// 创建一个1x1像素的测试图片
+			// 步骤1: 切换到"上传图文"tab
+			logrus.Info("🔄 切换到图片上传tab...")
+			switchTabJS := `() => {
+				const buttons = Array.from(document.querySelectorAll('*'));
+				const imageTab = buttons.find(el => el.textContent?.trim() === '上传图文');
+				if (imageTab) {
+					imageTab.click();
+					return {success: true};
+				}
+				return {success: false, error: '未找到上传图文按���'};
+			}`
+			if result, err := page.Eval(switchTabJS); err == nil {
+				logrus.Infof("   切换结果: %+v", result)
+				time.Sleep(2 * time.Second) // 等待tab切换
+			}
+
+			// 步骤2: 创建测试图片
 			testImagePath := createTestImage()
 
-			// 尝试上传图片
+			// 步骤3: 选择图片文件
+			logrus.Info("📁 选择图片文件...")
 			uploadErr := page.SetFiles("input[type=\"file\"]", []string{testImagePath})
 			if uploadErr != nil {
-				logrus.Warnf("⚠️  图片上传失败: %v，继续采集当前状态", uploadErr)
+				logrus.Warnf("⚠️  选择文件失败: %v，继续采集当前状态", uploadErr)
 			} else {
-				logrus.Info("✅ 已上传测试图片，等待输入框加载...")
-				time.Sleep(8 * time.Second) // 增加等待时间到8秒
+				// 步骤4: 点击"上传图片"按钮确认上传
+				logrus.Info("⬆️  点击上传按钮...")
+				clickUploadJS := `() => {
+					// 方法1: 查找file input，触发change事件
+					const fileInput = document.querySelector('input[type="file"]');
+					if (fileInput && fileInput.files && fileInput.files.length > 0) {
+						// 文件已选择，触发上传
+						const uploadEvent = new Event('change', { bubbles: true });
+						fileInput.dispatchEvent(uploadEvent);
+
+						// 等待一下让React处理
+						setTimeout(() => {
+							// 方法2: 查找上传按钮并点击
+							const buttons = Array.from(document.querySelectorAll('button'));
+							const uploadBtn = buttons.find(btn =>
+								btn.textContent?.includes('上传图片') ||
+								btn.textContent?.includes('上传')
+							);
+							if (uploadBtn && !uploadBtn.disabled) {
+								uploadBtn.click();
+								return {success: true, method: 'button_click'};
+							}
+						}, 500);
+
+						return {success: true, method: 'change_event'};
+					}
+					return {success: false, error: '文件未选择'};
+				}`
+				if result, err := page.Eval(clickUploadJS); err == nil {
+					logrus.Infof("   上传触发: %+v", result)
+				}
+
+				// 步骤5: 等待编辑页面加载和URL变化
+				logrus.Info("✅ 等待编辑页面加载...")
+
+				// 轮询检查URL是否包含编辑相关参数或页面是否加载完成
+				maxRetries := 20 // 最多等待20秒
+				for i := 0; i < maxRetries; i++ {
+					time.Sleep(1 * time.Second)
+
+					checkLoadJS := `() => {
+						const hasContentEdit = document.querySelectorAll('[contenteditable="true"]').length > 0;
+						const hasInputs = document.querySelectorAll('input[placeholder*="标题"]').length > 0;
+						const urlChanged = window.location.href.includes('from=tab_switch') ||
+						                   window.location.href.includes('publish');
+						return {
+							loaded: hasContentEdit || hasInputs,
+							contenteditable: document.querySelectorAll('[contenteditable="true"]').length,
+							titleInputs: document.querySelectorAll('input[placeholder*="标题"]').length,
+							url: window.location.href
+						};
+					}`
+
+					if checkResult, err := page.Eval(checkLoadJS); err == nil {
+						logrus.Infof("   [%d/20] 检查: %+v", i+1, checkResult)
+
+						// 检查是否加载完成
+						resultMap, ok := checkResult.(map[string]interface{})
+						if ok && resultMap["loaded"] == true {
+							logrus.Info("✅ 编辑页面已加载完成")
+							time.Sleep(2 * time.Second) // 再等待2秒确保稳定
+							break
+						}
+					}
+				}
 
 				// 调试：检查是否有输入框出现
 				checkJS := `() => {
@@ -229,7 +309,8 @@ func main() {
 						inputs: document.querySelectorAll('input').length,
 						textareas: document.querySelectorAll('textarea').length,
 						contenteditable: document.querySelectorAll('[contenteditable="true"]').length,
-						roleTextbox: document.querySelectorAll('[role="textbox"]').length
+						roleTextbox: document.querySelectorAll('[role="textbox"]').length,
+						url: window.location.href
 					};
 				}`
 				if debugInfo, err := page.Eval(checkJS); err == nil {
@@ -369,7 +450,7 @@ func capturePageComponents(page browser.Page, pageName string) *PageSnapshot {
 			const classes = input.className ? input.className.split(' ').filter(c => c) : [];
 			const tagName = input.tagName.toLowerCase();
 
-			result.inputs.push({
+			const inputInfo = {
 				text: input.value || input.textContent?.trim() || '',
 				selector: input.id ? '#' + input.id : (classes[0] ? '.' + classes[0] : tagName),
 				classes: classes,
@@ -378,7 +459,16 @@ func capturePageComponents(page browser.Page, pageName string) *PageSnapshot {
 				placeholder: input.placeholder || input.getAttribute('data-placeholder') || '',
 				visible: input.offsetParent !== null,
 				type: input.type || ''
-			});
+			};
+
+			// 如果是contenteditable元素，添加额外属性
+			const contenteditable = input.getAttribute('contenteditable');
+			if (contenteditable === 'true' || contenteditable === '') {
+				inputInfo.contenteditable = 'true';
+				inputInfo.role = input.getAttribute('role') || '';
+			}
+
+			result.inputs.push(inputInfo);
 		});
 
 		// 3. 采集所有容器

@@ -2,6 +2,7 @@ package publish
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -458,5 +459,33 @@ func TestGateway_PublishImage_SetsMarkerTags(t *testing.T) {
 	}
 	if !engine.page.HasWaitForFunctionCall() {
 		t.Fatalf("expected marker dialog wait")
+	}
+}
+
+func TestWaitForUploadComplete_NoUploading(t *testing.T) {
+	page := &fakePage{
+		HasResults: map[string]bool{
+			"text=图片上传中":   false,
+			"text=上传中":     false,
+			".upload-progress": false,
+			"[class*='uploading']": false,
+		},
+	}
+
+	if err := waitForUploadComplete(page, 5*time.Millisecond, time.Millisecond); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestWaitForUploadComplete_TimesOut(t *testing.T) {
+	page := &fakePage{
+		HasResults: map[string]bool{
+			"text=图片上传中": true,
+		},
+	}
+
+	err := waitForUploadComplete(page, 3*time.Millisecond, time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "图片上传中") {
+		t.Fatalf("expected upload timeout error, got %v", err)
 	}
 }

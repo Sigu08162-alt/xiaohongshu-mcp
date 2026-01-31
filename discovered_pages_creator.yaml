@@ -1,10 +1,10 @@
 # 小红书创作者中心页面链接
 # 自动发现并生成，请勿手动编辑
-# 生成时间: 2026-01-31T11:17:26+08:00
+# 生成时间: 2026-01-31T12:15:58+08:00
 # 版本: 1.0.0
 
 version: 1.0.0
-generated: "2026-01-31T11:17:26+08:00"
+generated: "2026-01-31T12:15:58+08:00"
 home_page: https://creator.xiaohongshu.com/new/home?source=official
 links:
     creator_content:
@@ -17,8 +17,8 @@ links:
     creator_content_data:
         text: 内容分析
         url: https://creator.xiaohongshu.com/creator/content/data?source=official
-        description: 数据分析相关页面
-        category: data
+        description: 内容管理相关页面
+        category: content
         classes:
             - inferred
     creator_data-board:
@@ -37,7 +37,7 @@ links:
             - inferred
     publish_publish:
         text: 发布笔记
-        url: https://creator.xiaohongshu.com/publish/publish?source=official
+        url: https://creator.xiaohongshu.com/publish/publish?source=official&target=image
         description: 内容发布相关页面
         category: publish
         classes:

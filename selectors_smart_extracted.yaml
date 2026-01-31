@@ -1,0 +1,98 @@
+# 智能提取的选择器配置
+# 基于完整元数据自动提取
+# 生成时间: 2026-01-31
+# 数据来源: metadata_test_publish.yaml
+
+version: "2.0"
+generated: "2026-01-31T13:30:00+08:00"
+source: "智能提取器 v1.0"
+
+# 发布页面选择器
+publish_selectors:
+  # 上传输入框
+  upload_input:
+    selector: "input[type='file']"
+    backup: "input.upload-input"
+    confidence: 100
+    reason: "type=file是标准HTML属性"
+
+  # 标题输入框
+  title_input:
+    selector: "input[placeholder*='标题']"
+    backup: "input.d-text"
+    confidence: 95
+    reason: "placeholder包含'标题' + 位置在上部 + 可见"
+    metadata:
+      placeholder: "填写标题会有更多赞哦～"
+      type: "text"
+      position: {x: 260, y: 397}
+
+  # 内容编辑器
+  content_editor:
+    selector: "div.tiptap.ProseMirror"
+    backup: "[role='textbox']"
+    confidence: 90
+    reason: "contenteditable + role=textbox + class包含tiptap"
+    metadata:
+      contenteditable: "inherit"
+      role: "textbox"
+      classes: ["tiptap", "ProseMirror"]
+
+  # 发布按钮
+  submit_button:
+    selector: "button:has-text('发布')"
+    backup: "button.publishBtn"
+    confidence: 95
+    reason: "文本='发布' + 未禁用 + 可见 + 位置在下部"
+    metadata:
+      text: "发布"
+      position: {x: 248, y: 1018}
+      classes: ["publishBtn"]
+
+  # 暂存按钮（如需要）
+  save_draft_button:
+    selector: "button:has-text('暂存')"
+    backup: "button[class*='draft']"
+    confidence: 80
+    reason: "文本包含'暂存'"
+
+# 选择器使用优先级
+priority:
+  - primary     # 主选择器（最准确）
+  - backup      # 备用选择器（兼容性）
+  - fallback    # 最后方案（通用）
+
+# 选择器策略说明
+strategies:
+  title_input:
+    primary: "input[placeholder*='标题']"    # 基于placeholder（最稳定）
+    backup: "input.d-text"                  # 基于class（可能变化）
+    fallback: "input[type='text']"         # 基于type（最通用）
+
+  content_editor:
+    primary: "div.tiptap.ProseMirror"       # 基于富文本��辑器class
+    backup: "[role='textbox']"              # 基于ARIA role
+    fallback: "[contenteditable='true']"   # 基于可编辑属性
+
+  submit_button:
+    primary: "button:has-text('发布')"      # 基于文本（最稳定）
+    backup: "button.publishBtn"             # 基于class
+    fallback: "button[type='submit']"      # 基于type
+
+# 验证规则
+validation:
+  title_input:
+    - must_have: "placeholder"
+    - must_be: "visible"
+    - position_y: "<500"  # 必须在上部
+
+  content_editor:
+    - must_have: "contenteditable"
+    - must_be: "visible"
+    - position_y: "300-1000"  # 必须在中部
+
+  submit_button:
+    - must_contain_text: "发布"
+    - must_not_be: "disabled"
+    - must_be: "visible"
+    - position_y: ">800"  # 必须在下部
