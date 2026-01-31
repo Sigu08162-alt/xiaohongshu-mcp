@@ -1,0 +1,23 @@
+# 小红书创作者中心页面链接
+# 自动发现并生成，请勿手动编辑
+# 生成时间: 2026-01-31T11:18:08+08:00
+# 版本: 1.0.0
+
+version: 1.0.0
+generated: "2026-01-31T11:18:08+08:00"
+home_page: https://www.xiaohongshu.com/explore
+links:
+    发现:
+        text: 发现
+        url: https://www.xiaohongshu.com/explore
+        description: 其他功能页面
+        category: other
+        classes:
+            - inferred
+    搜索:
+        text: 搜索
+        url: https://www.xiaohongshu.com/search_result
+        description: 其他功能页面
+        category: other
+        classes:
+            - inferred

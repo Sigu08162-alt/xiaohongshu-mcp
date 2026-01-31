@@ -36,7 +36,8 @@ func main() {
 	outputYAML := flag.String("output", "discovered_pages.yaml", "输出YAML文件路径")
 	outputJSON := flag.String("json", "", "可选：同时输出JSON文件")
 	headless := flag.Bool("headless", false, "无头模式（默认有头）")
-	homeURL := flag.String("home", "https://creator.xiaohongshu.com/new/home?source=official", "创作者中心首页URL")
+	homeURL := flag.String("home", "https://creator.xiaohongshu.com/new/home?source=official", "起始页面URL")
+	systemType := flag.String("system", "creator", "系统类型: creator(创作者) 或 user(普通用户)")
 	waitTime := flag.Int("wait", 5, "页面加载等待秒数")
 	cookiePath := flag.String("cookies", "", "Cookie文件路径（默认自动查找）")
 	noInteractive := flag.Bool("no-interactive", false, "非交互模式,跳过所有等待输入")
@@ -48,7 +49,13 @@ func main() {
 		ForceColors:   true,
 	})
 
+	// 根据系统类型设置默认起始页
+	if *homeURL == "https://creator.xiaohongshu.com/new/home?source=official" && *systemType == "user" {
+		*homeURL = "https://www.xiaohongshu.com/explore"
+	}
+
 	logrus.Info("=== 小红书页面链接自动发现工具 ===")
+	logrus.Infof("系统类型: %s", *systemType)
 	logrus.Infof("首页URL: %s", *homeURL)
 	logrus.Infof("输出YAML: %s", *outputYAML)
 	logrus.Infof("有头模式: %v", !*headless)
@@ -154,7 +161,7 @@ func main() {
 
 	// 发现所有链接
 	logrus.Info("\n🔍 开始发现页面链接...")
-	links := discoverLinks(page)
+	links := discoverLinks(page, *systemType)
 
 	// 分类整理
 	categorizedLinks := categorizeLinks(links)
@@ -192,7 +199,16 @@ func main() {
 }
 
 // discoverLinks 发现页面所有链接
-func discoverLinks(page browser.Page) []LinkInfo {
+func discoverLinks(page browser.Page, systemType string) []LinkInfo {
+	// 根据系统类型调用不同的发现策略
+	if systemType == "user" {
+		return discoverUserSystemLinks(page)
+	}
+	return discoverCreatorSystemLinks(page)
+}
+
+// discoverCreatorSystemLinks 发现创作者系统的链接
+func discoverCreatorSystemLinks(page browser.Page) []LinkInfo {
 	jsCode := `() => {
 		const links = [];
 		const visited = new Set();
@@ -544,4 +560,76 @@ func findCookieFile() string {
 	}
 
 	return ""
+}
+
+// discoverUserSystemLinks 发现普通用户系统的链接
+func discoverUserSystemLinks(page browser.Page) []LinkInfo {
+	jsCode := `() => {
+		const links = [];
+		const visited = new Set();
+
+		console.log('=== 发现普通用户系统链接 ===');
+		console.log('URL:', window.location.href);
+
+		// 策略1: 查找导航栏的链接
+		document.querySelectorAll('nav a, header a, .nav a, [class*="nav"] a').forEach(link => {
+			const href = link.href;
+			const text = link.textContent?.trim() || '';
+
+			if (href && text && href.includes('xiaohongshu.com') && !visited.has(href)) {
+				visited.add(href);
+				links.push({
+					text: text,
+					url: href,
+					classes: link.className ? link.className.split(' ').filter(c => c) : [],
+					category: 'navigation'
+				});
+				console.log('✓ 导航链接:', text, '→', href);
+			}
+		});
+
+		// 策略2: 常见的用户系统页面
+		const userPages = [
+			{ text: '发现', path: '/explore' },
+			{ text: '关注', path: '/followFeed' },
+			{ text: '我的主页', path: '/user/profile' },
+			{ text: '消息', path: '/chat' },
+			{ text: '购物', path: '/lifestyle/shop' },
+			{ text: '搜索', path: '/search_result' }
+		];
+
+		const pageText = document.body.textContent || '';
+		userPages.forEach(({ text, path }) => {
+			if (pageText.includes(text)) {
+				const url = window.location.origin + path;
+				if (!visited.has(url)) {
+					visited.add(url);
+					links.push({
+						text: text,
+						url: url,
+						classes: ['inferred'],
+						category: 'user-page'
+					});
+					console.log('✓ 推测用户页面:', text, '→', url);
+				}
+			}
+		});
+
+		console.log('总共发现:', links.length, '个链接');
+		return links;
+	}`
+
+	info, err := page.Eval(jsCode)
+	if err != nil {
+		logrus.Errorf("发现链接失败: %v", err)
+		return []LinkInfo{}
+	}
+
+	jsonData, _ := json.Marshal(info)
+	var links []LinkInfo
+	json.Unmarshal(jsonData, &links)
+
+	logrus.Infof("📊 发现 %d 个链接", len(links))
+
+	return deduplicateLinks(links)
 }
