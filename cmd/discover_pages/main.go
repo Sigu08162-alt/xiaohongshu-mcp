@@ -266,10 +266,36 @@ func discoverLinks(page browser.Page) []LinkInfo {
 			}
 		});
 
-		// 策略3: 检查页面文本中提到的关键词,手动构建URL
+		// 策略3: 动态从页面获取URL，而不是硬编码
 		const pageText = document.body.textContent || '';
 		const keywords = ['发布笔记', '笔记管理', '数据看板', '内容分析', '粉丝数据'];
-		const urlMap = {
+
+		// 首先尝试从菜单项的实际属性获取URL
+		const realUrlMap = {};
+		document.querySelectorAll('.menu-item, [class*="menu"], nav a, aside a').forEach(item => {
+			const text = item.textContent?.trim() || '';
+			const href = item.getAttribute('href') ||
+			             item.getAttribute('data-href') ||
+			             item.getAttribute('data-to') ||
+			             item.querySelector('a')?.href ||
+			             '';
+
+			if (text && href && text.length > 0 && text.length < 20) {
+				// 如果是相对路径，补全为绝对路径
+				let fullUrl = href;
+				if (href.startsWith('/')) {
+					fullUrl = window.location.origin + href;
+				}
+				// 标准化URL（移除hash）
+				fullUrl = fullUrl.split('#')[0];
+
+				realUrlMap[text] = fullUrl;
+				console.log('✓ 从DOM获取URL:', text, '→', fullUrl);
+			}
+		});
+
+		// fallback URL映射（仅用于没有从DOM获取到的情况）
+		const fallbackUrlMap = {
 			'发布笔记': '/publish/publish',
 			'笔记管理': '/creator/content',
 			'数据看板': '/creator/data-board',
@@ -278,17 +304,32 @@ func discoverLinks(page browser.Page) []LinkInfo {
 		};
 
 		keywords.forEach(keyword => {
-			if (pageText.includes(keyword) && urlMap[keyword]) {
-				const url = 'https://creator.xiaohongshu.com' + urlMap[keyword];
-				if (!visited.has(url)) {
+			if (pageText.includes(keyword)) {
+				// 优先使用从DOM获取的真实URL
+				let url = realUrlMap[keyword];
+
+				// 如果没有获取到，使用fallback推测
+				if (!url && fallbackUrlMap[keyword]) {
+					url = window.location.origin + fallbackUrlMap[keyword];
+					console.log('⚠ 使用fallback URL:', keyword, '→', url);
+				}
+
+				if (url && !visited.has(url)) {
+					// 自动补全source=official参数
+					if (!url.includes('source=')) {
+						const separator = url.includes('?') ? '&' : '?';
+						url = url + separator + 'source=official';
+						console.log('✓ 补全参数:', url);
+					}
+
 					visited.add(url);
 					links.push({
 						text: keyword,
 						url: url,
-						classes: ['inferred'], // 标记为推测的
-						category: 'inferred'
+						classes: realUrlMap[keyword] ? ['from-dom'] : ['inferred'],
+						category: realUrlMap[keyword] ? 'dynamic' : 'inferred'
 					});
-					console.log('✓ 推测链接:', keyword, '→', url);
+					console.log('✓ 添加链接:', keyword, '→', url);
 				}
 			}
 		});
