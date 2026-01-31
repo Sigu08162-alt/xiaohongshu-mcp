@@ -29,13 +29,14 @@ type ElementInfo struct {
 
 // PageSnapshot 单个页面的快照
 type PageSnapshot struct {
-	PageName   string        `yaml:"page_name" json:"page_name"`
-	URL        string        `yaml:"url" json:"url"`
-	Timestamp  string        `yaml:"timestamp" json:"timestamp"`
-	Buttons    []ElementInfo `yaml:"buttons" json:"buttons"`
-	Inputs     []ElementInfo `yaml:"inputs" json:"inputs"`
-	Containers []ElementInfo `yaml:"containers" json:"containers"`
-	Links      []ElementInfo `yaml:"links" json:"links"`
+	PageName    string                   `yaml:"page_name" json:"page_name"`
+	URL         string                   `yaml:"url" json:"url"`
+	Timestamp   string                   `yaml:"timestamp" json:"timestamp"`
+	Buttons     []ElementInfo            `yaml:"buttons" json:"buttons"`
+	Inputs      []ElementInfo            `yaml:"inputs" json:"inputs"`
+	Containers  []ElementInfo            `yaml:"containers" json:"containers"`
+	Links       []ElementInfo            `yaml:"links" json:"links"`
+	AllElements []map[string]interface{} `yaml:"all_elements,omitempty" json:"all_elements,omitempty"`
 }
 
 // AllPagesSnapshot 所有页面的快照
@@ -207,6 +208,39 @@ func main() {
 		logrus.Infof("⏳ 等待 %d 秒让页面加载完成...", *waitTime)
 		time.Sleep(time.Duration(*waitTime) * time.Second)
 
+		// 特殊处理：如果是发布页面，需要先上传图片才能看到输入框
+		if strings.Contains(pageDef.URL, "/publish/publish") {
+			logrus.Info("📸 检测到发布页面，尝试触发图片上传以加载输入框...")
+
+			// 创建一个1x1像素的测试图片
+			testImagePath := createTestImage()
+
+			// 尝试上传图片
+			uploadErr := page.SetFiles("input[type=\"file\"]", []string{testImagePath})
+			if uploadErr != nil {
+				logrus.Warnf("⚠️  图片上传失败: %v，继续采集当前状态", uploadErr)
+			} else {
+				logrus.Info("✅ 已上传测试图片，等待输入框加载...")
+				time.Sleep(8 * time.Second) // 增加等待时间到8秒
+
+				// 调试：检查是否有输入框出现
+				checkJS := `() => {
+					return {
+						inputs: document.querySelectorAll('input').length,
+						textareas: document.querySelectorAll('textarea').length,
+						contenteditable: document.querySelectorAll('[contenteditable="true"]').length,
+						roleTextbox: document.querySelectorAll('[role="textbox"]').length
+					};
+				}`
+				if debugInfo, err := page.Eval(checkJS); err == nil {
+					logrus.Infof("🔍 调试: %+v", debugInfo)
+				}
+			}
+
+			// 清理测试图片
+			os.Remove(testImagePath)
+		}
+
 		// 采集组件信息
 		snapshot := capturePageComponents(page, pageDef.Name)
 		allSnapshots.Pages[pageDef.Name] = *snapshot
@@ -248,11 +282,73 @@ func capturePageComponents(page browser.Page, pageName string) *PageSnapshot {
 			buttons: [],
 			inputs: [],
 			containers: [],
-			links: []
+			links: [],
+			all_elements: []
 		};
 
+		// 专门查找输入相关的元素
+		try {
+			console.log('=== 搜索输入相关元素 ===');
+
+			// 策略1: 查找所有可能的输入元素
+			const inputCandidates = [];
+
+			// 标准输入
+			document.querySelectorAll('input, textarea').forEach(elem => {
+				inputCandidates.push({
+					type: 'standard',
+					tag: elem.tagName.toLowerCase(),
+					classes: Array.from(elem.classList).slice(0, 5),
+					attrs: {
+						type: elem.type,
+						placeholder: elem.placeholder,
+						name: elem.name
+					}
+				});
+			});
+
+			// contenteditable元素
+			document.querySelectorAll('[contenteditable="true"]').forEach(elem => {
+				inputCandidates.push({
+					type: 'contenteditable',
+					tag: elem.tagName.toLowerCase(),
+					classes: Array.from(elem.classList).slice(0, 5),
+					text: elem.textContent.substring(0, 50)
+				});
+			});
+
+			// role=textbox
+			document.querySelectorAll('[role="textbox"]').forEach(elem => {
+				inputCandidates.push({
+					type: 'role-textbox',
+					tag: elem.tagName.toLowerCase(),
+					classes: Array.from(elem.classList).slice(0, 5),
+					text: elem.textContent.substring(0, 50)
+				});
+			});
+
+			// 包含input/editor/title关键词的class
+			document.querySelectorAll('[class*="input"], [class*="editor"], [class*="title"]').forEach(elem => {
+				if (elem.tagName.toLowerCase() !== 'input' && elem.tagName.toLowerCase() !== 'textarea') {
+					inputCandidates.push({
+						type: 'class-keyword',
+						tag: elem.tagName.toLowerCase(),
+						classes: Array.from(elem.classList).slice(0, 5),
+						text: elem.textContent.substring(0, 50),
+						visible: elem.offsetParent !== null
+					});
+				}
+			});
+
+			console.log('找到候选输入元素:', inputCandidates.length);
+			result.all_elements = inputCandidates;
+
+		} catch (e) {
+			console.error('Error:', e);
+		}
+
 		// 1. 采集所有按钮
-		document.querySelectorAll('button').forEach((btn, idx) => {
+		document.querySelectorAll('button').forEach((btn) => {
 			const text = btn.textContent?.trim() || '';
 			const classes = btn.className ? btn.className.split(' ').filter(c => c) : [];
 
@@ -268,8 +364,8 @@ func capturePageComponents(page browser.Page, pageName string) *PageSnapshot {
 			});
 		});
 
-		// 2. 采集所有输入框
-		document.querySelectorAll('input, textarea, [contenteditable="true"]').forEach((input, idx) => {
+		// 2. 采集所有输入框 - 标准元素
+		document.querySelectorAll('input, textarea, [contenteditable="true"]').forEach((input) => {
 			const classes = input.className ? input.className.split(' ').filter(c => c) : [];
 			const tagName = input.tagName.toLowerCase();
 
@@ -286,7 +382,7 @@ func capturePageComponents(page browser.Page, pageName string) *PageSnapshot {
 		});
 
 		// 3. 采集所有容器
-		document.querySelectorAll('div[class], section[class], main[class]').forEach((container, idx) => {
+		document.querySelectorAll('div[class], section[class], main[class]').forEach((container) => {
 			const classes = container.className ? container.className.split(' ').filter(c => c) : [];
 			if (classes.length > 0) {
 				result.containers.push({
@@ -301,11 +397,11 @@ func capturePageComponents(page browser.Page, pageName string) *PageSnapshot {
 		});
 
 		// 4. 采集所有链接
-		document.querySelectorAll('a[href]').forEach((link, idx) => {
+		document.querySelectorAll('a[href]').forEach((link) => {
 			const text = link.textContent?.trim() || '';
 			const classes = link.className ? link.className.split(' ').filter(c => c) : [];
 
-			if (text) {  // 只采集有文本的链接
+			if (text) {
 				result.links.push({
 					text: text,
 					selector: classes[0] ? 'a.' + classes[0] : 'a',
@@ -475,4 +571,24 @@ func shouldSkip(category string) bool {
 	}
 
 	return false
+}
+
+// createTestImage 创建一个1x1像素的PNG测试图片
+func createTestImage() string {
+	// 最小的1x1透明PNG (67字节)
+	pngData := []byte{
+		0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+		0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+		0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
+		0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+		0x42, 0x60, 0x82,
+	}
+
+	tmpfile := "/tmp/test_upload_" + fmt.Sprintf("%d", time.Now().Unix()) + ".png"
+	os.WriteFile(tmpfile, pngData, 0644)
+	return tmpfile
 }
