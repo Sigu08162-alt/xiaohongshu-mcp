@@ -10,4 +10,14 @@ func TestLoadConfig_File(t *testing.T) {
 	if cfg.Timeouts.Navigate == 0 || cfg.Timeouts.ElementWait == 0 {
 		t.Fatalf("expected timeouts")
 	}
+	if cfg.Polling.Publish.TimeoutMs == 0 || cfg.Polling.Publish.IntervalMs == 0 {
+		t.Fatalf("expected polling publish config")
+	}
+}
+
+func TestConfig_LoadRequiresPollingModules(t *testing.T) {
+	_, err := LoadFromFile("testdata/config_missing_polling.yaml")
+	if err == nil {
+		t.Fatalf("expected error when polling config missing")
+	}
 }

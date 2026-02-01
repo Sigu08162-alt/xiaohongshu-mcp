@@ -10,3 +10,28 @@ timeouts:
   navigate: 120
   element_wait: 10
   image_upload: 60
+polling:
+  publish:
+    timeout_ms: 60000
+    interval_ms: 500
+    max_retries: 3
+  draft:
+    timeout_ms: 60000
+    interval_ms: 500
+    max_retries: 3
+  video:
+    timeout_ms: 90000
+    interval_ms: 500
+    max_retries: 3
+  interaction:
+    timeout_ms: 30000
+    interval_ms: 500
+    max_retries: 3
+  analytics:
+    timeout_ms: 30000
+    interval_ms: 500
+    max_retries: 3
+  auth:
+    timeout_ms: 60000
+    interval_ms: 500
+    max_retries: 3
