@@ -50,10 +50,6 @@ polling:
     timeout_ms: 90000
     interval_ms: 500
     max_retries: 3
-    delays:
-      post_content_render_ms: 2000
-      scroll_into_view_wait_ms: 500
-      draft_save_wait_ms: 3000
   interaction:
     timeout_ms: 30000
     interval_ms: 500

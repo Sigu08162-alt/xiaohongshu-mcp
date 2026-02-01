@@ -310,8 +310,10 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 	}
 
 	// 提交前短暂等待，确保内容已输入完成
-	logrus.Info("内容填写完成，等待2秒让页面渲染完成...")
-	time.Sleep(2 * time.Second)
+	logrus.Info("内容填写完成，等待页面渲染...")
+	if err := sleepDelay(g.cfg.VideoPolling, "post_content_render_ms"); err != nil {
+		return fmt.Errorf("publish video post_content_render_ms: %w", err)
+	}
 
 	// 点击发布按钮
 	submitSelector := g.cfg.Selectors["submit"]
@@ -332,8 +334,14 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 
 	// 等待发布完成 - 通过URL变化来验证
 	logrus.Info("等待发布完成（检查URL变化）...")
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := getTimeout(g.cfg.VideoPolling)
+	if err != nil {
+		return fmt.Errorf("publish video wait timeout: %w", err)
+	}
+	checkInterval, err := getInterval(g.cfg.VideoPolling)
+	if err != nil {
+		return fmt.Errorf("publish video wait interval: %w", err)
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -424,8 +432,10 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	}
 
 	// 等待页面渲染完成
-	logrus.Info("内容填写完成，等待2秒...")
-	time.Sleep(2 * time.Second)
+	logrus.Info("内容填写完成，等待页面渲染...")
+	if err := sleepDelay(g.cfg.VideoPolling, "post_content_render_ms"); err != nil {
+		return fmt.Errorf("save video draft post_content_render_ms: %w", err)
+	}
 
 	// 点击暂存按钮
 	saveDraftSelector := g.cfg.Selectors["save_draft"]
@@ -435,7 +445,9 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	if err := page.ScrollIntoView(saveDraftSelector); err != nil {
 		logrus.Warnf("滚动到暂存按钮失败: %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	if err := sleepDelay(g.cfg.VideoPolling, "scroll_into_view_wait_ms"); err != nil {
+		return fmt.Errorf("save video draft scroll_into_view_wait_ms: %w", err)
+	}
 
 	if err := page.ClickForce(saveDraftSelector); err != nil {
 		return fmt.Errorf("save video draft save_draft(%s): %w", saveDraftSelector, err)
@@ -443,7 +455,9 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	logrus.Info("已点击暂存按钮")
 
 	// 等待草稿保存完成
-	time.Sleep(3 * time.Second)
+	if err := sleepDelay(g.cfg.VideoPolling, "draft_save_wait_ms"); err != nil {
+		return fmt.Errorf("save video draft draft_save_wait_ms: %w", err)
+	}
 
 	return nil
 }

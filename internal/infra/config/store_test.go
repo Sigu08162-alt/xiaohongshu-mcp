@@ -21,3 +21,10 @@ func TestConfig_LoadRequiresPollingModules(t *testing.T) {
 		t.Fatalf("expected error when polling config missing")
 	}
 }
+
+func TestConfig_LoadRequiresVideoDelays(t *testing.T) {
+	_, err := LoadFromFile("testdata/config_missing_video_delay.yaml")
+	if err == nil {
+		t.Fatalf("expected error when video delays missing")
+	}
+}

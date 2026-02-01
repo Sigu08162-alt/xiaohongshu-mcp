@@ -90,7 +90,11 @@ func (c *Config) validate() error {
 	}); err != nil {
 		return err
 	}
-	if err := validatePollingModule("video", c.Polling.Video, nil); err != nil {
+	if err := validatePollingModule("video", c.Polling.Video, []string{
+		"post_content_render_ms",
+		"scroll_into_view_wait_ms",
+		"draft_save_wait_ms",
+	}); err != nil {
 		return err
 	}
 	if err := validatePollingModule("interaction", c.Polling.Interaction, nil); err != nil {
