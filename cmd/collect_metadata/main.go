@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 	browserplaywright "github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser/playwright"
+	"github.com/xpzouying/xiaohongshu-mcp/pkg/semantic"
 	"gopkg.in/yaml.v3"
 )
 
@@ -104,24 +106,63 @@ type DiscoveredPage struct {
 	Description string   `yaml:"description,omitempty"`
 	Category    string   `yaml:"category,omitempty"`
 	Classes     []string `yaml:"classes,omitempty"`
+	Trigger     string   `yaml:"trigger_selector,omitempty"`
+	Item        string   `yaml:"item_selector,omitempty"`
+}
+
+type SemanticTrace struct {
+	Page           string               `yaml:"page"`
+	Target         string               `yaml:"target"`
+	Before         semantic.Fingerprint `yaml:"before"`
+	After          semantic.Fingerprint `yaml:"after"`
+	ChangedMetrics int                  `yaml:"changed_metrics"`
+	Attempt        int                  `yaml:"attempt"`
+}
+
+type SemanticFailure struct {
+	Page           string `yaml:"page"`
+	Target         string `yaml:"target"`
+	Reason         string `yaml:"reason"`
+	ChangedMetrics int    `yaml:"changed_metrics,omitempty"`
+	Attempt        int    `yaml:"attempt"`
+}
+
+func buildMenuClickTargets(pageDef DiscoveredPage, cfg *semantic.Config) []string {
+	var targets []string
+	for _, target := range cfg.ClickPlan.Targets {
+		switch target {
+		case "item_selector":
+			if strings.TrimSpace(pageDef.Item) != "" {
+				targets = append(targets, pageDef.Item)
+			}
+		case "text":
+			if strings.TrimSpace(pageDef.Text) != "" {
+				targets = append(targets, fmt.Sprintf("text=%q", strings.TrimSpace(pageDef.Text)))
+			}
+		}
+	}
+	return targets
 }
 
 // 支持多种发现文件格式
 type DiscoveredPagesV1 struct {
-	Pages map[string]DiscoveredPage `yaml:"pages"`
+	Pages    map[string]DiscoveredPage `yaml:"pages"`
+	HomePage string                   `yaml:"home_page"`
 }
 
 type DiscoveredPagesV2 struct {
-	Links map[string]DiscoveredPage `yaml:"links"`
+	Links    map[string]DiscoveredPage `yaml:"links"`
+	HomePage string                   `yaml:"home_page"`
 }
 
 func main() {
 	// 命令行参数
 	inputFile := flag.String("input", "", "输入的discovered_pages.yaml文件路径")
-	outputYAML := flag.String("output", "metadata_all_pages.yaml", "输出YAML文件路径")
+	outputYAML := flag.String("output", "", "输出YAML文件路径（必填）")
 	outputJSON := flag.String("json", "", "可选：输出JSON文件路径")
 	headless := flag.Bool("headless", false, "无头模式")
 	waitTime := flag.Int("wait", 5, "每个页面加载后等待秒数")
+	semanticConfigPath := flag.String("semantic-config", "configs/semantic_scan.yaml", "语义采集配置文件路径")
 	noInteractive := flag.Bool("no-interactive", false, "非交互模式")
 	singlePage := flag.String("page", "", "仅采集单个页面的key")
 	autoUpload := flag.String("auto-upload", "", "自动上传图片路径（针对发布页面等需要上传的场景）")
@@ -139,9 +180,19 @@ func main() {
 	if *inputFile == "" {
 		logrus.Fatal("请指定输入文件: --input discovered_pages.yaml")
 	}
+	if *outputYAML == "" {
+		logrus.Fatal("请指定输出文件: --output metadata_xxx.yaml")
+	}
+	if *semanticConfigPath == "" {
+		logrus.Fatal("必须通过 --semantic-config 指定语义配置文件")
+	}
+	semanticCfg, err := semantic.LoadConfig(*semanticConfigPath)
+	if err != nil {
+		logrus.Fatalf("加载语义配置失败: %v", err)
+	}
 
 	// 加载发现的页面
-	pages, err := loadDiscoveredPages(*inputFile)
+	pages, homePage, err := loadDiscoveredPages(*inputFile)
 	if err != nil {
 		logrus.Fatalf("加载页面列表失败: %v", err)
 	}
@@ -199,6 +250,8 @@ func main() {
 		Generated: time.Now().Format(time.RFC3339),
 		Pages:     make(map[string]PageMetadata),
 	}
+	var semanticTraces []SemanticTrace
+	var semanticFailures []SemanticFailure
 
 	i := 0
 	for key, pageDef := range targetPages {
@@ -206,7 +259,7 @@ func main() {
 		logrus.Infof("\n[%d/%d] 📄 %s", i, len(targetPages), pageDef.Name)
 		logrus.Infof("🔗 %s", pageDef.URL)
 
-		metadata := capturePageMetadata(page, key, pageDef.URL, *waitTime, *noInteractive, *autoUpload)
+		metadata := capturePageMetadata(page, key, pageDef, homePage, *waitTime, *noInteractive, *autoUpload, semanticCfg, &semanticTraces, &semanticFailures)
 		allMetadata.Pages[key] = metadata
 
 		logrus.Infof("✓ 采集了 %d 个元素", metadata.Stats.TotalElements)
@@ -227,15 +280,87 @@ func main() {
 		logrus.Infof("✓ JSON: %s", *outputJSON)
 	}
 
+	if err := saveSemanticReports(semanticCfg, semanticTraces, semanticFailures); err != nil {
+		logrus.Warnf("保存语义报告失败: %v", err)
+	}
+
 	logrus.Info("\n✅ 采集完成")
 	printStats(&allMetadata)
 }
 
-func capturePageMetadata(page browser.Page, pageKey, url string, waitSec int, noInteractive bool, autoUploadPath string) PageMetadata {
+func capturePageMetadata(page browser.Page, pageKey string, pageDef DiscoveredPage, homePage string, waitSec int, noInteractive bool, autoUploadPath string, semanticCfg *semantic.Config, traces *[]SemanticTrace, failures *[]SemanticFailure) PageMetadata {
 	// 访问页面
-	if err := page.Goto(url); err != nil {
-		logrus.Errorf("访问页面失败: %v", err)
-		return PageMetadata{PageKey: pageKey, URL: url}
+	if pageDef.URL != "" {
+		if err := page.Goto(pageDef.URL); err != nil {
+			logrus.Errorf("访问页面失败: %v", err)
+			return PageMetadata{PageKey: pageKey, URL: pageDef.URL}
+		}
+	} else if homePage != "" {
+		attempts := semanticCfg.Fallbacks.Retry.MaxAttempts
+		if attempts <= 0 {
+			attempts = 1
+		}
+		entered := false
+		for attempt := 0; attempt < attempts && !entered; attempt++ {
+			if err := page.Goto(homePage); err != nil {
+				logrus.Errorf("访问首页失败: %v", err)
+				break
+			}
+			time.Sleep(time.Duration(waitSec) * time.Second)
+			beforeFingerprint, err := computeFingerprint(page)
+			if err != nil {
+				logrus.Warnf("采集指纹失败: %v", err)
+			}
+			if pageDef.Trigger != "" {
+				if err := page.Click(pageDef.Trigger); err != nil {
+					logrus.Warnf("点击触发器失败: %v", err)
+				}
+				time.Sleep(time.Duration(waitSec) * time.Second)
+			}
+			for _, target := range buildMenuClickTargets(pageDef, semanticCfg) {
+				if err := page.Click(target); err != nil {
+					*failures = append(*failures, SemanticFailure{
+						Page:    pageDef.Name,
+						Target:  target,
+						Reason:  err.Error(),
+						Attempt: attempt + 1,
+					})
+					logrus.Warnf("点击菜单项失败: %v", err)
+					continue
+				}
+				time.Sleep(time.Duration(semanticCfg.Verify.TimeoutSeconds) * time.Second)
+				afterFingerprint, err := computeFingerprint(page)
+				if err != nil {
+					logrus.Warnf("采集指纹失败: %v", err)
+				}
+				changed := beforeFingerprint.Delta(afterFingerprint).ChangedMetricCount(semanticCfg.Fingerprint.Thresholds.MetricChangeRatio)
+				if changed >= semanticCfg.Fingerprint.Thresholds.MinMetricChanges {
+					*traces = append(*traces, SemanticTrace{
+						Page:           pageDef.Name,
+						Target:         target,
+						Before:         beforeFingerprint,
+						After:          afterFingerprint,
+						ChangedMetrics: changed,
+						Attempt:        attempt + 1,
+					})
+					entered = true
+					break
+				}
+				*failures = append(*failures, SemanticFailure{
+					Page:           pageDef.Name,
+					Target:         target,
+					Reason:         "fingerprint_not_changed",
+					ChangedMetrics: changed,
+					Attempt:        attempt + 1,
+				})
+			}
+		}
+		if !entered {
+			logrus.Warnf("未通过语义验证进入页面: %s", pageDef.Name)
+		}
+	} else {
+		logrus.Warnf("缺少URL与菜单选择器，跳过页面: %s", pageKey)
+		return PageMetadata{PageKey: pageKey, URL: pageDef.URL}
 	}
 
 	// 等待页面加载
@@ -479,10 +604,10 @@ func capturePageMetadata(page browser.Page, pageKey, url string, waitSec int, no
 	}`
 
 	result, err := page.Eval(jsCode)
-	if err != nil {
-		logrus.Errorf("采集元数据失败: %v", err)
-		return PageMetadata{PageKey: pageKey, URL: url}
-	}
+		if err != nil {
+			logrus.Errorf("采集元数据失败: %v", err)
+			return PageMetadata{PageKey: pageKey, URL: pageDef.URL}
+		}
 
 	// 转换结果
 	jsonData, _ := json.Marshal(result)
@@ -490,53 +615,56 @@ func capturePageMetadata(page browser.Page, pageKey, url string, waitSec int, no
 	json.Unmarshal(jsonData, &pageData)
 
 	pageData.PageKey = pageKey
-	pageData.URL = url
+	pageData.URL = pageDef.URL
 	pageData.Timestamp = time.Now().Format(time.RFC3339)
 
 	return pageData
 }
 
-func loadDiscoveredPages(path string) (map[string]DiscoveredPage, error) {
+func loadDiscoveredPages(path string) (map[string]DiscoveredPage, string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// 首先尝试解析为通用map，检测格式
 	var raw map[string]interface{}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("无法解析YAML: %w", err)
+		return nil, "", fmt.Errorf("无法解析YAML: %w", err)
 	}
 
 	// 自动检测格式
 	var pages map[string]DiscoveredPage
+	homePage := ""
 
 	if _, ok := raw["pages"]; ok {
 		// 格式1: pages: {...}
 		var v1 DiscoveredPagesV1
 		if err := yaml.Unmarshal(data, &v1); err != nil {
-			return nil, fmt.Errorf("解析pages格式失败: %w", err)
+			return nil, "", fmt.Errorf("解析pages格式失败: %w", err)
 		}
 		pages = v1.Pages
+		homePage = v1.HomePage
 		logrus.Info("✓ 检测到格式: pages")
 	} else if _, ok := raw["links"]; ok {
 		// 格式2: links: {...}
 		var v2 DiscoveredPagesV2
 		if err := yaml.Unmarshal(data, &v2); err != nil {
-			return nil, fmt.Errorf("解析links格式失败: %w", err)
+			return nil, "", fmt.Errorf("解析links格式失败: %w", err)
 		}
 		pages = v2.Links
+		homePage = v2.HomePage
 		logrus.Info("✓ 检测到格式: links")
 	} else {
 		// 格式3: 直接是页面map（无顶层key）
 		pages = make(map[string]DiscoveredPage)
 		if err := yaml.Unmarshal(data, &pages); err != nil {
-			return nil, fmt.Errorf("解析直接格式失败: %w", err)
+			return nil, "", fmt.Errorf("解析直接格式失败: %w", err)
 		}
 		logrus.Info("✓ 检测到格式: 直接页面映射")
 	}
 
-	// 标准化：确保每个页面都有name
+	// 标准化：确保每个页面都有name，并过滤空URL
 	for key, page := range pages {
 		if page.Name == "" {
 			if page.Text != "" {
@@ -546,9 +674,78 @@ func loadDiscoveredPages(path string) (map[string]DiscoveredPage, error) {
 			}
 			pages[key] = page
 		}
+		if strings.TrimSpace(page.URL) == "" && strings.TrimSpace(page.Text) == "" &&
+			(strings.TrimSpace(page.Trigger) == "" || strings.TrimSpace(page.Item) == "") {
+			logrus.Warnf("跳过空URL页面: %s", key)
+			delete(pages, key)
+		}
 	}
 
-	return pages, nil
+	return pages, homePage, nil
+}
+
+func computeFingerprint(page browser.Page) (semantic.Fingerprint, error) {
+	result, err := page.Eval(`() => {
+		const isVisible = (el) => {
+			if (!el) return false;
+			const style = window.getComputedStyle(el);
+			if (!style) return false;
+			if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+			const rect = el.getBoundingClientRect();
+			if (!rect || rect.width === 0 || rect.height === 0) return false;
+			return true;
+		};
+
+		const visible = Array.from(document.querySelectorAll('*')).filter(isVisible).length;
+		const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]')).filter(isVisible).length;
+		const inputs = Array.from(document.querySelectorAll('input,textarea,[role="textbox"]')).filter(isVisible).length;
+		const containers = Array.from(document.querySelectorAll('div,section,main,article,nav,aside')).filter(isVisible).length;
+
+		return { visible, buttons, inputs, containers };
+	}`)
+	if err != nil {
+		return semantic.Fingerprint{}, err
+	}
+
+	data, _ := json.Marshal(result)
+	var counts struct {
+		Visible    int `json:"visible"`
+		Buttons    int `json:"buttons"`
+		Inputs     int `json:"inputs"`
+		Containers int `json:"containers"`
+	}
+	if err := json.Unmarshal(data, &counts); err != nil {
+		return semantic.Fingerprint{}, err
+	}
+
+	return semantic.Fingerprint{
+		VisibleCount:   counts.Visible,
+		ButtonCount:    counts.Buttons,
+		InputCount:     counts.Inputs,
+		ContainerCount: counts.Containers,
+	}, nil
+}
+
+func saveSemanticReports(cfg *semantic.Config, traces []SemanticTrace, failures []SemanticFailure) error {
+	if cfg.Outputs.TracePath != "" {
+		traceData, err := yaml.Marshal(traces)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(cfg.Outputs.TracePath, traceData, 0644); err != nil {
+			return err
+		}
+	}
+	if cfg.Outputs.FailurePath != "" {
+		failureData, err := yaml.Marshal(failures)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(cfg.Outputs.FailurePath, failureData, 0644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func findCookieFile() string {

@@ -11,6 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser/playwright"
+	"github.com/xpzouying/xiaohongshu-mcp/pkg/semantic"
 	"gopkg.in/yaml.v3"
 )
 
@@ -48,37 +49,56 @@ type AllPagesSnapshot struct {
 
 // PageDefinition 待采集的页面定义
 type PageDefinition struct {
-	Name string
-	URL  string
-	Desc string
+	Name            string
+	URL             string
+	Desc            string
+	Text            string
+	TriggerSelector string
+	ItemSelector    string
 }
 
-// 默认页面列表（硬编码）
-var defaultPages = []PageDefinition{
-	{
-		Name: "publish_image",
-		URL:  "https://creator.xiaohongshu.com/publish/publish?source=official&target=image",
-		Desc: "图文发布页面",
-	},
-	{
-		Name: "publish_video",
-		URL:  "https://creator.xiaohongshu.com/publish/publish?source=official&target=video",
-		Desc: "视频发布页面",
-	},
-	{
-		Name: "creator_home",
-		URL:  "https://creator.xiaohongshu.com/new/home?source=official",
-		Desc: "创作者中心首页",
-	},
+type SemanticTrace struct {
+	Page           string               `yaml:"page"`
+	Target         string               `yaml:"target"`
+	Before         semantic.Fingerprint `yaml:"before"`
+	After          semantic.Fingerprint `yaml:"after"`
+	ChangedMetrics int                  `yaml:"changed_metrics"`
+	Attempt        int                  `yaml:"attempt"`
+}
+
+type SemanticFailure struct {
+	Page           string `yaml:"page"`
+	Target         string `yaml:"target"`
+	Reason         string `yaml:"reason"`
+	ChangedMetrics int    `yaml:"changed_metrics,omitempty"`
+	Attempt        int    `yaml:"attempt"`
+}
+
+func buildMenuClickTargets(pageDef PageDefinition, cfg *semantic.Config) []string {
+	var targets []string
+	for _, target := range cfg.ClickPlan.Targets {
+		switch target {
+		case "item_selector":
+			if strings.TrimSpace(pageDef.ItemSelector) != "" {
+				targets = append(targets, pageDef.ItemSelector)
+			}
+		case "text":
+			if strings.TrimSpace(pageDef.Text) != "" {
+				targets = append(targets, fmt.Sprintf("text=%q", strings.TrimSpace(pageDef.Text)))
+			}
+		}
+	}
+	return targets
 }
 
 func main() {
 	// 命令行参数
-	outputYAML := flag.String("output", "selectors_all_pages.yaml", "输出YAML文件路径")
+	outputYAML := flag.String("output", "", "输出YAML文件路径（必填）")
 	outputJSON := flag.String("json", "", "可选：同时输出JSON文件")
 	headless := flag.Bool("headless", false, "无头模式（默认有头）")
 	singlePage := flag.String("page", "", "仅采集单个页面 (publish_image|publish_video|creator_home)")
 	waitTime := flag.Int("wait", 3, "每个页面加载后等待秒数")
+	semanticConfigPath := flag.String("semantic-config", "configs/semantic_scan.yaml", "语义采集配置文件路径")
 	cookiePath := flag.String("cookies", "", "Cookie文件路径（默认自动查找）")
 	pagesFile := flag.String("pages", "", "从discovered_pages.yaml加载页面列表")
 	noInteractive := flag.Bool("no-interactive", false, "非交互模式,跳过所有等待输入")
@@ -113,22 +133,26 @@ func main() {
 		logrus.Warn("⚠️  未找到Cookie文件，需要手动登录")
 	}
 
-	// 加载页面列表
-	var targetPages []PageDefinition
-	if *pagesFile != "" {
-		logrus.Infof("📄 从文件加载页面列表: %s", *pagesFile)
-		var err error
-		targetPages, err = loadPagesFromFile(*pagesFile)
-		if err != nil {
-			logrus.Warnf("加载页面列表失败: %v，使用默认列表", err)
-			targetPages = defaultPages
-		} else {
-			logrus.Infof("✅ 成功加载 %d 个页面", len(targetPages))
-		}
-	} else {
-		targetPages = defaultPages
-		logrus.Info("📋 使用默认页面列表")
+	// 加载页面列表（必须提供）
+	if *pagesFile == "" {
+		logrus.Fatal("必须通过 --pages 指定 discovered_pages.yaml 文件")
 	}
+	if *outputYAML == "" {
+		logrus.Fatal("必须通过 --output 指定输出文件")
+	}
+	if *semanticConfigPath == "" {
+		logrus.Fatal("必须通过 --semantic-config 指定语义配置文件")
+	}
+	semanticCfg, err := semantic.LoadConfig(*semanticConfigPath)
+	if err != nil {
+		logrus.Fatalf("加载语义配置失败: %v", err)
+	}
+	logrus.Infof("📄 从文件加载页面列表: %s", *pagesFile)
+	targetPages, homePage, err := loadPagesFromFile(*pagesFile)
+	if err != nil {
+		logrus.Fatalf("加载页面列表失败: %v", err)
+	}
+	logrus.Infof("✅ 成功加载 %d 个页面", len(targetPages))
 
 	// 过滤要采集的页面
 	var pagesToCapture []PageDefinition
@@ -194,14 +218,86 @@ func main() {
 		Pages:     make(map[string]PageSnapshot),
 	}
 
+	var semanticTraces []SemanticTrace
+	var semanticFailures []SemanticFailure
 	for i, pageDef := range pagesToCapture {
 		logrus.Infof("\n[%d/%d] 📄 采集页面: %s (%s)", i+1, len(pagesToCapture), pageDef.Desc, pageDef.Name)
 		logrus.Infof("🌐 URL: %s", pageDef.URL)
 
 		// 导航到页面
-		if err := page.Goto(pageDef.URL); err != nil {
-			logrus.Errorf("❌ 导航失败: %v，跳过此页面", err)
-			continue
+		if pageDef.URL != "" {
+			if err := page.Goto(pageDef.URL); err != nil {
+				logrus.Errorf("❌ 导航失败: %v，跳过此页面", err)
+				continue
+			}
+		} else {
+			if homePage == "" {
+				logrus.Errorf("❌ 缺少首页URL，无法点击采集: %s", pageDef.Name)
+				continue
+			}
+			logrus.Infof("🏠 进入首页并点击菜单采集: %s", homePage)
+			attempts := semanticCfg.Fallbacks.Retry.MaxAttempts
+			if attempts <= 0 {
+				attempts = 1
+			}
+			entered := false
+			for attempt := 0; attempt < attempts && !entered; attempt++ {
+				if err := page.Goto(homePage); err != nil {
+					logrus.Errorf("❌ 导航首页失败: %v，跳过此页面", err)
+					break
+				}
+				time.Sleep(time.Duration(*waitTime) * time.Second)
+				beforeFingerprint, err := computeFingerprint(page)
+				if err != nil {
+					logrus.Warnf("⚠️  采集指纹失败: %v", err)
+				}
+				if pageDef.TriggerSelector != "" {
+					if err := page.Click(pageDef.TriggerSelector); err != nil {
+						logrus.Warnf("⚠️  点击触发器失败: %v", err)
+					}
+					time.Sleep(time.Duration(*waitTime) * time.Second)
+				}
+				for _, target := range buildMenuClickTargets(pageDef, semanticCfg) {
+					if err := page.Click(target); err != nil {
+						semanticFailures = append(semanticFailures, SemanticFailure{
+							Page:    pageDef.Name,
+							Target:  target,
+							Reason:  err.Error(),
+							Attempt: attempt + 1,
+						})
+						logrus.Warnf("⚠️  点击菜单项失败: %v", err)
+						continue
+					}
+					time.Sleep(time.Duration(semanticCfg.Verify.TimeoutSeconds) * time.Second)
+					afterFingerprint, err := computeFingerprint(page)
+					if err != nil {
+						logrus.Warnf("⚠️  采集指纹失败: %v", err)
+					}
+					changed := beforeFingerprint.Delta(afterFingerprint).ChangedMetricCount(semanticCfg.Fingerprint.Thresholds.MetricChangeRatio)
+					if changed >= semanticCfg.Fingerprint.Thresholds.MinMetricChanges {
+						semanticTraces = append(semanticTraces, SemanticTrace{
+							Page:           pageDef.Name,
+							Target:         target,
+							Before:         beforeFingerprint,
+							After:          afterFingerprint,
+							ChangedMetrics: changed,
+							Attempt:        attempt + 1,
+						})
+						entered = true
+						break
+					}
+					semanticFailures = append(semanticFailures, SemanticFailure{
+						Page:           pageDef.Name,
+						Target:         target,
+						Reason:         "fingerprint_not_changed",
+						ChangedMetrics: changed,
+						Attempt:        attempt + 1,
+					})
+				}
+			}
+			if !entered {
+				logrus.Warnf("⚠️  未通过语义验证进入页面: %s", pageDef.Name)
+			}
 		}
 
 		// 等待页面稳定
@@ -342,6 +438,10 @@ func main() {
 		if err := saveToJSON(&allSnapshots, *outputJSON); err != nil {
 			logrus.Errorf("保存JSON失败: %v", err)
 		}
+	}
+
+	if err := saveSemanticReports(semanticCfg, semanticTraces, semanticFailures); err != nil {
+		logrus.Warnf("保存语义报告失败: %v", err)
 	}
 
 	// 显示汇总
@@ -609,58 +709,112 @@ func findCookieFile() string {
 
 // DiscoveredPages discovered_pages.yaml 结构
 type DiscoveredPages struct {
-	Links map[string]struct {
-		Text        string `yaml:"text"`
-		URL         string `yaml:"url"`
-		Description string `yaml:"description"`
-		Category    string `yaml:"category"`
+	HomePage string `yaml:"home_page"`
+	Links    map[string]struct {
+		Text            string `yaml:"text"`
+		URL             string `yaml:"url"`
+		Description     string `yaml:"description"`
+		Category        string `yaml:"category"`
+		TriggerSelector string `yaml:"trigger_selector"`
+		ItemSelector    string `yaml:"item_selector"`
 	} `yaml:"links"`
 }
 
 // loadPagesFromFile 从 discovered_pages.yaml 加载页面列表
-func loadPagesFromFile(path string) ([]PageDefinition, error) {
+func loadPagesFromFile(path string) ([]PageDefinition, string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var discovered DiscoveredPages
 	if err := yaml.Unmarshal(data, &discovered); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var pages []PageDefinition
 	for name, link := range discovered.Links {
-		// 过滤掉不需要的页面（如帮助、设置等）
-		if shouldSkip(link.Category) {
+		if strings.TrimSpace(link.URL) == "" && strings.TrimSpace(link.Text) == "" &&
+			(strings.TrimSpace(link.TriggerSelector) == "" || strings.TrimSpace(link.ItemSelector) == "") {
+			logrus.Warnf("跳过空URL页面: %s", name)
 			continue
 		}
 
 		pages = append(pages, PageDefinition{
-			Name: name,
-			URL:  link.URL,
-			Desc: link.Description,
+			Name:            name,
+			URL:             link.URL,
+			Desc:            link.Description,
+			Text:            link.Text,
+			TriggerSelector: link.TriggerSelector,
+			ItemSelector:    link.ItemSelector,
 		})
 	}
 
-	return pages, nil
+	return pages, discovered.HomePage, nil
 }
 
-// shouldSkip 判断是否跳过某个类别
-func shouldSkip(category string) bool {
-	skipCategories := []string{
-		"help",
-		"setting",
-		"other",
+func computeFingerprint(page browser.Page) (semantic.Fingerprint, error) {
+	result, err := page.Eval(`() => {
+		const isVisible = (el) => {
+			if (!el) return false;
+			const style = window.getComputedStyle(el);
+			if (!style) return false;
+			if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+			const rect = el.getBoundingClientRect();
+			if (!rect || rect.width === 0 || rect.height === 0) return false;
+			return true;
+		};
+
+		const visible = Array.from(document.querySelectorAll('*')).filter(isVisible).length;
+		const buttons = Array.from(document.querySelectorAll('button,[role="button"],input[type="button"],input[type="submit"]')).filter(isVisible).length;
+		const inputs = Array.from(document.querySelectorAll('input,textarea,[role="textbox"]')).filter(isVisible).length;
+		const containers = Array.from(document.querySelectorAll('div,section,main,article,nav,aside')).filter(isVisible).length;
+
+		return { visible, buttons, inputs, containers };
+	}`)
+	if err != nil {
+		return semantic.Fingerprint{}, err
 	}
 
-	for _, skip := range skipCategories {
-		if category == skip {
-			return true
+	data, _ := json.Marshal(result)
+	var counts struct {
+		Visible    int `json:"visible"`
+		Buttons    int `json:"buttons"`
+		Inputs     int `json:"inputs"`
+		Containers int `json:"containers"`
+	}
+	if err := json.Unmarshal(data, &counts); err != nil {
+		return semantic.Fingerprint{}, err
+	}
+
+	return semantic.Fingerprint{
+		VisibleCount:   counts.Visible,
+		ButtonCount:    counts.Buttons,
+		InputCount:     counts.Inputs,
+		ContainerCount: counts.Containers,
+	}, nil
+}
+
+func saveSemanticReports(cfg *semantic.Config, traces []SemanticTrace, failures []SemanticFailure) error {
+	if cfg.Outputs.TracePath != "" {
+		traceData, err := yaml.Marshal(traces)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(cfg.Outputs.TracePath, traceData, 0644); err != nil {
+			return err
 		}
 	}
-
-	return false
+	if cfg.Outputs.FailurePath != "" {
+		failureData, err := yaml.Marshal(failures)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(cfg.Outputs.FailurePath, failureData, 0644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // createTestImage 创建一个1x1像素的PNG测试图片
