@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 	browser "github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 type SearchResult struct {
@@ -157,13 +158,18 @@ func validateInternalFilterOption(filter internalFilterOption) error {
 }
 
 type SearchAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
-func NewSearchAction(page browser.Page) *SearchAction {
-	pp := page.WithTimeout(60 * time.Second)
+func NewSearchAction(page browser.Page, pollingModule polling.Module) (*SearchAction, error) {
+	timeout, err := pollingModule.Delay("wait_60000ms")
+	if err != nil {
+		return nil, err
+	}
+	pp := page.WithTimeout(timeout)
 
-	return &SearchAction{page: pp}
+	return &SearchAction{page: pp, polling: pollingModule}, nil
 }
 
 func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...FilterOption) ([]Feed, error) {
@@ -176,8 +182,14 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 
 	// 等待 __INITIAL_STATE__ 中的搜索数据加载，而不是等待 DOM 稳定
 	// 搜索结果页有动态内容（推荐内容、实时更新、无限滚动），DOM 可能永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := s.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	checkInterval, err := s.polling.Interval()
+	if err != nil {
+		return nil, err
+	}
 	startTime := time.Now()
 
 	logrus.Info("等待搜索数据加载...")
@@ -207,7 +219,9 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	}
 
 	// 额外等待500ms确保搜索数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(s.polling, "wait_500ms"); err != nil {
+		return nil, err
+	}
 
 	// 如果有筛选条件，则应用筛选
 	if len(filters) > 0 {
@@ -234,7 +248,11 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		}
 
 		// 等待筛选面板出现
-		if err := page.WaitForFunction(`() => document.querySelector('div.filter-panel') !== null`, 10*time.Second); err != nil {
+		waitPanel, err := s.polling.Delay("wait_10000ms")
+		if err != nil {
+			return nil, err
+		}
+		if err := page.WaitForFunction(`() => document.querySelector('div.filter-panel') !== null`, waitPanel); err != nil {
 			return nil, fmt.Errorf("等待筛选面板失败: %w", err)
 		}
 
@@ -249,8 +267,14 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 
 		// 等待筛选后的搜索数据更新，而不是等待 DOM 稳定
 		// 筛选后的搜索结果同样有动态内容
-		maxWait := 30 * time.Second
-		checkInterval := 500 * time.Millisecond
+		maxWait, err := s.polling.Timeout()
+		if err != nil {
+			return nil, err
+		}
+		checkInterval, err := s.polling.Interval()
+		if err != nil {
+			return nil, err
+		}
 		startTime := time.Now()
 
 		for time.Since(startTime) < maxWait {
@@ -272,7 +296,9 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		}
 
 		// 额外等待500ms确保筛选后的数据完全加载
-		time.Sleep(500 * time.Millisecond)
+		if err := polling.SleepDelay(s.polling, "wait_500ms"); err != nil {
+			return nil, err
+		}
 	}
 
 	resultRaw, err := page.Eval(`() => {

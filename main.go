@@ -89,7 +89,10 @@ func main() {
 
 	// 初始化服务
 	publishUsecase := initPublishUsecase(headless)
-	xiaohongshuService := NewXiaohongshuServiceWithUsecase(publishUsecase)
+	xiaohongshuService, err := NewXiaohongshuServiceWithUsecase(publishUsecase)
+	if err != nil {
+		logrus.Fatalf("初始化服务失败: %v", err)
+	}
 
 	// 创建并启动应用服务器
 	appServer := NewAppServerWithPublish(xiaohongshuService, publishUsecase)

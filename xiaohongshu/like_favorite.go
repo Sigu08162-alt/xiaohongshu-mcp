@@ -3,12 +3,12 @@ package xiaohongshu
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	myerrors "github.com/xpzouying/xiaohongshu-mcp/errors"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // ActionResult 通用动作响应（点赞/收藏等）
@@ -35,35 +35,51 @@ const (
 )
 
 type interactAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
-func newInteractAction(page browser.Page) *interactAction {
-	return &interactAction{page: page}
+func newInteractAction(page browser.Page, pollingModule polling.Module) *interactAction {
+	return &interactAction{page: page, polling: pollingModule}
 }
 
-func (a *interactAction) preparePage(ctx context.Context, actionType interactActionType, feedID, xsecToken string) browser.Page {
-	page := a.page.WithContext(ctx).WithTimeout(60 * time.Second)
+func (a *interactAction) preparePage(ctx context.Context, actionType interactActionType, feedID, xsecToken string) (browser.Page, error) {
+	timeout, err := a.polling.Delay("wait_60000ms")
+	if err != nil {
+		return nil, err
+	}
+	page := a.page.WithContext(ctx).WithTimeout(timeout)
 	url := makeFeedDetailURL(feedID, xsecToken)
 	logrus.Infof("Opening feed detail page for %s: %s", actionType, url)
 
 	if err := page.Goto(url); err != nil {
 		logrus.Warnf("failed to navigate to %s: %v", url, err)
 	}
-	if err := page.WaitDOMStable(5*time.Second, 0.95); err != nil {
+	waitDOMStable, err := a.polling.Delay("wait_5000ms")
+	if err != nil {
+		return nil, err
+	}
+	if err := page.WaitDOMStable(waitDOMStable, 0.95); err != nil {
 		logrus.Warnf("WaitDOMStable failed: %v", err)
 	}
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
+		return nil, err
+	}
 
 	// 等待 __INITIAL_STATE__ 就绪
-	a.waitForInitialState(page)
+	if err := a.waitForInitialState(page); err != nil {
+		return nil, err
+	}
 
-	return page
+	return page, nil
 }
 
 // waitForInitialState 等待页面 __INITIAL_STATE__ 数据就绪
-func (a *interactAction) waitForInitialState(page browser.Page) {
-	maxRetries := 5
+func (a *interactAction) waitForInitialState(page browser.Page) error {
+	maxRetries := a.polling.MaxRetries
+	if maxRetries <= 0 {
+		return errors.New("polling max_retries missing")
+	}
 	for i := 0; i < maxRetries; i++ {
 		result, err := page.Eval(`() => {
 			return !!(window.__INITIAL_STATE__ &&
@@ -73,19 +89,24 @@ func (a *interactAction) waitForInitialState(page browser.Page) {
 		}`)
 		if err != nil {
 			logrus.Warnf("Eval error when waiting for __INITIAL_STATE__: %v", err)
-			time.Sleep(1 * time.Second)
+			if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
+				return err
+			}
 			continue
 		}
 
 		if boolResult, ok := result.(bool); ok && boolResult {
 			logrus.Info("__INITIAL_STATE__ 数据就绪")
-			return
+			return nil
 		}
 
 		logrus.Infof("等待 __INITIAL_STATE__ 就绪... (%d/%d)", i+1, maxRetries)
-		time.Sleep(1 * time.Second)
+		if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
+			return err
+		}
 	}
 	logrus.Warn("__INITIAL_STATE__ 等待超时，继续尝试操作")
+	return nil
 }
 
 func (a *interactAction) performClick(page browser.Page, selector string) {
@@ -99,8 +120,8 @@ type LikeAction struct {
 	*interactAction
 }
 
-func NewLikeAction(page browser.Page) *LikeAction {
-	return &LikeAction{interactAction: newInteractAction(page)}
+func NewLikeAction(page browser.Page, pollingModule polling.Module) *LikeAction {
+	return &LikeAction{interactAction: newInteractAction(page, pollingModule)}
 }
 
 // Like 点赞指定笔记，如果已点赞则直接返回
@@ -119,7 +140,10 @@ func (a *LikeAction) perform(ctx context.Context, feedID, xsecToken string, targ
 		actionType = actionUnlike
 	}
 
-	page := a.preparePage(ctx, actionType, feedID, xsecToken)
+	page, err := a.preparePage(ctx, actionType, feedID, xsecToken)
+	if err != nil {
+		return err
+	}
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
@@ -141,7 +165,9 @@ func (a *LikeAction) perform(ctx context.Context, feedID, xsecToken string, targ
 
 func (a *LikeAction) toggleLike(page browser.Page, feedID string, targetLiked bool, actionType interactActionType) error {
 	a.performClick(page, SelectorLikeButton)
-	time.Sleep(3 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_3000ms"); err != nil {
+		return err
+	}
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
@@ -155,7 +181,9 @@ func (a *LikeAction) toggleLike(page browser.Page, feedID string, targetLiked bo
 
 	logrus.Warnf("feed %s %s可能未成功，状态未变化，尝试再次点击", feedID, actionType)
 	a.performClick(page, SelectorLikeButton)
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
+		return err
+	}
 
 	liked, _, err = a.getInteractState(page, feedID)
 	if err != nil {
@@ -175,8 +203,8 @@ type FavoriteAction struct {
 	*interactAction
 }
 
-func NewFavoriteAction(page browser.Page) *FavoriteAction {
-	return &FavoriteAction{interactAction: newInteractAction(page)}
+func NewFavoriteAction(page browser.Page, pollingModule polling.Module) *FavoriteAction {
+	return &FavoriteAction{interactAction: newInteractAction(page, pollingModule)}
 }
 
 // Favorite 收藏指定笔记，如果已收藏则直接返回
@@ -195,7 +223,10 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 		actionType = actionUnfavorite
 	}
 
-	page := a.preparePage(ctx, actionType, feedID, xsecToken)
+	page, err := a.preparePage(ctx, actionType, feedID, xsecToken)
+	if err != nil {
+		return err
+	}
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
@@ -217,7 +248,9 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 
 func (a *FavoriteAction) toggleFavorite(page browser.Page, feedID string, targetCollected bool, actionType interactActionType) error {
 	a.performClick(page, SelectorCollectButton)
-	time.Sleep(3 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_3000ms"); err != nil {
+		return err
+	}
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
@@ -231,7 +264,9 @@ func (a *FavoriteAction) toggleFavorite(page browser.Page, feedID string, target
 
 	logrus.Warnf("feed %s %s可能未成功，状态未变化，尝试再次点击", feedID, actionType)
 	a.performClick(page, SelectorCollectButton)
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
+		return err
+	}
 
 	_, collected, err = a.getInteractState(page, feedID)
 	if err != nil {

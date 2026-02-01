@@ -10,12 +10,33 @@ import (
 	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/app/testkit"
 	domainpublish "github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
+
+func testPollingModules() PollingModules {
+	base := polling.Module{
+		TimeoutMs:  1000,
+		IntervalMs: 100,
+		MaxRetries: 1,
+		Delays:     map[string]int{"wait_1000ms": 1000},
+	}
+	return PollingModules{
+		Publish:     base,
+		Draft:       base,
+		Video:       base,
+		Interaction: base,
+		Analytics:   base,
+		Auth:        base,
+	}
+}
 
 func TestPublishContent_UsesUsecase(t *testing.T) {
 	gw := &testkit.FakePublishGateway{}
 	uc := apppublish.Usecase{Gateway: gw, Limits: domainpublish.Limits{MaxTags: 10, MinImages: 1, MaxImages: 9}}
-	service := NewXiaohongshuServiceWithUsecase(&uc)
+	service, err := NewXiaohongshuServiceWithModules(&uc, testPollingModules())
+	if err != nil {
+		t.Fatalf("service init err: %v", err)
+	}
 	req := &PublishRequest{
 		Title:   "t",
 		Content: "c",
@@ -35,7 +56,10 @@ func TestSyncCookies_WritesFile(t *testing.T) {
 	os.Setenv("COOKIES_PATH", path)
 	t.Cleanup(func() { os.Unsetenv("COOKIES_PATH") })
 
-	service := NewXiaohongshuService()
+	service, err := NewXiaohongshuServiceWithModules(nil, testPollingModules())
+	if err != nil {
+		t.Fatalf("service init err: %v", err)
+	}
 	data := []byte(`[{"name":"a"}]`)
 	gotPath, gotSize, err := service.SyncCookies(context.Background(), data)
 	if err != nil {
@@ -69,7 +93,10 @@ func TestPublishRequest_HasLocationAndMarkerTagsFields(t *testing.T) {
 func TestPublishContent_MapsLocationAndMarkerTags(t *testing.T) {
 	gw := &testkit.FakePublishGateway{}
 	uc := apppublish.Usecase{Gateway: gw, Limits: domainpublish.Limits{MaxTags: 10, MinImages: 1, MaxImages: 9}}
-	service := NewXiaohongshuServiceWithUsecase(&uc)
+	service, err := NewXiaohongshuServiceWithModules(&uc, testPollingModules())
+	if err != nil {
+		t.Fatalf("service init err: %v", err)
+	}
 	req := &PublishRequest{
 		Title:      "t",
 		Content:    "c",

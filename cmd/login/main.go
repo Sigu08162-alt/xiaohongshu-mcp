@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"os"
 	"time"
 
 	playwrightgo "github.com/playwright-community/playwright-go"
@@ -12,6 +13,8 @@ import (
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser/playwright"
+	infraconfig "github.com/xpzouying/xiaohongshu-mcp/internal/infra/config"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
 )
 
@@ -35,7 +38,11 @@ func main() {
 	}
 	defer page.Close()
 
-	action := xiaohongshu.NewLogin(page)
+	pollingModule, err := loadAuthPollingModule()
+	if err != nil {
+		logrus.Fatalf("加载轮询配置失败: %v", err)
+	}
+	action := xiaohongshu.NewLogin(page, pollingModule)
 
 	status, err := action.CheckLoginStatus(context.Background())
 	if err != nil {
@@ -70,6 +77,23 @@ func main() {
 		logrus.Error("登录流程完成但仍未登录")
 	}
 
+}
+
+func loadAuthPollingModule() (polling.Module, error) {
+	configPath := os.Getenv("XHS_CONFIG_PATH")
+	if configPath == "" {
+		configPath = "config.yaml"
+	}
+	cfg, err := infraconfig.LoadFromFile(configPath)
+	if err != nil {
+		return polling.Module{}, err
+	}
+	return polling.Module{
+		TimeoutMs:  cfg.Polling.Auth.TimeoutMs,
+		IntervalMs: cfg.Polling.Auth.IntervalMs,
+		MaxRetries: cfg.Polling.Auth.MaxRetries,
+		Delays:     cfg.Polling.Auth.Delays,
+	}, nil
 }
 
 // newBrowserEngine 创建 Playwright 浏览器引擎

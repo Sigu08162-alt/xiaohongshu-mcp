@@ -14,12 +14,7 @@
 
 ## 采集的页面
 
-| 页面名称 | URL | 说明 |
-|---------|-----|------|
-| `publish_image` | `https://creator.xiaohongshu.com/publish/publish?source=official&target=image` | 图文发布页面 |
-| `publish_video` | `https://creator.xiaohongshu.com/publish/publish?source=official&target=video` | 视频发布页面 |
-| `creator_home` | `https://creator.xiaohongshu.com/new/home?source=official` | 创作者中心首页 |
-| `content_list` | `https://creator.xiaohongshu.com/content` | 内容管理页面 |
+页面来源于 `discover_pages` 的扫描结果，`refresh_selectors` 不再内置任何页面列表。
 
 ## 使用方法
 
@@ -27,67 +22,58 @@
 
 ```bash
 # 启动工具，采集所有页面，保存到 YAML
-./bin/refresh_selectors
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml
 ```
 
 **交互流程**：
 1. 浏览器自动打开
 2. 提示登录（如需要），按 Enter 继续
 3. 自动依次访问所有页面并采集
-4. 保存到 `selectors_all_pages.yaml`
+4. 保存到指定的输出文件
 5. 显示汇总信息
 6. 按 Enter 关闭浏览器
 
 ### 采集单个页面
 
 ```bash
-# 仅采集图文发布页面
-./bin/refresh_selectors --page publish_image
-
-# 仅采集视频发布页面
-./bin/refresh_selectors --page publish_video
-
-# 仅采集创作者中心首页
-./bin/refresh_selectors --page creator_home
-
-# 仅采集内容管理页面
-./bin/refresh_selectors --page content_list
+# 仅采集单个页面（页面key来自 discovered_pages.yaml）
+./bin/refresh_selectors --pages discovered_pages.yaml --page publish_publish --output selectors_publish_publish.yaml
 ```
 
 ### 同时输出 JSON 和 YAML
 
 ```bash
 # 同时保存为 YAML 和 JSON
-./bin/refresh_selectors --json selectors_all_pages.json
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_all_pages.yaml --json selectors_all_pages.json
 ```
 
 ### 自定义参数
 
 ```bash
 # 自定义输出文件名
-./bin/refresh_selectors --output my_selectors.yaml
+./bin/refresh_selectors --pages discovered_pages.yaml --output my_selectors.yaml
 
 # 调整等待时间（页面加载慢时增加）
-./bin/refresh_selectors --wait 5
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml --wait 5
 
 # 无头模式（后台运行）
-./bin/refresh_selectors --headless
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml --headless
 
 # 组合使用
-./bin/refresh_selectors \
-  --output selectors.yaml \
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors.yaml \
   --json selectors.json \
   --wait 5 \
-  --page publish_image
+  --page publish_publish
 ```
 
 ## 参数说明
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--output` | `selectors_all_pages.yaml` | 输出 YAML 文件路径 |
+| `--pages` | （必填） | 发现文件路径（discovered_pages.yaml） |
+| `--output` | （必填） | 输出 YAML 文件路径 |
 | `--json` | ` ` (空) | 可选：同时输出 JSON 文件路径 |
-| `--page` | ` ` (全部) | 仅采集单个页面 |
+| `--page` | ` ` (全部) | 仅采集单个页面（页面key来自发现文件） |
 | `--wait` | `3` | 每个页面加载后等待秒数 |
 | `--headless` | `false` | 是否使用无头模式 |
 
@@ -104,8 +90,8 @@
 version: 1.0.0
 generated: "2026-01-30T12:00:00+08:00"
 pages:
-  publish_image:
-    page_name: publish_image
+  publish_publish:
+    page_name: publish_publish
     url: https://creator.xiaohongshu.com/publish/publish?source=official&target=image
     timestamp: "2026-01-30T12:00:00Z"
     buttons:
@@ -153,29 +139,22 @@ pages:
         tag_name: a
         visible: true
 
-  publish_video:
-    # ... 视频发布页面组件
-
   creator_home:
     # ... 创作者中心首页组件
-
-  content_list:
-    # ... 内容管理页面组件
 ```
 
 ### 终端输出示例
 
 ```
 === 小红书页面组件全量采集工具 ===
-输出YAML: selectors_all_pages.yaml
+输出YAML: selectors_discovered_pages.yaml
 有头模式: true
 等待时间: 3秒/页面
 
-📋 将采集 4 个页面:
-  - publish_image: 图文发布页面
-  - publish_video: 视频发布页面
+📋 将采集 5 个页面:
+  - publish_publish: 图文发布页面
   - creator_home: 创作者中心首页
-  - content_list: 内容管理页面
+  - creator_content: 内容管理页面
 
 📦 启动浏览器...
 
@@ -184,17 +163,12 @@ pages:
 
 ⏸️  按 Enter 继续...
 
-[1/4] 📄 采集页面: 图文发布页面 (publish_image)
+[1/5] 📄 采集页面: 图文发布页面 (publish_publish)
 🌐 URL: https://creator.xiaohongshu.com/publish/publish?source=official&target=image
 ⏳ 等待 3 秒让页面加载完成...
 ✅ 采集完成: 按钮=15, 输入框=10, 容器=45, 链接=8
 
-[2/4] 📄 采集页面: 视频发布页面 (publish_video)
-🌐 URL: https://creator.xiaohongshu.com/publish/publish?source=official&target=video
-⏳ 等待 3 秒让页面加载完成...
-✅ 采集完成: 按钮=12, 输入框=8, 容器=40, 链接=6
-
-[3/4] 📄 采集页面: 创作者中心首页 (creator_home)
+[2/5] 📄 采集页面: 创作者中心首页 (creator_home)
 🌐 URL: https://creator.xiaohongshu.com/new/home?source=official
 ⏳ 等待 3 秒让页面加载完成...
 ✅ 采集完成: 按钮=20, 输入框=3, 容器=60, 链接=15
@@ -283,7 +257,7 @@ pages:
 
 ```bash
 # 每周运行一次，检查小红书页面更新
-./bin/refresh_selectors --output weekly_snapshot_$(date +%Y%m%d).yaml
+./bin/refresh_selectors --pages discovered_pages.yaml --output weekly_snapshot_$(date +%Y%m%d).yaml
 
 # 对比两周的快照
 diff selectors_all_pages_20260123.yaml selectors_all_pages_20260130.yaml
@@ -293,7 +267,7 @@ diff selectors_all_pages_20260123.yaml selectors_all_pages_20260130.yaml
 
 ```bash
 # 采集当前页面状态
-./bin/refresh_selectors --page publish_image
+./bin/refresh_selectors --pages discovered_pages.yaml --page publish_publish --output selectors_publish_publish.yaml
 
 # 对比配置文件中的选择器
 grep "submit_button" config.yaml
@@ -304,7 +278,7 @@ grep "发布" selectors_all_pages.yaml
 
 ```bash
 # 采集发布页面详细信息
-./bin/refresh_selectors --page publish_image --output debug_publish.yaml
+./bin/refresh_selectors --pages discovered_pages.yaml --page publish_publish --output debug_publish.yaml
 
 # 查看所有发布相关按钮
 yq '.pages.publish_image.buttons[] | select(.text | contains("发布"))' debug_publish.yaml
@@ -314,7 +288,7 @@ yq '.pages.publish_image.buttons[] | select(.text | contains("发布"))' debug_p
 
 ```bash
 # 采集所有页面，同时生成 JSON 供自动化测试使用
-./bin/refresh_selectors --json test_selectors.json
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml --json test_selectors.json
 ```
 
 ## 与运行时组件采集的区别
@@ -343,7 +317,7 @@ yq '.pages | to_entries | .[] | .key + ": " + (.value.buttons | length | tostrin
 yq '.pages.*.buttons[] | select(.classes[] == "d-button") | .text' selectors_all_pages.yaml
 
 # 查看图文发布页面的所有输入框
-yq '.pages.publish_image.inputs[]' selectors_all_pages.yaml
+yq '.pages.publish_publish.inputs[]' selectors_all_pages.yaml
 ```
 
 ### 使用 jq 查询 JSON
@@ -359,7 +333,7 @@ jq '.pages | to_entries[] | {
 }' selectors_all_pages.json
 
 # 查找所有可见的按钮
-jq '.pages.publish_image.buttons[] | select(.visible == true) | .text' selectors_all_pages.json
+jq '.pages.publish_publish.buttons[] | select(.visible == true) | .text' selectors_all_pages.json
 ```
 
 ## 故障排查
@@ -375,21 +349,21 @@ go run github.com/playwright-community/playwright-go/cmd/playwright@latest insta
 
 ```bash
 # 增加等待时间
-./bin/refresh_selectors --wait 10
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml --wait 10
 ```
 
 ### 问题3：某个页面采集失败
 
 ```bash
 # 仅采集该页面，增加等待时间
-./bin/refresh_selectors --page publish_image --wait 10
+./bin/refresh_selectors --pages discovered_pages.yaml --page publish_publish --output selectors_publish_publish.yaml --wait 10
 ```
 
 ### 问题4：需要重新登录
 
 ```bash
 # 使用有头模式，手动登录
-./bin/refresh_selectors  # 默认就是有头模式
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml  # 默认就是有头模式
 ```
 
 ## 最佳实践
@@ -464,7 +438,7 @@ make refresh-selectors-run
 
 ```bash
 # 使用自定义 cookie 文件
-./bin/refresh_selectors --cookies /path/to/cookies.json
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml --cookies /path/to/cookies.json
 ```
 
 ### Cookie 过期处理

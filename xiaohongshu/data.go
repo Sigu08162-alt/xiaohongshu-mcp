@@ -4,21 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // DataAction 数据获取操作
 type DataAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
 // NewDataAction 创建数据获取操作实例
-func NewDataAction(page browser.Page) *DataAction {
-	return &DataAction{page: page}
+func NewDataAction(page browser.Page, pollingModule polling.Module) (*DataAction, error) {
+	return &DataAction{page: page, polling: pollingModule}, nil
 }
 
 // UserStats 用户统计数据
@@ -105,152 +108,273 @@ type FollowerUser struct {
 
 // GetMyStats 获取当前用户的统计数据
 func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
-	page := d.page.WithContext(ctx).WithTimeout(60 * time.Second)
+	timeout, err := d.polling.Delay("wait_60000ms")
+	if err != nil {
+		return nil, err
+	}
+	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 导航到创作者中心页面（包含更详细的运营数据）
 	logrus.Info("导航到创作者中心页面...")
 	if err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official"); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
 	}
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
+	waitStable, err := d.polling.Delay("wait_1000ms")
+	if err != nil {
+		return nil, err
+	}
+	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
 		logrus.Warn("等待 DOM 稳定出现问题", "error", err)
 	}
-	time.Sleep(5 * time.Second) // 等待页面加载和数据渲染
+	if err := polling.SleepDelay(d.polling, "wait_5000ms"); err != nil {
+		return nil, err
+	}
 
-	// 从创作者中心页面提取详细统计数据
-	result, err := page.Eval(`() => {
-		const stats = {
-			follower_count: 0,
-			follow_count: 0,
-			liked_count: 0,
-			note_count: 0,
-			collect_count: 0,
-			exposure_count: 0,
-			view_count: 0,
-			cover_click_rate: 0,
-			video_complete_rate: 0,
-			like_count_7d: 0,
-			comment_count_7d: 0,
-			collect_count_7d: 0,
-			share_count_7d: 0,
-			net_follower_growth: 0,
-			new_follower_count: 0,
-			unfollow_count: 0,
-			profile_visitor_count: 0
-		};
-
-		// 提取基础数据（关注数、粉丝数、获赞与收藏）
-		const allText = document.body.innerText;
-
-		// 匹配 "34关注数96粉丝数785获赞与收藏" 格式
-		const basicMatch = allText.match(/(\d+)关注数(\d+)粉丝数(\d+)获赞与收藏/);
-		if (basicMatch) {
-			stats.follow_count = parseInt(basicMatch[1]);
-			stats.follower_count = parseInt(basicMatch[2]);
-			stats.liked_count = parseInt(basicMatch[3]);
-		}
-
-		// 提取笔记数据总览（近7日）
-		// 匹配格式: "曝光数10.5万" "观看数1.1万" "点赞数375"
-		const parseNumber = (text) => {
-			if (!text) return 0;
-			text = text.replace(/,/g, '');
-			if (text.includes('万')) {
-				return Math.round(parseFloat(text.replace('万', '')) * 10000);
-			} else if (text.includes('亿')) {
-				return Math.round(parseFloat(text.replace('亿', '')) * 100000000);
-			}
-			return parseInt(text) || 0;
-		};
-
-		const parsePercent = (text) => {
-			if (!text) return 0;
-			return parseFloat(text.replace('%', '')) || 0;
-		};
-
-		// 曝光数
-		const exposureMatch = allText.match(/曝光数([\d.]+[万亿]?)/);
-		if (exposureMatch) stats.exposure_count = parseNumber(exposureMatch[1]);
-
-		// 观看数
-		const viewMatch = allText.match(/观看数([\d.]+[万亿]?)/);
-		if (viewMatch) stats.view_count = parseNumber(viewMatch[1]);
-
-		// 封面点击率
-		const clickRateMatch = allText.match(/封面点击率([\d.]+)%/);
-		if (clickRateMatch) stats.cover_click_rate = parsePercent(clickRateMatch[1]);
-
-		// 视频完播率
-		const completeRateMatch = allText.match(/视频完播率([\d.]+)%/);
-		if (completeRateMatch) stats.video_complete_rate = parsePercent(completeRateMatch[1]);
-
-		// 点赞数
-		const likeMatch = allText.match(/点赞数([\d.]+[万亿]?)/);
-		if (likeMatch) stats.like_count_7d = parseNumber(likeMatch[1]);
-
-		// 评论数
-		const commentMatch = allText.match(/评论数([\d.]+[万亿]?)/);
-		if (commentMatch) stats.comment_count_7d = parseNumber(commentMatch[1]);
-
-		// 收藏数
-		const collectMatch = allText.match(/收藏数([\d.]+[万亿]?)/);
-		if (collectMatch) stats.collect_count_7d = parseNumber(collectMatch[1]);
-
-		// 分享数
-		const shareMatch = allText.match(/分享数([\d.]+[万亿]?)/);
-		if (shareMatch) stats.share_count_7d = parseNumber(shareMatch[1]);
-
-		// 净涨粉
-		const netGrowthMatch = allText.match(/净涨粉([\d.]+[万亿]?)/);
-		if (netGrowthMatch) stats.net_follower_growth = parseNumber(netGrowthMatch[1]);
-
-		// 新增关注
-		const newFollowerMatch = allText.match(/新增关注([\d.]+[万亿]?)/);
-		if (newFollowerMatch) stats.new_follower_count = parseNumber(newFollowerMatch[1]);
-
-		// 取消关注
-		const unfollowMatch = allText.match(/取消关注([\d.]+[万亿]?)/);
-		if (unfollowMatch) stats.unfollow_count = parseNumber(unfollowMatch[1]);
-
-		// 主页访客
-		const visitorMatch = allText.match(/主页访客([\d.]+[万亿]?)/);
-		if (visitorMatch) stats.profile_visitor_count = parseNumber(visitorMatch[1]);
-
-		return JSON.stringify(stats);
-	}`)
+	accountBase, err := d.fetchAccountBase(page)
 	if err != nil {
-		return nil, fmt.Errorf("执行 JavaScript 失败: %w", err)
+		return nil, fmt.Errorf("获取账号数据失败: %w", err)
+	}
+	personalInfo, err := d.fetchPersonalInfo(page)
+	if err != nil {
+		return nil, fmt.Errorf("获取个人信息失败: %w", err)
+	}
+	noteDetail, err := d.fetchNoteDetail(page)
+	if err != nil {
+		return nil, fmt.Errorf("获取笔记详情失败: %w", err)
 	}
 
-	resultStr, ok := result.(string)
-	if !ok || resultStr == "" {
-		return nil, fmt.Errorf("无法获取统计数据")
+	stats := UserStats{
+		FollowerCount:       getInt(personalInfo, "fans_count"),
+		FollowCount:         getInt(personalInfo, "follow_count"),
+		LikedCount:          getInt(personalInfo, "faved_count"),
+		NoteCount:           getInt(personalInfo, "note_count"),
+		CollectCount:        getInt(personalInfo, "collect_count"),
+		ExposureCount:       getNestedInt(accountBase, "thirty", "exposure_count"),
+		ViewCount:           getNestedInt(noteDetail, "seven", "view_count"),
+		CoverClickRate:      getNestedFloat(accountBase, "thirty", "cover_click_rate"),
+		VideoCompleteRate:   getNestedFloat(accountBase, "thirty", "video_complete_rate"),
+		LikeCount7d:         getNestedInt(noteDetail, "seven", "like_count"),
+		CommentCount7d:      getNestedInt(noteDetail, "seven", "comment_count"),
+		CollectCount7d:      getNestedInt(noteDetail, "seven", "collect_count"),
+		ShareCount7d:        getNestedInt(noteDetail, "seven", "share_count"),
+		NetFollowerGrowth:   getNestedInt(noteDetail, "seven", "rise_fans_count"),
+		NewFollowerCount:    getNestedInt(noteDetail, "seven", "new_fans_count"),
+		UnfollowCount:       getNestedInt(noteDetail, "seven", "leave_fans_count"),
+		ProfileVisitorCount: getNestedInt(noteDetail, "seven", "home_view_count"),
 	}
 
-	var stats UserStats
-	if err := json.Unmarshal([]byte(resultStr), &stats); err != nil {
-		return nil, fmt.Errorf("解析统计数据失败: %w", err)
+	if stats.FollowerCount == 0 &&
+		stats.FollowCount == 0 &&
+		stats.LikedCount == 0 &&
+		stats.NoteCount == 0 &&
+		stats.CollectCount == 0 {
+		return nil, fmt.Errorf("获取统计数据为空，可能未登录或接口返回异常")
 	}
 
 	logrus.Infof("获取统计数据成功: %+v", stats)
 	return &stats, nil
 }
 
+type apiFetchResult struct {
+	Status  int               `json:"status"`
+	Body    json.RawMessage   `json:"body"`
+	Headers map[string]string `json:"headers"`
+	HasCSRF bool              `json:"has_csrf"`
+}
+
+func (d *DataAction) fetchAccountBase(page browser.Page) (map[string]interface{}, error) {
+	return d.fetchJSONWithRetry(page, "/api/galaxy/v2/creator/datacenter/account/base")
+}
+
+func (d *DataAction) fetchPersonalInfo(page browser.Page) (map[string]interface{}, error) {
+	return d.fetchJSONWithRetry(page, "/api/galaxy/creator/home/personal_info")
+}
+
+func (d *DataAction) fetchNoteDetail(page browser.Page) (map[string]interface{}, error) {
+	return d.fetchJSONWithRetry(page, "/api/galaxy/creator/data/note_detail_new")
+}
+
+func (d *DataAction) fetchJSONWithRetry(page browser.Page, path string) (map[string]interface{}, error) {
+	timeout, err := d.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	interval, err := d.polling.Interval()
+	if err != nil {
+		return nil, err
+	}
+	deadline := time.Now().Add(timeout)
+	url := "https://creator.xiaohongshu.com" + path
+	var lastErr error
+
+	for time.Now().Before(deadline) {
+		data, err := d.fetchJSON(page, url)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+		time.Sleep(interval)
+	}
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("请求超时")
+	}
+	return nil, lastErr
+}
+
+func (d *DataAction) fetchJSON(page browser.Page, url string) (map[string]interface{}, error) {
+	result, err := page.Eval(`async (url) => {
+		try {
+			const getCookie = (name) => {
+				const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+				return match ? decodeURIComponent(match[1]) : '';
+			};
+			const getStorage = (store, name) => {
+				try { return store.getItem(name) || ''; } catch (e) { return ''; }
+			};
+			const getMeta = (name) => {
+				const el = document.querySelector('meta[name="' + name + '"]');
+				return el ? (el.getAttribute('content') || '') : '';
+			};
+			const csrf = getCookie('csrf_token') ||
+				getCookie('XSRF-TOKEN') ||
+				getStorage(localStorage, 'csrf_token') ||
+				getStorage(localStorage, 'XSRF-TOKEN') ||
+				getStorage(sessionStorage, 'csrf_token') ||
+				getStorage(sessionStorage, 'XSRF-TOKEN') ||
+				getMeta('csrf-token') ||
+				getMeta('x-csrf-token') ||
+				getMeta('xsrf-token');
+			const headers = {
+				'accept': 'application/json, text/plain, */*',
+				'x-requested-with': 'XMLHttpRequest'
+			};
+			if (csrf) {
+				headers['x-csrf-token'] = csrf;
+				headers['x-xsrf-token'] = csrf;
+			}
+			const resp = await fetch(url, {
+				credentials: 'include',
+				referrer: window.location.href || 'https://creator.xiaohongshu.com/new/home?source=official',
+				referrerPolicy: 'strict-origin-when-cross-origin',
+				headers
+			});
+			const text = await resp.text();
+			const tracked = {};
+			resp.headers.forEach((value, key) => {
+				const k = key.toLowerCase();
+				if (k === 'content-type' || k === 'x-request-id' || k === 'x-req-id' || k === 'x-b3-traceid' || k === 'x-trace-id') {
+					tracked[k] = value;
+				}
+			});
+			return JSON.stringify({ status: resp.status, body: text, headers: tracked, has_csrf: !!csrf });
+		} catch (e) {
+			return JSON.stringify({ status: 0, body: JSON.stringify({ error: String(e) }), headers: {}, has_csrf: false });
+		}
+	}`, url)
+	if err != nil {
+		return nil, fmt.Errorf("执行请求失败: %w", err)
+	}
+	raw, ok := result.(string)
+	if !ok || raw == "" {
+		return nil, fmt.Errorf("接口响应为空")
+	}
+	var fetchResult apiFetchResult
+	if err := json.Unmarshal([]byte(raw), &fetchResult); err != nil {
+		return nil, fmt.Errorf("解析响应失败: %w", err)
+	}
+	if fetchResult.Status != 200 {
+		preview := string(fetchResult.Body)
+		if len(preview) > 200 {
+			preview = preview[:200]
+		}
+		logrus.WithFields(logrus.Fields{
+			"url":      url,
+			"status":   fetchResult.Status,
+			"body":     preview,
+			"headers":  fetchResult.Headers,
+			"has_csrf": fetchResult.HasCSRF,
+		}).Warn("统计接口返回非200状态")
+		return nil, fmt.Errorf("接口返回异常状态: %d", fetchResult.Status)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(fetchResult.Body, &payload); err != nil {
+		return nil, fmt.Errorf("解析接口JSON失败: %w", err)
+	}
+	if data, ok := payload["data"].(map[string]interface{}); ok {
+		return data, nil
+	}
+	return payload, nil
+}
+
+func getInt(data map[string]interface{}, key string) int {
+	return int(asFloat(data, key))
+}
+
+func getNestedInt(data map[string]interface{}, key string, child string) int {
+	return int(getNestedFloat(data, key, child))
+}
+
+func getNestedFloat(data map[string]interface{}, key string, child string) float64 {
+	parent, ok := data[key].(map[string]interface{})
+	if !ok {
+		return 0
+	}
+	return asFloat(parent, child)
+}
+
+func asFloat(data map[string]interface{}, key string) float64 {
+	value, ok := data[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case json.Number:
+		if num, err := v.Float64(); err == nil {
+			return num
+		}
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return parsed
+		}
+	}
+	return 0
+}
+
 // GetMyFeeds 获取自己发布的笔记列表
 func (d *DataAction) GetMyFeeds(ctx context.Context, limit int, userID string) ([]Feed, error) {
-	page := d.page.WithContext(ctx).WithTimeout(5 * time.Minute)
+	timeout, err := d.polling.Delay("wait_300000ms")
+	if err != nil {
+		return nil, err
+	}
+	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 通过侧边栏导航到个人主页
 	logrus.Info("通过侧边栏导航到个人主页获取笔记...")
-	navigate := NewNavigate(page)
+	navigate := NewNavigate(page, d.polling)
 	if err := navigate.ToProfilePageWithUserID(ctx, userID); err != nil {
 		return nil, fmt.Errorf("导航到个人主页失败: %w", err)
 	}
 
 	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
 	// 个人主页有动态内容（笔记推荐、实时更新），DOM 可能永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := d.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	checkInterval, err := d.polling.Interval()
+	if err != nil {
+		return nil, err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -266,7 +390,9 @@ func (d *DataAction) GetMyFeeds(ctx context.Context, limit int, userID string) (
 	}
 
 	// 额外等待500ms确保笔记数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(d.polling, "wait_500ms"); err != nil {
+		return nil, err
+	}
 
 	// 使用JavaScript提取笔记列表
 	feeds := d.extractFeedsFromPage(page, limit)
@@ -482,7 +608,9 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 
 		// 滚动到底部加载更多
 		page.Eval(`() => { window.scrollBy(0, window.innerHeight); }`)
-		time.Sleep(1 * time.Second)
+		if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
+			break
+		}
 	}
 
 	// 限制返回数量
@@ -665,7 +793,11 @@ func applyStateNoteMaps(feeds []Feed, titleMap, coverMap map[string]string) []Fe
 
 // GetFanAnalytics 获取粉丝分析数据
 func (d *DataAction) GetFanAnalytics(ctx context.Context, period string) (*FanAnalytics, error) {
-	page := d.page.WithContext(ctx).WithTimeout(5 * time.Minute)
+	timeout, err := d.polling.Delay("wait_300000ms")
+	if err != nil {
+		return nil, err
+	}
+	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 导航到粉丝数据页面
 	logrus.Info("导航到粉丝数据页面...")
@@ -673,10 +805,16 @@ func (d *DataAction) GetFanAnalytics(ctx context.Context, period string) (*FanAn
 	if err := page.Goto(url); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
 	}
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
+	waitStable, err := d.polling.Delay("wait_1000ms")
+	if err != nil {
+		return nil, err
+	}
+	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
 		logrus.Warn("等待 DOM 稳定出现问题", "error", err)
 	}
-	time.Sleep(5 * time.Second)
+	if err := polling.SleepDelay(d.polling, "wait_5000ms"); err != nil {
+		return nil, err
+	}
 
 	// 提取粉丝分析数据
 	result, err := page.Eval(`() => {
@@ -773,7 +911,11 @@ const (
 // sortBy: 排序字段，空字符串表示不排序
 // sortOrder: 排序方向，asc升序/desc降序
 func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy SortField, sortOrder SortOrder) (*ContentAnalytics, error) {
-	page := d.page.WithContext(ctx).WithTimeout(5 * time.Minute)
+	timeout, err := d.polling.Delay("wait_300000ms")
+	if err != nil {
+		return nil, err
+	}
+	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 导航到数据分析页面
 	logrus.Info("导航到数据分析页面...")
@@ -791,8 +933,14 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	}`
 
 	// 最多等待30秒，每500ms检查一次
-	maxWaitTime := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWaitTime, err := d.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	checkInterval, err := d.polling.Interval()
+	if err != nil {
+		return nil, err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWaitTime {
@@ -805,7 +953,9 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	}
 
 	// 额外等待1秒，确保数据完全渲染
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
+		return nil, err
+	}
 
 	// 如果指定了排序字段，先进行排序
 	if sortBy != "" {
@@ -977,7 +1127,9 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 		}
 
 		// 等待页面加载
-		time.Sleep(2 * time.Second)
+		if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
+			return nil, err
+		}
 		pageNum++
 	}
 
@@ -1034,7 +1186,9 @@ func (d *DataAction) applySorting(page browser.Page, sortBy SortField, sortOrder
 		if err != nil {
 			return fmt.Errorf("点击排序图标失败(第%d次): %w", i+1, err)
 		}
-		time.Sleep(1 * time.Second) // 等待排序完成
+		if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
+			return err
+		}
 	}
 
 	logrus.Info("排序应用成功")

@@ -3,25 +3,30 @@ package xiaohongshu
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // ShareAction 分享操作
 type ShareAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
 // NewShareAction 创建分享操作实例
-func NewShareAction(page browser.Page) *ShareAction {
-	return &ShareAction{page: page}
+func NewShareAction(page browser.Page, pollingModule polling.Module) (*ShareAction, error) {
+	return &ShareAction{page: page, polling: pollingModule}, nil
 }
 
 // ShareFeed 分享笔记，获取分享链接
 func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (string, error) {
-	page := s.page.WithContext(ctx).WithTimeout(60 * time.Second)
+	timeout, err := s.polling.Delay("wait_60000ms")
+	if err != nil {
+		return "", err
+	}
+	page := s.page.WithContext(ctx).WithTimeout(timeout)
 
 	url := makeFeedDetailURL(feedID, xsecToken)
 	logrus.Infof("打开 feed 详情页进行分享: %s", url)
@@ -30,13 +35,19 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 	if err := page.Goto(url); err != nil {
 		return "", fmt.Errorf("导航失败: %w", err)
 	}
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
+	waitStable, err := s.polling.Delay("wait_1000ms")
+	if err != nil {
+		return "", err
+	}
+	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
 		return "", fmt.Errorf("等待 DOM 稳定失败: %w", err)
 	}
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(s.polling, "wait_2000ms"); err != nil {
+		return "", err
+	}
 
 	// 检查页面是否可访问
-	if err := checkPageAccessible(page); err != nil {
+	if err := checkPageAccessible(page, s.polling); err != nil {
 		return "", err
 	}
 
@@ -51,7 +62,9 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 	if err := shareBtn.ScrollIntoView(); err != nil {
 		logrus.Warnf("滚动失败: %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(s.polling, "wait_500ms"); err != nil {
+		return "", err
+	}
 
 	// 点击分享按钮
 	logrus.Info("点击分享按钮...")
@@ -77,7 +90,9 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 		}
 	}
 
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(s.polling, "wait_2000ms"); err != nil {
+		return "", err
+	}
 
 	// 查找"复制链接"按钮
 	copyLinkBtn, err := s.findCopyLinkButton(page)
@@ -93,7 +108,9 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 		logrus.Warnf("点击复制链接失败: %v", err)
 	}
 
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(s.polling, "wait_1000ms"); err != nil {
+		return "", err
+	}
 
 	// 尝试从剪贴板获取链接
 	shareLink, err := s.getShareLinkFromClipboard(page)
@@ -117,7 +134,11 @@ func (s *ShareAction) findShareButton(page browser.Page) (browser.Element, error
 	}
 
 	for _, sel := range selectors {
-		elem, err := page.WithTimeout(3 * time.Second).Element(sel)
+		timeout, err := s.polling.Delay("wait_3000ms")
+		if err != nil {
+			return nil, err
+		}
+		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
 			logrus.Infof("找到分享按钮: %s", sel)
 			return elem, nil
@@ -149,7 +170,11 @@ func (s *ShareAction) findCopyLinkButton(page browser.Page) (browser.Element, er
 	}
 
 	for _, sel := range selectors {
-		elem, err := page.WithTimeout(3 * time.Second).Element(sel)
+		timeout, err := s.polling.Delay("wait_3000ms")
+		if err != nil {
+			return nil, err
+		}
+		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
 			logrus.Infof("找到复制链接按钮: %s", sel)
 			return elem, nil

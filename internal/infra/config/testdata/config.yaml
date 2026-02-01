@@ -51,6 +51,9 @@ polling:
     interval_ms: 500
     max_retries: 3
     delays:
+      wait_300000ms: 300000
+      wait_3000ms: 3000
+      wait_1000ms: 1000
       post_content_render_ms: 2000
       scroll_into_view_wait_ms: 500
       draft_save_wait_ms: 3000
@@ -58,11 +61,55 @@ polling:
     timeout_ms: 30000
     interval_ms: 500
     max_retries: 3
+    delays:
+      wait_600000ms: 600000
+      wait_60000ms: 60000
+      wait_300000ms: 300000
+      wait_10000ms: 10000
+      wait_800ms: 800
+      wait_5000ms: 5000
+      wait_3000ms: 3000
+      wait_2000ms: 2000
+      wait_1000ms: 1000
+      wait_500ms: 500
+      wait_300ms: 300
+      wait_200ms: 200
+      wait_100ms: 100
+      human_delay_min_ms: 300
+      human_delay_max_ms: 700
+      reaction_time_min_ms: 300
+      reaction_time_max_ms: 800
+      hover_time_min_ms: 100
+      hover_time_max_ms: 300
+      read_time_min_ms: 500
+      read_time_max_ms: 1200
+      short_read_min_ms: 600
+      short_read_max_ms: 1200
+      scroll_wait_min_ms: 100
+      scroll_wait_max_ms: 200
+      post_scroll_min_ms: 300
+      post_scroll_max_ms: 500
+      scroll_slow_min_ms: 1200
+      scroll_slow_max_ms: 1500
+      scroll_normal_min_ms: 600
+      scroll_normal_max_ms: 800
+      scroll_fast_min_ms: 300
+      scroll_fast_max_ms: 400
   analytics:
     timeout_ms: 30000
     interval_ms: 500
     max_retries: 3
+    delays:
+      wait_300000ms: 300000
+      wait_60000ms: 60000
+      wait_5000ms: 5000
+      wait_2000ms: 2000
+      wait_1000ms: 1000
+      wait_500ms: 500
   auth:
     timeout_ms: 60000
     interval_ms: 500
     max_retries: 3
+    delays:
+      wait_2000ms: 2000
+      wait_1000ms: 1000

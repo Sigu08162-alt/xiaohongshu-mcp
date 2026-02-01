@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // PublishVideoContent 发布视频内容
@@ -20,9 +21,18 @@ type PublishVideoContent struct {
 	ScheduleTime *time.Time // 定时发布时间，nil 表示立即发布
 }
 
+type PublishVideoAction struct {
+	page    browser.Page
+	polling polling.Module
+}
+
 // NewPublishVideoAction 进入发布页并切换到"上传视频"
-func NewPublishVideoAction(page browser.Page) (*PublishAction, error) {
-	pp := page.WithTimeout(300 * time.Second)
+func NewPublishVideoAction(page browser.Page, pollingModule polling.Module) (*PublishVideoAction, error) {
+	timeout, err := pollingModule.Delay("wait_300000ms")
+	if err != nil {
+		return nil, err
+	}
+	pp := page.WithTimeout(timeout)
 
 	if err := pp.Goto(urlOfPublic); err != nil {
 		return nil, errors.Wrap(err, "导航到发布页面失败")
@@ -30,41 +40,53 @@ func NewPublishVideoAction(page browser.Page) (*PublishAction, error) {
 	if err := pp.WaitLoad(); err != nil {
 		slog.Warn("等待页面加载出现问题", "error", err)
 	}
-	if err := pp.WaitDOMStable(time.Second, 0.1); err != nil {
+	waitStable, err := pollingModule.Delay("wait_1000ms")
+	if err != nil {
+		return nil, err
+	}
+	if err := pp.WaitDOMStable(waitStable, 0.1); err != nil {
 		slog.Warn("等待 DOM 稳定出现问题", "error", err)
 	}
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(pollingModule, "wait_1000ms"); err != nil {
+		return nil, err
+	}
 
 	if err := mustClickPublishTab(page, "上传视频"); err != nil {
 		return nil, errors.Wrap(err, "切换到上传视频失败")
 	}
 
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(pollingModule, "wait_1000ms"); err != nil {
+		return nil, err
+	}
 
-	return &PublishAction{page: pp}, nil
+	return &PublishVideoAction{page: pp, polling: pollingModule}, nil
 }
 
 // PublishVideo 上传视频并提交
-func (p *PublishAction) PublishVideo(ctx context.Context, content PublishVideoContent) error {
+func (p *PublishVideoAction) PublishVideo(ctx context.Context, content PublishVideoContent) error {
 	if content.VideoPath == "" {
 		return errors.New("视频不能为空")
 	}
 
 	page := p.page.WithContext(ctx)
 
-	if err := uploadVideo(page, content.VideoPath); err != nil {
+	if err := uploadVideo(page, p.polling, content.VideoPath); err != nil {
 		return errors.Wrap(err, "小红书上传视频失败")
 	}
 
-	if err := submitPublishVideo(page, content.Title, content.Content, content.Tags, content.ScheduleTime); err != nil {
+	if err := submitPublishVideo(page, p.polling, content.Title, content.Content, content.Tags, content.ScheduleTime); err != nil {
 		return errors.Wrap(err, "小红书发布失败")
 	}
 	return nil
 }
 
 // uploadVideo 上传单个本地视频
-func uploadVideo(page browser.Page, videoPath string) error {
-	pp := page.WithTimeout(5 * time.Minute) // 视频处理耗时更长
+func uploadVideo(page browser.Page, pollingModule polling.Module, videoPath string) error {
+	timeout, err := pollingModule.Delay("wait_300000ms")
+	if err != nil {
+		return err
+	}
+	pp := page.WithTimeout(timeout) // 视频处理耗时更长
 
 	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
 		return errors.Wrapf(err, "视频文件不存在: %s", videoPath)
@@ -72,7 +94,6 @@ func uploadVideo(page browser.Page, videoPath string) error {
 
 	// 寻找文件上传输入框（与图文一致的 class，或退回到 input[type=file]）
 	var fileInput browser.Element
-	var err error
 	fileInput, err = pp.Element(".upload-input")
 	if err != nil {
 		fileInput, err = pp.Element("input[type='file']")
@@ -86,7 +107,7 @@ func uploadVideo(page browser.Page, videoPath string) error {
 	}
 
 	// 对于视频，等待发布按钮变为可点击即表示处理完成
-	btn, err := waitForPublishButtonClickable(pp)
+	btn, err := waitForPublishButtonClickable(pp, pollingModule)
 	if err != nil {
 		return err
 	}
@@ -95,9 +116,15 @@ func uploadVideo(page browser.Page, videoPath string) error {
 }
 
 // waitForPublishButtonClickable 等待发布按钮可点击
-func waitForPublishButtonClickable(page browser.Page) (browser.Element, error) {
-	maxWait := 10 * time.Minute
-	interval := 1 * time.Second
+func waitForPublishButtonClickable(page browser.Page, pollingModule polling.Module) (browser.Element, error) {
+	maxWait, err := pollingModule.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	interval, err := pollingModule.Interval()
+	if err != nil {
+		return nil, err
+	}
 	start := time.Now()
 	selector := "button.publishBtn"
 
@@ -128,7 +155,7 @@ func waitForPublishButtonClickable(page browser.Page) (browser.Element, error) {
 }
 
 // submitPublishVideo 填写标题、正文、标签并点击发布（等待按钮可点击后再提交）
-func submitPublishVideo(page browser.Page, title, content string, tags []string, scheduleTime *time.Time) error {
+func submitPublishVideo(page browser.Page, pollingModule polling.Module, title, content string, tags []string, scheduleTime *time.Time) error {
 	// 标题
 	titleElem, err := page.Element("div.d-input input")
 	if err != nil {
@@ -137,7 +164,9 @@ func submitPublishVideo(page browser.Page, title, content string, tags []string,
 	if err := titleElem.Input(title); err != nil {
 		return errors.Wrap(err, "输入标题失败")
 	}
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(pollingModule, "wait_1000ms"); err != nil {
+		return err
+	}
 
 	// 正文 + 标签
 	if contentElem, ok := getContentElement(page); ok {
@@ -149,7 +178,9 @@ func submitPublishVideo(page browser.Page, title, content string, tags []string,
 		return errors.New("没有找到内容输入框")
 	}
 
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(pollingModule, "wait_1000ms"); err != nil {
+		return err
+	}
 
 	// 处理定时发布
 	if scheduleTime != nil {
@@ -160,7 +191,7 @@ func submitPublishVideo(page browser.Page, title, content string, tags []string,
 	}
 
 	// 等待发布按钮可点击
-	btn, err := waitForPublishButtonClickable(page)
+	btn, err := waitForPublishButtonClickable(page, pollingModule)
 	if err != nil {
 		return err
 	}
@@ -170,6 +201,8 @@ func submitPublishVideo(page browser.Page, title, content string, tags []string,
 		return errors.Wrap(err, "点击发布按钮失败")
 	}
 
-	time.Sleep(3 * time.Second)
+	if err := polling.SleepDelay(pollingModule, "wait_3000ms"); err != nil {
+		return err
+	}
 	return nil
 }

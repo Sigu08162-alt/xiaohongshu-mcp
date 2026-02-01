@@ -8,14 +8,20 @@ import (
 
 	"github.com/xpzouying/xiaohongshu-mcp/errors"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 type FeedsListAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
-func NewFeedsListAction(page browser.Page) *FeedsListAction {
-	pp := page.WithTimeout(60 * time.Second)
+func NewFeedsListAction(page browser.Page, pollingModule polling.Module) (*FeedsListAction, error) {
+	timeout, err := pollingModule.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	pp := page.WithTimeout(timeout)
 
 	if err := pp.Goto("https://www.xiaohongshu.com"); err != nil {
 		panic(fmt.Sprintf("导航失败: %v", err))
@@ -23,8 +29,14 @@ func NewFeedsListAction(page browser.Page) *FeedsListAction {
 
 	// 等待 __INITIAL_STATE__ 加载，而不是等待 DOM 稳定
 	// 小红书首页有动态内容（轮播、推荐刷新），DOM 永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := pollingModule.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	checkInterval, err := pollingModule.Interval()
+	if err != nil {
+		return nil, err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -40,16 +52,20 @@ func NewFeedsListAction(page browser.Page) *FeedsListAction {
 	}
 
 	// 额外等待500ms确保数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(pollingModule, "wait_500ms"); err != nil {
+		return nil, err
+	}
 
-	return &FeedsListAction{page: pp}
+	return &FeedsListAction{page: pp, polling: pollingModule}, nil
 }
 
 // GetFeedsList 获取页面的 Feed 列表数据
 func (f *FeedsListAction) GetFeedsList(ctx context.Context) ([]Feed, error) {
 	page := f.page.WithContext(ctx)
 
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(f.polling, "wait_1000ms"); err != nil {
+		return nil, err
+	}
 
 	resultRaw, err := page.Eval(`() => {
 		if (window.__INITIAL_STATE__ &&

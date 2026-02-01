@@ -97,6 +97,10 @@ type publishSelectorConfig struct {
 			ContentEditorQL string `yaml:"content_editor_ql"`
 			SubmitButton    string `yaml:"submit_button"`
 			SaveDraftButton string `yaml:"save_draft_button"`
+			UploadingMask   string `yaml:"uploading_mask"`
+			UploadingClass  string `yaml:"uploading_class"`
+			UploadPreview   string `yaml:"upload_preview"`
+			UploadingToast  string `yaml:"uploading_toast"`
 		} `yaml:"publish"`
 	} `yaml:"selectors"`
 }
@@ -144,11 +148,15 @@ func loadPublishSelectors(path string) (map[string]string, error) {
 	}
 	logrus.Info("📄 使用传统config.yaml格式的选择器")
 	return map[string]string{
-		"upload_input": cfg.Selectors.Publish.UploadInput,
-		"title_input":  cfg.Selectors.Publish.TitleInput,
-		"content":      cfg.Selectors.Publish.ContentEditorQL,
-		"submit":       cfg.Selectors.Publish.SubmitButton,
-		"save_draft":   cfg.Selectors.Publish.SaveDraftButton,
+		"upload_input":    cfg.Selectors.Publish.UploadInput,
+		"title_input":     cfg.Selectors.Publish.TitleInput,
+		"content":         cfg.Selectors.Publish.ContentEditorQL,
+		"submit":          cfg.Selectors.Publish.SubmitButton,
+		"save_draft":      cfg.Selectors.Publish.SaveDraftButton,
+		"uploading_mask":  cfg.Selectors.Publish.UploadingMask,
+		"uploading_class": cfg.Selectors.Publish.UploadingClass,
+		"upload_preview":  cfg.Selectors.Publish.UploadPreview,
+		"uploading_toast": cfg.Selectors.Publish.UploadingToast,
 	}, nil
 }
 
@@ -160,11 +168,15 @@ func extractPublishSelectorsFromCollected(collected *collectedSelectorsConfig) (
 	}
 
 	selectors := map[string]string{
-		"upload_input": "",
-		"title_input":  "",
-		"content":      "",
-		"submit":       "",
-		"save_draft":   "",
+		"upload_input":    "",
+		"title_input":     "",
+		"content":         "",
+		"submit":          "",
+		"save_draft":      "",
+		"uploading_mask":  "",
+		"uploading_class": "",
+		"upload_preview":  "",
+		"uploading_toast": "",
 	}
 
 	// 从输入框中提取选择器

@@ -6,14 +6,16 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 type LoginAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
-func NewLogin(page browser.Page) *LoginAction {
-	return &LoginAction{page: page}
+func NewLogin(page browser.Page, pollingModule polling.Module) *LoginAction {
+	return &LoginAction{page: page, polling: pollingModule}
 }
 
 func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
@@ -25,7 +27,9 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
 		return false, errors.Wrap(err, "等待页面加载失败")
 	}
 
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
+		return false, err
+	}
 
 	exists, err := pp.Has(`.main-container .user .link-wrapper .channel`)
 	if err != nil {
@@ -51,7 +55,9 @@ func (a *LoginAction) Login(ctx context.Context) error {
 	}
 
 	// 等待一小段时间让页面完全加载
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
+		return err
+	}
 
 	// 检查是否已经登录
 	if exists, _ := pp.Has(".main-container .user .link-wrapper .channel"); exists {
@@ -81,7 +87,9 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 	}
 
 	// 等待一小段时间让页面完全加载
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
+		return "", false, err
+	}
 
 	// 检查是否已经登录
 	if exists, _ := pp.Has(".main-container .user .link-wrapper .channel"); exists {
@@ -107,7 +115,11 @@ func (a *LoginAction) FetchQrcodeImage(ctx context.Context) (string, bool, error
 
 func (a *LoginAction) WaitForLogin(ctx context.Context) bool {
 	pp := a.page.WithContext(ctx)
-	ticker := time.NewTicker(500 * time.Millisecond)
+	interval, err := a.polling.Interval()
+	if err != nil {
+		return false
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {

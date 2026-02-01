@@ -5,14 +5,13 @@
 ## 问题背景
 
 **当前问题**：
-- `refresh_selectors` 工具使用硬编码URL
 - 页面地址可能变化（如 `/content` 返回404）
-- 无法自动适应小红书更新
+- 需要通过扫描结果驱动后续采集
 
 **解决方案**：
 - 自动从首页爬取所有真实链接
 - 保存到 `discovered_pages.yaml`
-- `refresh_selectors` 可动态加载这些链接
+- `refresh_selectors` 仅从发现文件加载链接
 
 ## 功能特性
 
@@ -28,7 +27,7 @@
 
 ```bash
 # 运行页面发现工具
-./bin/discover_pages
+./bin/discover_pages --output discovered_pages.yaml
 
 # 或使用 Makefile
 make discover-pages
@@ -58,7 +57,7 @@ links:
 
 ```bash
 # 使用动态发现的页面列表
-./bin/refresh_selectors --pages discovered_pages.yaml
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml
 
 # 或使用 Makefile
 make refresh-selectors-from-discovered
@@ -75,7 +74,7 @@ make refresh-selectors-from-discovered
                    v
 ┌─────────────────────────────────────────────┐
 │  2. 发现页面链接                             │
-│     ./bin/discover_pages                    │
+│     ./bin/discover_pages --output discovered_pages.yaml │
 │     ↓                                       │
 │     discovered_pages.yaml (真实链接)         │
 └──────────────────┬──────────────────────────┘
@@ -83,7 +82,7 @@ make refresh-selectors-from-discovered
                    v
 ┌─────────────────────────────────────────────┐
 │  3. 采集组件信息                             │
-│     ./bin/refresh_selectors                 │
+│     ./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml │
 │       --pages discovered_pages.yaml         │
 │     ↓                                       │
 │     selectors_all_pages.yaml (组件信息)      │
@@ -96,7 +95,7 @@ make refresh-selectors-from-discovered
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--output` | `discovered_pages.yaml` | 输出YAML文件路径 |
+| `--output` | （必填） | 输出YAML文件路径 |
 | `--json` | (空) | 可选：同时输出JSON |
 | `--home` | `creator.xiaohongshu.com/new/home` | 首页URL |
 | `--wait` | `5` | 页面加载等待秒数 |
@@ -107,7 +106,7 @@ make refresh-selectors-from-discovered
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--pages` | (空) | 从YAML文件加载页面列表 |
+| `--pages` | (必填) | 从YAML文件加载页面列表 |
 
 ## 输出示例
 
@@ -178,21 +177,14 @@ make refresh-selectors-from-discovered
 
 ## 与 refresh_selectors 集成
 
-### 传统方式（硬编码）
-
-```bash
-# 使用内置的硬编码URL
-./bin/refresh_selectors
-```
-
-### 动态方式（推荐）
+### 动态方式（唯一方式）
 
 ```bash
 # 1. 发现真实链接
-./bin/discover_pages
+./bin/discover_pages --output discovered_pages.yaml
 
 # 2. 使用发现的链接
-./bin/refresh_selectors --pages discovered_pages.yaml
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml
 ```
 
 **优势**：
@@ -216,7 +208,7 @@ diff discovered_pages_202601.yaml discovered_pages_202602.yaml
 cp discovered_pages_202602.yaml discovered_pages.yaml
 
 # 4. 重新采集组件
-./bin/refresh_selectors --pages discovered_pages.yaml
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml
 ```
 
 ## 故障排查
@@ -225,7 +217,7 @@ cp discovered_pages_202602.yaml discovered_pages.yaml
 
 ```bash
 # 增加等待时间，确保页面完全加载
-./bin/discover_pages --wait 10
+./bin/discover_pages --output discovered_pages.yaml --wait 10
 ```
 
 ### 问题2：需要登录
@@ -235,7 +227,7 @@ cp discovered_pages_202602.yaml discovered_pages.yaml
 ./login.sh
 
 # 再次运行
-./bin/discover_pages
+./bin/discover_pages --output discovered_pages.yaml
 ```
 
 ### 问题3：某些链接不存在
@@ -275,8 +267,8 @@ URL: https://creator.xiaohongshu.com/publish/publish?source=official&target=imag
 ```bash
 # 完整工作流
 ./login.sh                                  # 1. 登录
-./bin/discover_pages                        # 2. 发现链接
-./bin/refresh_selectors --pages discovered_pages.yaml  # 3. 采集组件
+./bin/discover_pages --output discovered_pages.yaml       # 2. 发现链接
+./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml  # 3. 采集组件
 ```
 
 ## 输出文件

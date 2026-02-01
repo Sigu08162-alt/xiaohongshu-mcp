@@ -98,19 +98,35 @@ refresh-selectors:
 
 .PHONY: refresh-selectors-run
 refresh-selectors-run: refresh-selectors
-	@./bin/refresh_selectors
+	@if [ ! -f discovered_pages.yaml ]; then \
+		echo "❌ 未找到 discovered_pages.yaml，请先运行: make discover-pages-run"; \
+		exit 1; \
+	fi
+	@./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_discovered_pages.yaml
 
 .PHONY: refresh-selectors-image
 refresh-selectors-image: refresh-selectors
-	@./bin/refresh_selectors --page publish_image --output selectors_publish_image.yaml
+	@if [ ! -f discovered_pages.yaml ]; then \
+		echo "❌ 未找到 discovered_pages.yaml，请先运行: make discover-pages-run"; \
+		exit 1; \
+	fi
+	@./bin/refresh_selectors --pages discovered_pages.yaml --page publish_publish --output selectors_publish_image.yaml
 
 .PHONY: refresh-selectors-video
 refresh-selectors-video: refresh-selectors
-	@./bin/refresh_selectors --page publish_video --output selectors_publish_video.yaml
+	@if [ ! -f discovered_pages.yaml ]; then \
+		echo "❌ 未找到 discovered_pages.yaml，请先运行: make discover-pages-run"; \
+		exit 1; \
+	fi
+	@./bin/refresh_selectors --pages discovered_pages.yaml --page publish_video --output selectors_publish_video.yaml
 
 .PHONY: refresh-selectors-all-json
 refresh-selectors-all-json: refresh-selectors
-	@./bin/refresh_selectors --json selectors_all_pages.json
+	@if [ ! -f discovered_pages.yaml ]; then \
+		echo "❌ 未找到 discovered_pages.yaml，请先运行: make discover-pages-run"; \
+		exit 1; \
+	fi
+	@./bin/refresh_selectors --pages discovered_pages.yaml --output selectors_all_pages.yaml --json selectors_all_pages.json
 
 # 页面发现工具
 .PHONY: discover-pages
@@ -121,7 +137,7 @@ discover-pages:
 
 .PHONY: discover-pages-run
 discover-pages-run: discover-pages
-	@./bin/discover_pages
+	@./bin/discover_pages --output discovered_pages.yaml
 
 # 使用动态发现的页面列表采集组件
 .PHONY: refresh-selectors-from-discovered

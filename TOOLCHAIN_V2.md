@@ -132,12 +132,17 @@
 4. 操作完成后回到终端按Enter
 5. 等待采集完成
 
-### 方式2: 单独运行各阶段
+### 方式2: 单独运行各阶段（推荐命名规范）
+
+**默认命名规范（与一键脚本保持一致）**：
+- 发现文件：`discovered_pages_creator.yaml`
+- 选择器文件：`selectors_discovered_pages_creator.yaml`
+- 元数据文件：`metadata_discovered_pages_creator.yaml`
 
 #### 阶段1: 发现页面
 
 ```bash
-# 发现创作者系统页面
+# 发现创作者系统页面（使用推荐默认命名）
 ./bin/discover_pages \
   --system creator \
   --no-interactive \
@@ -158,13 +163,13 @@
 # 交互模式（推荐）
 ./bin/collect_metadata \
   --input discovered_pages_creator.yaml \
-  --output metadata_creator.yaml \
+  --output metadata_discovered_pages_creator.yaml \
   --wait 5
 
 # 非交互模式
 ./bin/collect_metadata \
   --input discovered_pages_creator.yaml \
-  --output metadata_creator.yaml \
+  --output metadata_discovered_pages_creator.yaml \
   --no-interactive \
   --wait 5
 

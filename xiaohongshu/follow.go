@@ -8,16 +8,18 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // FollowAction 关注操作
 type FollowAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
 // NewFollowAction 创建关注操作实例
-func NewFollowAction(page browser.Page) *FollowAction {
-	return &FollowAction{page: page}
+func NewFollowAction(page browser.Page, pollingModule polling.Module) (*FollowAction, error) {
+	return &FollowAction{page: page, polling: pollingModule}, nil
 }
 
 // Follow 关注用户，如果已关注则跳过
@@ -32,7 +34,11 @@ func (f *FollowAction) Unfollow(ctx context.Context, userID, xsecToken string) e
 
 // perform 执行关注/取关操作
 func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, targetFollowed bool) error {
-	page := f.page.WithContext(ctx).WithTimeout(60 * time.Second)
+	timeout, err := f.polling.Delay("wait_60000ms")
+	if err != nil {
+		return err
+	}
+	page := f.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 构建用户主页 URL
 	url := makeUserProfileURL(userID, xsecToken)
@@ -50,8 +56,14 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 
 	// 等待 __INITIAL_STATE__ 中的用户数据加载，而不是等待 DOM 稳定
 	// 用户主页有动态内容（笔记推荐、实时更新、无限滚动），DOM 可能永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := f.polling.Timeout()
+	if err != nil {
+		return err
+	}
+	checkInterval, err := f.polling.Interval()
+	if err != nil {
+		return err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -67,10 +79,12 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 	}
 
 	// 额外等待500ms确保用户数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(f.polling, "wait_500ms"); err != nil {
+		return err
+	}
 
 	// 检查页面是否可访问
-	if err := checkPageAccessible(page); err != nil {
+	if err := checkPageAccessible(page, f.polling); err != nil {
 		return err
 	}
 
@@ -101,14 +115,18 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 	if err := followBtn.ScrollIntoView(); err != nil {
 		logrus.Warnf("滚动失败: %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(f.polling, "wait_500ms"); err != nil {
+		return err
+	}
 
 	// 等待按钮可见
 	logrus.Info("等待关注按钮可见...")
 	if err := followBtn.WaitVisible(); err != nil {
 		logrus.Warnf("等待可见失败: %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(f.polling, "wait_500ms"); err != nil {
+		return err
+	}
 
 	// 点击按钮
 	logrus.Infof("点击%s按钮...", actionName)
@@ -135,7 +153,9 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 		}
 	}
 
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(f.polling, "wait_2000ms"); err != nil {
+		return err
+	}
 
 	// 验证操作结果
 	followed, err = f.getFollowState(page)
@@ -164,7 +184,11 @@ func (f *FollowAction) findFollowButton(page browser.Page) (browser.Element, err
 	}
 
 	for _, sel := range selectors {
-		elem, err := page.WithTimeout(3 * time.Second).Element(sel)
+		timeout, err := f.polling.Delay("wait_3000ms")
+		if err != nil {
+			return nil, err
+		}
+		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
 			logrus.Infof("找到关注按钮: %s", sel)
 			return elem, nil

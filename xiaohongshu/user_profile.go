@@ -7,15 +7,21 @@ import (
 	"time"
 
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 type UserProfileAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
-func NewUserProfileAction(page browser.Page) *UserProfileAction {
-	pp := page.WithTimeout(60 * time.Second)
-	return &UserProfileAction{page: pp}
+func NewUserProfileAction(page browser.Page, pollingModule polling.Module) (*UserProfileAction, error) {
+	timeout, err := pollingModule.Delay("wait_60000ms")
+	if err != nil {
+		return nil, err
+	}
+	pp := page.WithTimeout(timeout)
+	return &UserProfileAction{page: pp, polling: pollingModule}, nil
 }
 
 // UserProfile 获取用户基本信息及帖子
@@ -26,7 +32,11 @@ func (u *UserProfileAction) UserProfile(ctx context.Context, userID, xsecToken s
 	if err := page.Goto(searchURL); err != nil {
 		return nil, fmt.Errorf("failed to navigate to user profile: %w", err)
 	}
-	if err := page.WaitDOMStable(time.Second, 0.1); err != nil {
+	waitStable, err := u.polling.Delay("wait_1000ms")
+	if err != nil {
+		return nil, err
+	}
+	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
 		return nil, fmt.Errorf("failed to wait for page stable: %w", err)
 	}
 
@@ -36,7 +46,11 @@ func (u *UserProfileAction) UserProfile(ctx context.Context, userID, xsecToken s
 // extractUserProfileData 从页面中提取用户资料数据的通用方法
 func (u *UserProfileAction) extractUserProfileData(page browser.Page) (*UserProfileResponse, error) {
 	// 等待 __INITIAL_STATE__ 对象存在
-	if err := page.WaitForFunction(`() => window.__INITIAL_STATE__ !== undefined`, 30*time.Second); err != nil {
+	timeout, err := u.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	if err := page.WaitForFunction(`() => window.__INITIAL_STATE__ !== undefined`, timeout); err != nil {
 		return nil, fmt.Errorf("failed to wait for __INITIAL_STATE__: %w", err)
 	}
 
@@ -124,7 +138,7 @@ func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context) (*UserPr
 	page := u.page.WithContext(ctx)
 
 	// 创建导航动作
-	navigate := NewNavigate(page)
+	navigate := NewNavigate(page, u.polling)
 
 	// 通过侧边栏导航到个人主页
 	if err := navigate.ToProfilePage(ctx); err != nil {
@@ -133,8 +147,14 @@ func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context) (*UserPr
 
 	// 等待 __INITIAL_STATE__ 中的用户数据加载，而不是等待 DOM 稳定
 	// 个人主页有动态内容（笔记推荐、实时更新），DOM 可能永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := u.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	checkInterval, err := u.polling.Interval()
+	if err != nil {
+		return nil, err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -150,7 +170,9 @@ func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context) (*UserPr
 	}
 
 	// 额外等待500ms确保数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(u.polling, "wait_500ms"); err != nil {
+		return nil, err
+	}
 
 	return u.extractUserProfileData(page)
 }

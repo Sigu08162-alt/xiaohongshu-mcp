@@ -14,6 +14,7 @@ import (
 	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
 	domainpublish "github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 	"github.com/xpzouying/xiaohongshu-mcp/pkg/downloader"
 	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
 )
@@ -22,23 +23,47 @@ type loginProvider interface {
 	GetQRCode(ctx context.Context) (loginQRResult, error)
 }
 
+type PollingModules struct {
+	Publish     polling.Module
+	Draft       polling.Module
+	Video       polling.Module
+	Interaction polling.Module
+	Analytics   polling.Module
+	Auth        polling.Module
+}
+
 // XiaohongshuService 小红书业务服务
 type XiaohongshuService struct {
 	publishUsecase *apppublish.Usecase
 	loginManager   loginProvider
+	polling        PollingModules
 }
 
 // NewXiaohongshuService 创建小红书服务实例
-func NewXiaohongshuService() *XiaohongshuService {
+func NewXiaohongshuService() (*XiaohongshuService, error) {
 	return NewXiaohongshuServiceWithUsecase(nil)
 }
 
 // NewXiaohongshuServiceWithUsecase 支持注入发布用例
-func NewXiaohongshuServiceWithUsecase(publishUsecase *apppublish.Usecase) *XiaohongshuService {
+func NewXiaohongshuServiceWithUsecase(publishUsecase *apppublish.Usecase) (*XiaohongshuService, error) {
+	modules, err := loadPollingModules()
+	if err != nil {
+		return nil, err
+	}
+	return NewXiaohongshuServiceWithModules(publishUsecase, modules)
+}
+
+// NewXiaohongshuServiceWithModules 使用已加载的轮询配置创建服务
+func NewXiaohongshuServiceWithModules(publishUsecase *apppublish.Usecase, modules PollingModules) (*XiaohongshuService, error) {
+	loginTTL := time.Duration(modules.Auth.TimeoutMs) * time.Millisecond
+	if loginTTL <= 0 {
+		return nil, fmt.Errorf("polling.auth.timeout_ms missing or invalid")
+	}
 	return &XiaohongshuService{
 		publishUsecase: publishUsecase,
-		loginManager:   NewLoginManager(newPlaywrightLoginSession, 4*time.Minute),
-	}
+		loginManager:   NewLoginManager(newPlaywrightLoginSession, loginTTL),
+		polling:        modules,
+	}, nil
 }
 
 // PublishRequest 发布请求
@@ -131,7 +156,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		loginAction := xiaohongshu.NewLogin(page)
+		loginAction := xiaohongshu.NewLogin(page, s.polling.Auth)
 		isLoggedIn, err = loginAction.CheckLoginStatus(ctx)
 		return err
 	})
@@ -197,7 +222,7 @@ func (s *XiaohongshuService) getLoginQrcodeLegacy(ctx context.Context) (*LoginQr
 		engine.Close()
 	}
 
-	loginAction := xiaohongshu.NewLogin(page)
+	loginAction := xiaohongshu.NewLogin(page, s.polling.Auth)
 
 	img, loggedIn, err = loginAction.FetchQrcodeImage(ctx)
 	if err != nil || loggedIn {
@@ -298,10 +323,7 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 			return nil, err
 		}
 	} else {
-		if err := s.publishContent(ctx, content); err != nil {
-			logrus.Errorf("发布内容失败: title=%s %v", content.Title, err)
-			return nil, err
-		}
+		return nil, fmt.Errorf("发布用例未初始化，无法执行发布")
 	}
 
 	response := &PublishResponse{
@@ -401,7 +423,7 @@ func (s *XiaohongshuService) PublishVideo(ctx context.Context, req *PublishVideo
 // publishVideo 执行视频发布
 func (s *XiaohongshuService) publishVideo(ctx context.Context, content xiaohongshu.PublishVideoContent) error {
 	return withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewPublishVideoAction(page)
+		action, err := xiaohongshu.NewPublishVideoAction(page, s.polling.Video)
 		if err != nil {
 			return err
 		}
@@ -417,7 +439,10 @@ func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse,
 
 	err = withBrowserPage(func(page browser.Page) error {
 		// 创建 Feeds 列表 action
-		action := xiaohongshu.NewFeedsListAction(page)
+		action, err := xiaohongshu.NewFeedsListAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 
 		// 获取 Feeds 列表
 		feeds, err = action.GetFeedsList(ctx)
@@ -442,7 +467,10 @@ func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, fi
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewSearchAction(page)
+		action, err := xiaohongshu.NewSearchAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		feeds, err = action.Search(ctx, keyword, filters...)
 		return err
 	})
@@ -471,7 +499,10 @@ func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID
 
 	err = withBrowserPage(func(page browser.Page) error {
 		// 创建 Feed 详情 action
-		action := xiaohongshu.NewFeedDetailAction(page)
+		action, err := xiaohongshu.NewFeedDetailAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 
 		// 获取 Feed 详情
 		result, err = action.GetFeedDetailWithConfig(ctx, feedID, xsecToken, loadAllComments, config)
@@ -496,7 +527,10 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken 
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewUserProfileAction(page)
+		action, err := xiaohongshu.NewUserProfileAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		result, err = action.UserProfile(ctx, userID, xsecToken)
 		return err
 	})
@@ -517,7 +551,10 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken 
 // PostCommentToFeed 发表评论到Feed
 func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsecToken, content string) (*PostCommentResponse, error) {
 	err := withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewCommentFeedAction(page)
+		action, err := xiaohongshu.NewCommentFeedAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.PostComment(ctx, feedID, xsecToken, content)
 	})
 
@@ -531,7 +568,7 @@ func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsec
 // LikeFeed 点赞笔记
 func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
 	err := withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewLikeAction(page)
+		action := xiaohongshu.NewLikeAction(page, s.polling.Interaction)
 		return action.Like(ctx, feedID, xsecToken)
 	})
 
@@ -545,7 +582,7 @@ func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken str
 // UnlikeFeed 取消点赞笔记
 func (s *XiaohongshuService) UnlikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
 	err := withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewLikeAction(page)
+		action := xiaohongshu.NewLikeAction(page, s.polling.Interaction)
 		return action.Unlike(ctx, feedID, xsecToken)
 	})
 
@@ -559,7 +596,7 @@ func (s *XiaohongshuService) UnlikeFeed(ctx context.Context, feedID, xsecToken s
 // FavoriteFeed 收藏笔记
 func (s *XiaohongshuService) FavoriteFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
 	err := withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewFavoriteAction(page)
+		action := xiaohongshu.NewFavoriteAction(page, s.polling.Interaction)
 		return action.Favorite(ctx, feedID, xsecToken)
 	})
 
@@ -573,7 +610,7 @@ func (s *XiaohongshuService) FavoriteFeed(ctx context.Context, feedID, xsecToken
 // UnfavoriteFeed 取消收藏笔记
 func (s *XiaohongshuService) UnfavoriteFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
 	err := withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewFavoriteAction(page)
+		action := xiaohongshu.NewFavoriteAction(page, s.polling.Interaction)
 		return action.Unfavorite(ctx, feedID, xsecToken)
 	})
 
@@ -587,7 +624,10 @@ func (s *XiaohongshuService) UnfavoriteFeed(ctx context.Context, feedID, xsecTok
 // ReplyCommentToFeed 回复指定评论
 func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xsecToken, commentID, userID, content string) (*ReplyCommentResponse, error) {
 	err := withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewCommentFeedAction(page)
+		action, err := xiaohongshu.NewCommentFeedAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.ReplyToComment(ctx, feedID, xsecToken, commentID, userID, content)
 	})
 
@@ -612,7 +652,10 @@ func (s *XiaohongshuService) GetMyProfile(ctx context.Context) (*UserProfileResp
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewUserProfileAction(page)
+		action, err := xiaohongshu.NewUserProfileAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		result, err = action.GetMyProfileViaSidebar(ctx)
 		return err
 	})
@@ -635,7 +678,10 @@ func (s *XiaohongshuService) FollowUser(ctx context.Context, userID, xsecToken s
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewFollowAction(page)
+		action, err := xiaohongshu.NewFollowAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.Follow(ctx, userID, xsecToken)
 	})
 
@@ -655,7 +701,10 @@ func (s *XiaohongshuService) UnfollowUser(ctx context.Context, userID, xsecToken
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewFollowAction(page)
+		action, err := xiaohongshu.NewFollowAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.Unfollow(ctx, userID, xsecToken)
 	})
 
@@ -675,7 +724,10 @@ func (s *XiaohongshuService) LikeComment(ctx context.Context, feedID, xsecToken,
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewCommentLikeAction(page)
+		action, err := xiaohongshu.NewCommentLikeAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.LikeComment(ctx, feedID, xsecToken, commentID, userID)
 	})
 
@@ -695,7 +747,10 @@ func (s *XiaohongshuService) UnlikeComment(ctx context.Context, feedID, xsecToke
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewCommentLikeAction(page)
+		action, err := xiaohongshu.NewCommentLikeAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.UnlikeComment(ctx, feedID, xsecToken, commentID, userID)
 	})
 
@@ -716,7 +771,10 @@ func (s *XiaohongshuService) ShareFeed(ctx context.Context, feedID, xsecToken st
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewShareAction(page)
+		action, err := xiaohongshu.NewShareAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		shareLink, err = action.ShareFeed(ctx, feedID, xsecToken)
 		return err
 	})
@@ -733,7 +791,10 @@ func (s *XiaohongshuService) DeleteFeed(ctx context.Context, feedID, xsecToken s
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewDeleteAction(page)
+		action, err := xiaohongshu.NewDeleteAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.DeleteFeed(ctx, feedID, xsecToken)
 	})
 
@@ -753,7 +814,10 @@ func (s *XiaohongshuService) DeleteComment(ctx context.Context, feedID, xsecToke
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewDeleteAction(page)
+		action, err := xiaohongshu.NewDeleteAction(page, s.polling.Interaction)
+		if err != nil {
+			return err
+		}
 		return action.DeleteComment(ctx, feedID, xsecToken, commentID, userID)
 	})
 
@@ -774,7 +838,10 @@ func (s *XiaohongshuService) GetMyStats(ctx context.Context) (*xiaohongshu.UserS
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewDataAction(page)
+		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
+		if err != nil {
+			return err
+		}
 		stats, err = action.GetMyStats(ctx)
 		return err
 	})
@@ -792,7 +859,10 @@ func (s *XiaohongshuService) GetMyFeeds(ctx context.Context, limit int, userID s
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewDataAction(page)
+		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
+		if err != nil {
+			return err
+		}
 		feeds, err = action.GetMyFeeds(ctx, limit, userID)
 		return err
 	})
@@ -810,7 +880,10 @@ func (s *XiaohongshuService) GetFanAnalytics(ctx context.Context, period string)
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewDataAction(page)
+		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
+		if err != nil {
+			return err
+		}
 		analytics, err = action.GetFanAnalytics(ctx, period)
 		return err
 	})
@@ -828,7 +901,10 @@ func (s *XiaohongshuService) GetContentAnalytics(ctx context.Context, limit int,
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
-		action := xiaohongshu.NewDataAction(page)
+		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
+		if err != nil {
+			return err
+		}
 		analytics, err = action.GetContentAnalytics(ctx, limit, sortBy, sortOrder)
 		return err
 	})

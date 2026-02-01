@@ -19,6 +19,7 @@ import (
 type ImageDownloader struct {
 	savePath   string
 	httpClient *http.Client
+	maxRetries int // 最大重试次数
 }
 
 // NewImageDownloader 创建图片下载器
@@ -31,8 +32,9 @@ func NewImageDownloader(savePath string) *ImageDownloader {
 	return &ImageDownloader{
 		savePath: savePath,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: 120 * time.Second, // 增加到120秒，适配云存储下载
 		},
+		maxRetries: 3, // 默认重试3次
 	}
 }
 
@@ -44,48 +46,71 @@ func (d *ImageDownloader) DownloadImage(imageURL string) (string, error) {
 		return "", errors.New("invalid image URL format")
 	}
 
+	var lastErr error
+	// 重试机制
+	for attempt := 0; attempt <= d.maxRetries; attempt++ {
+		if attempt > 0 {
+			// 重试前等待一段时间，使用指数退避
+			waitTime := time.Duration(attempt) * 2 * time.Second
+			time.Sleep(waitTime)
+		}
+
+		imageData, err := d.downloadWithRetry(imageURL)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		// 检测图片格式
+		kind, err := filetype.Match(imageData)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to detect file type")
+		}
+
+		if !filetype.IsImage(imageData) {
+			return "", errors.New("downloaded file is not a valid image")
+		}
+
+		// 生成唯一文件名
+		fileName := d.generateFileName(imageURL, kind.Extension)
+		filePath := filepath.Join(d.savePath, fileName)
+
+		// 如果文件已存在，直接返回路径
+		if _, err := os.Stat(filePath); err == nil {
+			return filePath, nil
+		}
+
+		// 保存到文件
+		if err := os.WriteFile(filePath, imageData, 0644); err != nil {
+			return "", errors.Wrap(err, "failed to save image")
+		}
+
+		return filePath, nil
+	}
+
+	return "", errors.Wrapf(lastErr, "failed to download image after %d retries", d.maxRetries)
+}
+
+// downloadWithRetry 执行单次下载尝试
+func (d *ImageDownloader) downloadWithRetry(imageURL string) ([]byte, error) {
 	// 下载图片数据
 	resp, err := d.httpClient.Get(imageURL)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to download image")
+		return nil, errors.Wrap(err, "failed to download image")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("download failed with status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("download failed with status: %d", resp.StatusCode)
 	}
 
 	// 读取图片数据
 	imageData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", errors.Wrap(err, "failed to read image data")
+		return nil, errors.Wrap(err, "failed to read image data")
 	}
 
-	// 检测图片格式
-	kind, err := filetype.Match(imageData)
-	if err != nil {
-		return "", errors.Wrap(err, "failed to detect file type")
-	}
-
-	if !filetype.IsImage(imageData) {
-		return "", errors.New("downloaded file is not a valid image")
-	}
-
-	// 生成唯一文件名
-	fileName := d.generateFileName(imageURL, kind.Extension)
-	filePath := filepath.Join(d.savePath, fileName)
-
-	// 如果文件已存在，直接返回路径
-	if _, err := os.Stat(filePath); err == nil {
-		return filePath, nil
-	}
-
-	// 保存到文件
-	if err := os.WriteFile(filePath, imageData, 0644); err != nil {
-		return "", errors.Wrap(err, "failed to save image")
-	}
-
-	return filePath, nil
+	return imageData, nil
 }
 
 // DownloadImages 批量下载图片

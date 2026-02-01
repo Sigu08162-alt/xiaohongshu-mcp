@@ -7,16 +7,18 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // CommentLikeAction 评论点赞操作
 type CommentLikeAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
 // NewCommentLikeAction 创建评论点赞操作实例
-func NewCommentLikeAction(page browser.Page) *CommentLikeAction {
-	return &CommentLikeAction{page: page}
+func NewCommentLikeAction(page browser.Page, pollingModule polling.Module) (*CommentLikeAction, error) {
+	return &CommentLikeAction{page: page, polling: pollingModule}, nil
 }
 
 // LikeComment 点赞评论，如果已点赞则跳过
@@ -31,7 +33,11 @@ func (c *CommentLikeAction) UnlikeComment(ctx context.Context, feedID, xsecToken
 
 // perform 执行点赞/取消点赞操作
 func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, commentID, userID string, targetLiked bool) error {
-	page := c.page.WithContext(ctx).WithTimeout(5 * time.Minute)
+	timeout, err := c.polling.Delay("wait_300000ms")
+	if err != nil {
+		return err
+	}
+	page := c.page.WithContext(ctx).WithTimeout(timeout)
 
 	url := makeFeedDetailURL(feedID, xsecToken)
 	actionName := "点赞评论"
@@ -48,8 +54,14 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 
 	// 等待 __INITIAL_STATE__ 中的笔记数据加载，而不是等待 DOM 稳定
 	// Feed 详情页有动态内容（评论实时加载、推荐内容），DOM 可能永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := c.polling.Timeout()
+	if err != nil {
+		return err
+	}
+	checkInterval, err := c.polling.Interval()
+	if err != nil {
+		return err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -65,18 +77,22 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 	}
 
 	// 额外等待500ms确保笔记数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(c.polling, "wait_500ms"); err != nil {
+		return err
+	}
 
 	// 检查页面是否可访问
-	if err := checkPageAccessible(page); err != nil {
+	if err := checkPageAccessible(page, c.polling); err != nil {
 		return err
 	}
 
 	// 等待评论容器加载
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(c.polling, "wait_2000ms"); err != nil {
+		return err
+	}
 
 	// 查找评论元素
-	commentEl, err := findCommentElement(page, commentID, userID)
+	commentEl, err := findCommentElement(page, c.polling, commentID, userID)
 	if err != nil {
 		return fmt.Errorf("无法找到评论: %w", err)
 	}
@@ -86,7 +102,9 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 	if err := commentEl.ScrollIntoView(); err != nil {
 		logrus.Warnf("滚动失败: %v", err)
 	}
-	time.Sleep(1 * time.Second)
+	if err := polling.SleepDelay(c.polling, "wait_1000ms"); err != nil {
+		return err
+	}
 
 	// 查找评论的点赞按钮
 	likeBtn, err := c.findCommentLikeButton(commentEl)
@@ -130,7 +148,9 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 		}
 	}
 
-	time.Sleep(2 * time.Second)
+	if err := polling.SleepDelay(c.polling, "wait_2000ms"); err != nil {
+		return err
+	}
 
 	// 验证操作结果
 	liked, err = c.getCommentLikeState(likeBtn)

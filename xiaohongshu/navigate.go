@@ -8,14 +8,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
 )
 
 type NavigateAction struct {
-	page browser.Page
+	page    browser.Page
+	polling polling.Module
 }
 
-func NewNavigate(page browser.Page) *NavigateAction {
-	return &NavigateAction{page: page}
+func NewNavigate(page browser.Page, pollingModule polling.Module) *NavigateAction {
+	return &NavigateAction{page: page, polling: pollingModule}
 }
 
 func (n *NavigateAction) ToExplorePage(ctx context.Context) error {
@@ -54,8 +56,14 @@ func (n *NavigateAction) ToProfilePageWithUserID(ctx context.Context, userID str
 
 	// 等待 __INITIAL_STATE__ 加载，而不是等待 DOM 稳定
 	// 探索页面有动态内容，DOM 可能永远不会稳定
-	maxWait := 30 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := n.polling.Timeout()
+	if err != nil {
+		return err
+	}
+	checkInterval, err := n.polling.Interval()
+	if err != nil {
+		return err
+	}
 	startTime := time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -69,7 +77,9 @@ func (n *NavigateAction) ToProfilePageWithUserID(ctx context.Context, userID str
 	}
 
 	// 额外等待500ms确保数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(n.polling, "wait_500ms"); err != nil {
+		return err
+	}
 
 	// 从 __INITIAL_STATE__ 获取当前用户ID
 	currentUserID, err := page.Eval(`() => {
@@ -109,8 +119,14 @@ func (n *NavigateAction) ToProfilePageWithUserID(ctx context.Context, userID str
 
 	// 等待个人主页的 __INITIAL_STATE__ 加载，而不是等待 DOM 稳定
 	// 个人主页可能有动态内容（笔记推荐、实时更新），DOM 可能永远不会稳定
-	maxWait = 30 * time.Second
-	checkInterval = 500 * time.Millisecond
+	maxWait, err = n.polling.Timeout()
+	if err != nil {
+		return err
+	}
+	checkInterval, err = n.polling.Interval()
+	if err != nil {
+		return err
+	}
 	startTime = time.Now()
 
 	for time.Since(startTime) < maxWait {
@@ -126,7 +142,9 @@ func (n *NavigateAction) ToProfilePageWithUserID(ctx context.Context, userID str
 	}
 
 	// 额外等待500ms确保数据完全加载
-	time.Sleep(500 * time.Millisecond)
+	if err := polling.SleepDelay(n.polling, "wait_500ms"); err != nil {
+		return err
+	}
 
 	return nil
 }

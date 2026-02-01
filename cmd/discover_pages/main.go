@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -21,6 +22,8 @@ type LinkInfo struct {
 	Description string   `yaml:"description,omitempty" json:"description,omitempty"`
 	Category    string   `yaml:"category,omitempty" json:"category,omitempty"`
 	Classes     []string `yaml:"classes,omitempty" json:"classes,omitempty"`
+	Trigger     string   `yaml:"trigger_selector,omitempty" json:"trigger_selector,omitempty"`
+	Item        string   `yaml:"item_selector,omitempty" json:"item_selector,omitempty"`
 }
 
 // PageLinks 页面链接集合
@@ -33,7 +36,7 @@ type PageLinks struct {
 
 func main() {
 	// 命令行参数
-	outputYAML := flag.String("output", "discovered_pages.yaml", "输出YAML文件路径")
+	outputYAML := flag.String("output", "", "输出YAML文件路径（必填）")
 	outputJSON := flag.String("json", "", "可选：同时输出JSON文件")
 	headless := flag.Bool("headless", false, "无头模式（默认有头）")
 	homeURL := flag.String("home", "https://creator.xiaohongshu.com/new/home?source=official", "起始页面URL")
@@ -48,6 +51,10 @@ func main() {
 		FullTimestamp: true,
 		ForceColors:   true,
 	})
+
+	if *outputYAML == "" {
+		logrus.Fatal("必须通过 --output 指定输出文件")
+	}
 
 	// 根据系统类型设置默认起始页
 	if *homeURL == "https://creator.xiaohongshu.com/new/home?source=official" && *systemType == "user" {
@@ -211,30 +218,148 @@ func discoverLinks(page browser.Page, systemType string) []LinkInfo {
 func discoverCreatorSystemLinks(page browser.Page) []LinkInfo {
 	jsCode := `() => {
 		const links = [];
-		const visited = new Set();
+		const triggers = [];
+
+		const roots = [document];
+		document.querySelectorAll('*').forEach(el => {
+			if (el.shadowRoot) {
+				roots.push(el.shadowRoot);
+			}
+		});
+
+		const queryAll = (selector) => {
+			const result = [];
+			roots.forEach(root => {
+				try {
+					root.querySelectorAll(selector).forEach(el => result.push(el));
+				} catch (e) {
+					// ignore
+				}
+			});
+			return result;
+		};
 
 		// 调试:输出页面信息
 		console.log('=== 开始链接发现 ===');
 		console.log('URL:', window.location.href);
-		console.log('所有 a 标签数量:', document.querySelectorAll('a').length);
-		console.log('菜单项数量:', document.querySelectorAll('.menu-item').length);
-		console.log('所有可点击元素:', document.querySelectorAll('[onclick], [role="link"], [role="button"]').length);
+		console.log('所有 a 标签数量:', queryAll('a').length);
+		console.log('菜单项数量:', queryAll('.menu-item').length);
+		console.log('所有可点击元素:', queryAll('[onclick], [role="link"], [role="button"]').length);
+
+		const cssEscape = (value) => {
+			if (!value) return '';
+			if (window.CSS && CSS.escape) {
+				return CSS.escape(value);
+			}
+			return value.replace(/[^a-zA-Z0-9_\\-]/g, '\\\\$&');
+		};
+
+		const buildSelector = (el) => {
+			if (!el || el.nodeType !== 1) return '';
+			const parts = [];
+			let current = el;
+			while (current && current.nodeType === 1 && current !== document.body) {
+				const tag = current.tagName.toLowerCase();
+				if (current.id) {
+					parts.unshift(tag + '#' + cssEscape(current.id));
+					break;
+				}
+				let part = tag;
+				const parent = current.parentElement;
+				if (parent) {
+					const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+					if (siblings.length > 1) {
+						const index = siblings.indexOf(current) + 1;
+						part += ':nth-of-type(' + index + ')';
+					}
+				}
+				parts.unshift(part);
+				current = parent;
+			}
+			return parts.join(' > ');
+		};
+
+		const normalizeUrl = (raw) => {
+			if (!raw || typeof raw !== 'string') return '';
+			return raw.trim();
+		};
+
+		const isVisible = (el) => {
+			if (!el) return false;
+			const style = window.getComputedStyle(el);
+			if (!style) return false;
+			if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+			if (el.offsetParent === null && style.position !== 'fixed') return false;
+			return true;
+		};
+
+		const getVueLink = (el) => {
+			const comp = el.__vueParentComponent;
+			if (!comp) return '';
+			const props = (comp.props || comp.vnode?.props) || {};
+			return props.to || props.href || props.path || '';
+		};
+
+		const getReactLink = (el) => {
+			const keys = Object.keys(el || {});
+			const reactKey = keys.find(k => k.startsWith('__reactProps$'));
+			if (!reactKey) return '';
+			const props = el[reactKey] || {};
+			return props.to || props.href || props.path || '';
+		};
+
+		const getAttrLink = (el) => {
+			const attrs = Array.from(el.attributes || []);
+			for (const attr of attrs) {
+				const name = attr.name || '';
+				const value = attr.value || '';
+				if (!value) continue;
+				if (name.includes('href') || name.includes('to') || name.includes('path') || name.includes('url')) {
+					return value;
+				}
+			}
+			return '';
+		};
+
+		const getDataLink = (el) => {
+			const dataset = el.dataset || {};
+			for (const key of Object.keys(dataset)) {
+				const value = dataset[key];
+				if (!value) continue;
+				if (key.toLowerCase().includes('url') || key.toLowerCase().includes('href') || key.toLowerCase().includes('path') || key.toLowerCase().includes('to')) {
+					return value;
+				}
+			}
+			return '';
+		};
+
+		const resolveLink = (el) => {
+			return normalizeUrl(
+				el.getAttribute('href') ||
+				el.getAttribute('data-href') ||
+				el.getAttribute('data-to') ||
+				el.getAttribute('data-path') ||
+				el.getAttribute('to') ||
+				getDataLink(el) ||
+				getAttrLink(el) ||
+				getVueLink(el) ||
+				getReactLink(el)
+			);
+		};
 
 		// 策略1: 尝试查找菜单项(小红书使用div+路由,不是a标签)
-		document.querySelectorAll('.menu-item, [class*="menu"]').forEach((item, idx) => {
+		queryAll('.menu-item, [class*="menu"]').forEach((item, idx) => {
 			// 尝试从元素或父元素获取路径信息
 			const text = item.textContent?.trim() || '';
 
-			// 检查data-*属性
 			const dataTo = item.getAttribute('data-to') ||
 			              item.getAttribute('data-path') ||
-			              item.getAttribute('data-href');
+			              item.getAttribute('data-href') ||
+			              '';
 
-			// 检查onClick事件
 			const onClick = item.getAttribute('onclick') || '';
-
-			// 检查Vue/React路由属性
 			const to = item.getAttribute('to') || '';
+			const resolved = resolveLink(item);
 
 			if (idx < 20) {
 				console.log('菜单项 ' + idx + ':', {
@@ -242,22 +367,25 @@ func discoverCreatorSystemLinks(page browser.Page) []LinkInfo {
 					dataTo: dataTo,
 					onClick: onClick.substring(0, 50),
 					to: to,
+					resolved: resolved,
 					className: item.className
 				});
 			}
 
-			// 如果有文本,尝试提取
+			// 如果有文本,尝试提取（不做筛选）
 			if (text && text.length > 0 && text.length < 100) {
 				links.push({
 					text: text,
-					url: dataTo || to || '', // 可能为空,后续手动补充
-					classes: item.className ? item.className.split(' ').filter(c => c) : []
+					url: resolved,
+					classes: item.className ? item.className.split(' ').filter(c => c) : [],
+					trigger_selector: buildSelector(item),
+					item_selector: buildSelector(item)
 				});
 			}
 		});
 
 		// 策略2: 查找所有带href的a标签(即使数量为0也尝试)
-		document.querySelectorAll('a[href]').forEach((link, idx) => {
+		queryAll('a[href]').forEach((link, idx) => {
 			const href = link.href;
 			const text = link.textContent?.trim() || '';
 
@@ -269,91 +397,100 @@ func discoverCreatorSystemLinks(page browser.Page) []LinkInfo {
 				});
 			}
 
-			if (href.includes('creator.xiaohongshu.com') && !visited.has(href)) {
-				visited.add(href);
+			if (href) {
 				const classes = link.className ? link.className.split(' ').filter(c => c) : [];
 				links.push({
 					text: text || link.getAttribute('aria-label') || link.title || '',
 					url: href,
 					classes: classes,
-					parent_text: link.parentElement?.textContent?.trim().substring(0, 50) || ''
+					parent_text: link.parentElement?.textContent?.trim().substring(0, 50) || '',
+					trigger_selector: buildSelector(link),
+					item_selector: buildSelector(link)
 				});
 				console.log('✓ 添加链接:', text.substring(0, 30), '→', href.substring(0, 60));
 			}
 		});
 
-		// 策略3: 动态从页面获取URL，而不是硬编码
-		const pageText = document.body.textContent || '';
-		const keywords = ['发布笔记', '笔记管理', '数据看板', '内容分析', '粉丝数据'];
+		// 策略3: 从全局状态中提取URL（若存在），不使用硬编码正则
+		try {
+			if (window.__INITIAL_STATE__) {
+				const queue = [window.__INITIAL_STATE__];
+				const seen = new Set();
+				const maxNodes = 20000;
+				let nodes = 0;
 
-		// 首先尝试从菜单项的实际属性获取URL
-		const realUrlMap = {};
-		document.querySelectorAll('.menu-item, [class*="menu"], nav a, aside a').forEach(item => {
-			const text = item.textContent?.trim() || '';
-			const href = item.getAttribute('href') ||
-			             item.getAttribute('data-href') ||
-			             item.getAttribute('data-to') ||
-			             item.querySelector('a')?.href ||
-			             '';
+				const tryAddUrl = (value) => {
+					if (!value || typeof value !== 'string') return;
+					let candidate = value.trim();
+					if (!candidate) return;
+					if (candidate.startsWith('#')) return;
+					if (candidate.startsWith('javascript:')) return;
 
-			if (text && href && text.length > 0 && text.length < 20) {
-				// 如果是相对路径，补全为绝对路径
-				let fullUrl = href;
-				if (href.startsWith('/')) {
-					fullUrl = window.location.origin + href;
-				}
-				// 标准化URL（移除hash）
-				fullUrl = fullUrl.split('#')[0];
-
-				realUrlMap[text] = fullUrl;
-				console.log('✓ 从DOM获取URL:', text, '→', fullUrl);
-			}
-		});
-
-		// fallback URL映射（仅用于没有从DOM获取到的情况）
-		const fallbackUrlMap = {
-			'发布笔记': '/publish/publish',
-			'笔记管理': '/creator/content',
-			'数据看板': '/creator/data-board',
-			'内容分析': '/creator/content/data',
-			'粉丝数据': '/creator/fans'
-		};
-
-		keywords.forEach(keyword => {
-			if (pageText.includes(keyword)) {
-				// 优先使用从DOM获取的真实URL
-				let url = realUrlMap[keyword];
-
-				// 如果没有获取到，使用fallback推测
-				if (!url && fallbackUrlMap[keyword]) {
-					url = window.location.origin + fallbackUrlMap[keyword];
-					console.log('⚠ 使用fallback URL:', keyword, '→', url);
-				}
-
-				if (url && !visited.has(url)) {
-					// 自动补全source=official参数
-					if (!url.includes('source=')) {
-						const separator = url.includes('?') ? '&' : '?';
-						url = url + separator + 'source=official';
-						console.log('✓ 补全参数:', url);
+					let url = '';
+					try {
+						url = new URL(candidate, window.location.origin).toString();
+					} catch (e) {
+						return;
 					}
 
-					visited.add(url);
+					if (!url) return;
 					links.push({
-						text: keyword,
+						text: '',
 						url: url,
-						classes: realUrlMap[keyword] ? ['from-dom'] : ['inferred'],
-						category: realUrlMap[keyword] ? 'dynamic' : 'inferred'
+						classes: ['from-state'],
+						category: 'dynamic',
+						trigger_selector: '',
+						item_selector: ''
 					});
-					console.log('✓ 添加链接:', keyword, '→', url);
+				};
+
+				while (queue.length > 0 && nodes < maxNodes) {
+					const current = queue.shift();
+					if (!current || typeof current !== 'object') continue;
+					if (seen.has(current)) continue;
+					seen.add(current);
+					nodes += 1;
+
+					if (Array.isArray(current)) {
+						for (const item of current) {
+							if (typeof item === 'string') {
+								tryAddUrl(item);
+							} else if (item && typeof item === 'object') {
+								queue.push(item);
+							}
+						}
+						continue;
+					}
+
+					for (const key of Object.keys(current)) {
+						const value = current[key];
+						if (typeof value === 'string') {
+							tryAddUrl(value);
+						} else if (value && typeof value === 'object') {
+							queue.push(value);
+						}
+					}
 				}
+			}
+		} catch (e) {
+			console.warn('state parse failed', e);
+		}
+
+		// 策略5: 触发器收集（下拉/弹层）
+		queryAll('[aria-haspopup], [aria-expanded], [role="button"], [data-popper-placement], [data-popper-reference-hidden]').forEach(el => {
+			if (!isVisible(el)) return;
+			const text = el.textContent?.trim() || '';
+			if (text.length > 20) return;
+			const selector = buildSelector(el);
+			if (selector) {
+				triggers.push(selector);
 			}
 		});
 
 		console.log('总共发现:', links.length, '个链接');
 		console.log('=== 链接发现完成 ===');
 
-		return links;
+		return { links, triggers };
 	}`
 
 	info, err := page.Eval(jsCode)
@@ -364,28 +501,92 @@ func discoverCreatorSystemLinks(page browser.Page) []LinkInfo {
 
 	// 解析结果
 	jsonData, _ := json.Marshal(info)
-	var links []LinkInfo
-	json.Unmarshal(jsonData, &links)
+	var result struct {
+		Links    []LinkInfo `json:"links"`
+		Triggers []string   `json:"triggers"`
+	}
+	json.Unmarshal(jsonData, &result)
+
+	links := result.Links
+	triggerSeen := map[string]struct{}{}
+	for _, selector := range result.Triggers {
+		if selector == "" {
+			continue
+		}
+		if _, ok := triggerSeen[selector]; ok {
+			continue
+		}
+		triggerSeen[selector] = struct{}{}
+		_ = page.Click(selector)
+		time.Sleep(500 * time.Millisecond)
+
+		menuInfo, err := page.Eval(`() => {
+			const items = [];
+			const isVisible = (el) => {
+				if (!el) return false;
+				const style = window.getComputedStyle(el);
+				if (!style) return false;
+				if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+				if (el.offsetParent === null && style.position !== 'fixed') return false;
+				return true;
+			};
+			const buildSelector = (el) => {
+				if (!el || el.nodeType !== 1) return '';
+				const parts = [];
+				let current = el;
+				while (current && current.nodeType === 1 && current !== document.body) {
+					const tag = current.tagName.toLowerCase();
+					if (current.id) {
+						const escaped = window.CSS && CSS.escape ? CSS.escape(current.id) : current.id;
+						parts.unshift(tag + '#' + escaped);
+						break;
+					}
+					let part = tag;
+					const parent = current.parentElement;
+					if (parent) {
+						const siblings = Array.from(parent.children).filter(c => c.tagName === current.tagName);
+						if (siblings.length > 1) {
+							const index = siblings.indexOf(current) + 1;
+							part += ':nth-of-type(' + index + ')';
+						}
+					}
+					parts.unshift(part);
+					current = parent;
+				}
+				return parts.join(' > ');
+			};
+			document.querySelectorAll('[role=\"menuitem\"], [role=\"option\"], [role=\"link\"], a, button, li, div').forEach(item => {
+				if (!isVisible(item)) return;
+				const text = item.textContent?.trim() || '';
+				if (!text || text.length > 20) return;
+				const href = item.getAttribute('href') || '';
+				items.push({
+					text,
+					url: href,
+					item_selector: buildSelector(item)
+				});
+			});
+			return items;
+		}`)
+		if err == nil {
+			var items []LinkInfo
+			if data, err := json.Marshal(menuInfo); err == nil {
+				_ = json.Unmarshal(data, &items)
+			}
+			for _, item := range items {
+				item.Trigger = selector
+				links = append(links, item)
+			}
+		}
+		_ = page.Press("Escape")
+	}
 
 	logrus.Infof("📊 发现 %d 个链接", len(links))
 
-	return deduplicateLinks(links)
+	return links
 }
 
 // deduplicateLinks 去重链接
-func deduplicateLinks(links []LinkInfo) []LinkInfo {
-	seen := make(map[string]bool)
-	var unique []LinkInfo
-
-	for _, link := range links {
-		if !seen[link.URL] {
-			seen[link.URL] = true
-			unique = append(unique, link)
-		}
-	}
-
-	return unique
-}
 
 // categorizeLinks 分类整理链接
 func categorizeLinks(links []LinkInfo) map[string]LinkInfo {
@@ -394,30 +595,74 @@ func categorizeLinks(links []LinkInfo) map[string]LinkInfo {
 	for _, link := range links {
 		// 根据 URL 和文本分类
 		key := generateKey(link)
-		category := detectCategory(link)
+		if existing, ok := result[key]; ok {
+			merged := mergeLinkInfo(existing, link)
+			merged.Category = detectCategory(merged)
+			merged.Description = generateDescription(merged)
+			result[key] = merged
+			continue
+		}
 
-		link.Category = category
+		link.Category = detectCategory(link)
 		link.Description = generateDescription(link)
-
 		result[key] = link
 	}
 
 	return result
 }
 
+func mergeLinkInfo(base, incoming LinkInfo) LinkInfo {
+	if base.Text == "" {
+		base.Text = incoming.Text
+	}
+	if base.URL == "" {
+		base.URL = incoming.URL
+	}
+	if base.Description == "" {
+		base.Description = incoming.Description
+	}
+	if base.Category == "" {
+		base.Category = incoming.Category
+	}
+	if base.Trigger == "" {
+		base.Trigger = incoming.Trigger
+	}
+	if base.Item == "" {
+		base.Item = incoming.Item
+	}
+	if len(base.Classes) == 0 {
+		base.Classes = incoming.Classes
+	} else if len(incoming.Classes) > 0 {
+		base.Classes = appendUniqueStrings(base.Classes, incoming.Classes)
+	}
+	return base
+}
+
+func appendUniqueStrings(existing []string, incoming []string) []string {
+	seen := make(map[string]struct{}, len(existing))
+	for _, item := range existing {
+		seen[item] = struct{}{}
+	}
+	for _, item := range incoming {
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		existing = append(existing, item)
+		seen[item] = struct{}{}
+	}
+	return existing
+}
+
 // generateKey 生成链接的唯一键
 func generateKey(link LinkInfo) string {
 	// 根据 URL 路径生成键
-	url := link.URL
-
-	// 提取路径部分
-	if strings.Contains(url, "creator.xiaohongshu.com") {
-		parts := strings.Split(url, "creator.xiaohongshu.com")
-		if len(parts) > 1 {
-			path := strings.Split(parts[1], "?")[0]
-			path = strings.TrimPrefix(path, "/")
+	if link.URL != "" {
+		if parsed, err := url.Parse(link.URL); err == nil && parsed.Path != "" {
+			path := strings.TrimPrefix(parsed.Path, "/")
 			path = strings.ReplaceAll(path, "/", "_")
-
 			if path == "" {
 				return "home"
 			}
@@ -438,50 +683,11 @@ func generateKey(link LinkInfo) string {
 
 // detectCategory 检测链接类别
 func detectCategory(link LinkInfo) string {
-	url := strings.ToLower(link.URL)
-	text := strings.ToLower(link.Text)
-
-	categories := map[string][]string{
-		"publish": {"publish", "发布"},
-		"content": {"content", "内容"},
-		"data":    {"statistics", "data", "数据", "分析"},
-		"fans":    {"fans", "粉丝"},
-		"comment": {"comment", "评论"},
-		"income":  {"income", "revenue", "收益"},
-		"setting": {"setting", "设置"},
-		"help":    {"help", "帮助"},
-	}
-
-	for category, keywords := range categories {
-		for _, keyword := range keywords {
-			if strings.Contains(url, keyword) || strings.Contains(text, keyword) {
-				return category
-			}
-		}
-	}
-
 	return "other"
 }
 
 // generateDescription 生成链接描述
 func generateDescription(link LinkInfo) string {
-	descriptions := map[string]string{
-		"publish":    "内容发布相关页面",
-		"content":    "内容管理相关页面",
-		"data":       "数据分析相关页面",
-		"fans":       "粉丝管理相关页面",
-		"comment":    "评论管理相关页面",
-		"income":     "收益相关页面",
-		"setting":    "设置相关页面",
-		"help":       "帮助相关页面",
-		"other":      "其他功能页面",
-		"navigation": "导航菜单链接",
-	}
-
-	if desc, ok := descriptions[link.Category]; ok {
-		return desc
-	}
-
 	return link.Text
 }
 
@@ -566,7 +772,6 @@ func findCookieFile() string {
 func discoverUserSystemLinks(page browser.Page) []LinkInfo {
 	jsCode := `() => {
 		const links = [];
-		const visited = new Set();
 
 		console.log('=== 发现普通用户系统链接 ===');
 		console.log('URL:', window.location.href);
@@ -576,8 +781,7 @@ func discoverUserSystemLinks(page browser.Page) []LinkInfo {
 			const href = link.href;
 			const text = link.textContent?.trim() || '';
 
-			if (href && text && href.includes('xiaohongshu.com') && !visited.has(href)) {
-				visited.add(href);
+			if (href && text) {
 				links.push({
 					text: text,
 					url: href,
@@ -602,16 +806,13 @@ func discoverUserSystemLinks(page browser.Page) []LinkInfo {
 		userPages.forEach(({ text, path }) => {
 			if (pageText.includes(text)) {
 				const url = window.location.origin + path;
-				if (!visited.has(url)) {
-					visited.add(url);
-					links.push({
-						text: text,
-						url: url,
-						classes: ['inferred'],
-						category: 'user-page'
-					});
-					console.log('✓ 推测用户页面:', text, '→', url);
-				}
+				links.push({
+					text: text,
+					url: url,
+					classes: ['inferred'],
+					category: 'user-page'
+				});
+				console.log('✓ 推测用户页面:', text, '→', url);
 			}
 		});
 
@@ -631,5 +832,5 @@ func discoverUserSystemLinks(page browser.Page) []LinkInfo {
 
 	logrus.Infof("📊 发现 %d 个链接", len(links))
 
-	return deduplicateLinks(links)
+	return links
 }
