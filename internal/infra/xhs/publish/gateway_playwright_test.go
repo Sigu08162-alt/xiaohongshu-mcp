@@ -10,6 +10,29 @@ import (
 	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
 )
 
+func testPollingModule() PollingModule {
+	return PollingModule{
+		TimeoutMs:  1000,
+		IntervalMs: 10,
+		MaxRetries: 1,
+		Delays: map[string]int{
+			"page_stable_ms":          1,
+			"pre_submit_render_ms":    1,
+			"post_content_render_ms":  1,
+			"scroll_into_view_wait_ms": 1,
+			"click_retry_wait_ms":     1,
+			"tag_editor_ready_ms":     1,
+			"tag_arrow_step_ms":       1,
+			"tag_after_enter_ms":      1,
+			"tag_hash_delay_ms":       1,
+			"tag_char_delay_ms":       1,
+			"tag_after_text_ms":       1,
+			"tag_suggestion_click_ms": 1,
+			"tag_after_tag_ms":        1,
+		},
+	}
+}
+
 type fakePage struct {
 	Calls                []string
 	ElementCalls         []string
@@ -339,6 +362,9 @@ func TestGateway_PublishImage_UsesSelectors(t *testing.T) {
 			"content":      "textarea[name=content]",
 			"submit":       "button[type=submit]",
 		},
+		PublishPolling: testPollingModule(),
+		DraftPolling:   testPollingModule(),
+		VideoPolling:   testPollingModule(),
 	}
 	gw, err := NewGateway(cfg, engine)
 	if err != nil {
@@ -368,6 +394,9 @@ func TestGateway_PublishVideo_UsesSelectors(t *testing.T) {
 			"content":      "textarea[name=content]",
 			"submit":       "button[type=submit]",
 		},
+		PublishPolling: testPollingModule(),
+		DraftPolling:   testPollingModule(),
+		VideoPolling:   testPollingModule(),
 	}
 	gw, err := NewGateway(cfg, engine)
 	if err != nil {
@@ -402,6 +431,9 @@ func TestGateway_PublishImage_SetsLocation(t *testing.T) {
 			"content":      "textarea[name=content]",
 			"submit":       "button[type=submit]",
 		},
+		PublishPolling: testPollingModule(),
+		DraftPolling:   testPollingModule(),
+		VideoPolling:   testPollingModule(),
 	}
 	gw, err := NewGateway(cfg, engine)
 	if err != nil {
@@ -443,6 +475,9 @@ func TestGateway_PublishImage_SetsMarkerTags(t *testing.T) {
 			"content":      "textarea[name=content]",
 			"submit":       "button[type=submit]",
 		},
+		PublishPolling: testPollingModule(),
+		DraftPolling:   testPollingModule(),
+		VideoPolling:   testPollingModule(),
 	}
 	gw, err := NewGateway(cfg, engine)
 	if err != nil {
@@ -464,28 +499,88 @@ func TestGateway_PublishImage_SetsMarkerTags(t *testing.T) {
 
 func TestWaitForUploadComplete_NoUploading(t *testing.T) {
 	page := &fakePage{
-		HasResults: map[string]bool{
-			"text=图片上传中":   false,
-			"text=上传中":     false,
-			".upload-progress": false,
+		IsVisibleResults: map[string]bool{
+			".mask.uploading": false,
 			"[class*='uploading']": false,
 		},
+		EvalResult: 1,
 	}
 
-	if err := waitForUploadComplete(page, 5*time.Millisecond, time.Millisecond); err != nil {
+	selectors := resolveUploadSelectors(map[string]string{})
+	if err := waitForUploadComplete(page, selectors, 1, 5*time.Millisecond, time.Millisecond); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }
 
 func TestWaitForUploadComplete_TimesOut(t *testing.T) {
 	page := &fakePage{
-		HasResults: map[string]bool{
-			"text=图片上传中": true,
+		IsVisibleResults: map[string]bool{
+			".mask.uploading": true,
 		},
+		EvalResult: 0,
 	}
 
-	err := waitForUploadComplete(page, 3*time.Millisecond, time.Millisecond)
+	selectors := resolveUploadSelectors(map[string]string{})
+	err := waitForUploadComplete(page, selectors, 1, 3*time.Millisecond, time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "图片上传中") {
 		t.Fatalf("expected upload timeout error, got %v", err)
+	}
+}
+
+func TestResolveUploadSelectors_Defaults(t *testing.T) {
+	selectors := resolveUploadSelectors(map[string]string{})
+	if selectors.UploadingMask != ".mask.uploading" {
+		t.Fatalf("unexpected uploading mask: %s", selectors.UploadingMask)
+	}
+	if selectors.UploadingClass != "[class*='uploading']" {
+		t.Fatalf("unexpected uploading class: %s", selectors.UploadingClass)
+	}
+	if selectors.UploadPreview != "img.preview" {
+		t.Fatalf("unexpected upload preview: %s", selectors.UploadPreview)
+	}
+	if selectors.UploadingToast != ".creator-publish-toast" {
+		t.Fatalf("unexpected uploading toast: %s", selectors.UploadingToast)
+	}
+}
+
+func TestResolveUploadSelectors_Overrides(t *testing.T) {
+	selectors := resolveUploadSelectors(map[string]string{
+		"uploading_mask":      ".u-mask",
+		"uploading_class":     ".u-uploading",
+		"upload_preview":      ".u-preview",
+		"uploading_toast":     ".u-toast",
+	})
+	if selectors.UploadingMask != ".u-mask" {
+		t.Fatalf("unexpected uploading mask: %s", selectors.UploadingMask)
+	}
+	if selectors.UploadingClass != ".u-uploading" {
+		t.Fatalf("unexpected uploading class: %s", selectors.UploadingClass)
+	}
+	if selectors.UploadPreview != ".u-preview" {
+		t.Fatalf("unexpected upload preview: %s", selectors.UploadPreview)
+	}
+	if selectors.UploadingToast != ".u-toast" {
+		t.Fatalf("unexpected uploading toast: %s", selectors.UploadingToast)
+	}
+}
+
+func TestGetDelay_Missing(t *testing.T) {
+	_, err := getDelay(PollingModule{}, "missing_key")
+	if err == nil {
+		t.Fatalf("expected error for missing delay key")
+	}
+}
+
+func TestGetDelay_Value(t *testing.T) {
+	d, err := getDelay(PollingModule{
+		Delays: map[string]int{
+			"ready_ms": 250,
+		},
+	}, "ready_ms")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if d != 250*time.Millisecond {
+		t.Fatalf("unexpected duration: %v", d)
 	}
 }

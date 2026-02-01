@@ -15,10 +15,37 @@ polling:
     timeout_ms: 60000
     interval_ms: 500
     max_retries: 3
+    delays:
+      page_stable_ms: 3000
+      pre_submit_render_ms: 2000
+      post_content_render_ms: 2000
+      scroll_into_view_wait_ms: 500
+      click_retry_wait_ms: 2000
+      tag_editor_ready_ms: 1000
+      tag_arrow_step_ms: 10
+      tag_after_enter_ms: 1000
+      tag_hash_delay_ms: 200
+      tag_char_delay_ms: 50
+      tag_after_text_ms: 1000
+      tag_suggestion_click_ms: 200
+      tag_after_tag_ms: 500
   draft:
     timeout_ms: 60000
     interval_ms: 500
     max_retries: 3
+    delays:
+      page_stable_ms: 3000
+      post_content_render_ms: 2000
+      scroll_into_view_wait_ms: 500
+      click_retry_wait_ms: 2000
+      tag_editor_ready_ms: 1000
+      tag_arrow_step_ms: 10
+      tag_after_enter_ms: 1000
+      tag_hash_delay_ms: 200
+      tag_char_delay_ms: 50
+      tag_after_text_ms: 1000
+      tag_suggestion_click_ms: 200
+      tag_after_tag_ms: 500
   video:
     timeout_ms: 90000
     interval_ms: 500

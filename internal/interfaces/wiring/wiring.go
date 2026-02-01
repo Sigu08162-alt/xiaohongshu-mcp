@@ -14,6 +14,24 @@ func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, engine
 		PublishImageURL: cfg.URLs.Creator.PublishImage,
 		PublishVideoURL: cfg.URLs.Creator.PublishVideo,
 		Selectors:       selectors,
+		PublishPolling: xhspublish.PollingModule{
+			TimeoutMs:  cfg.Polling.Publish.TimeoutMs,
+			IntervalMs: cfg.Polling.Publish.IntervalMs,
+			MaxRetries: cfg.Polling.Publish.MaxRetries,
+			Delays:     cfg.Polling.Publish.Delays,
+		},
+		DraftPolling: xhspublish.PollingModule{
+			TimeoutMs:  cfg.Polling.Draft.TimeoutMs,
+			IntervalMs: cfg.Polling.Draft.IntervalMs,
+			MaxRetries: cfg.Polling.Draft.MaxRetries,
+			Delays:     cfg.Polling.Draft.Delays,
+		},
+		VideoPolling: xhspublish.PollingModule{
+			TimeoutMs:  cfg.Polling.Video.TimeoutMs,
+			IntervalMs: cfg.Polling.Video.IntervalMs,
+			MaxRetries: cfg.Polling.Video.MaxRetries,
+			Delays:     cfg.Polling.Video.Delays,
+		},
 	}, engine)
 	if err != nil {
 		return nil, err

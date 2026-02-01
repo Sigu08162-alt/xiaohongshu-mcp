@@ -38,6 +38,7 @@ type PollingModule struct {
 	TimeoutMs  int `yaml:"timeout_ms"`
 	IntervalMs int `yaml:"interval_ms"`
 	MaxRetries int `yaml:"max_retries"`
+	Delays     map[string]int `yaml:"delays"`
 }
 
 func LoadFromFile(path string) (*Config, error) {
@@ -56,28 +57,55 @@ func LoadFromFile(path string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if err := validatePollingModule("publish", c.Polling.Publish); err != nil {
+	if err := validatePollingModule("publish", c.Polling.Publish, []string{
+		"page_stable_ms",
+		"pre_submit_render_ms",
+		"post_content_render_ms",
+		"scroll_into_view_wait_ms",
+		"click_retry_wait_ms",
+		"tag_editor_ready_ms",
+		"tag_arrow_step_ms",
+		"tag_after_enter_ms",
+		"tag_hash_delay_ms",
+		"tag_char_delay_ms",
+		"tag_after_text_ms",
+		"tag_suggestion_click_ms",
+		"tag_after_tag_ms",
+	}); err != nil {
 		return err
 	}
-	if err := validatePollingModule("draft", c.Polling.Draft); err != nil {
+	if err := validatePollingModule("draft", c.Polling.Draft, []string{
+		"page_stable_ms",
+		"post_content_render_ms",
+		"scroll_into_view_wait_ms",
+		"click_retry_wait_ms",
+		"tag_editor_ready_ms",
+		"tag_arrow_step_ms",
+		"tag_after_enter_ms",
+		"tag_hash_delay_ms",
+		"tag_char_delay_ms",
+		"tag_after_text_ms",
+		"tag_suggestion_click_ms",
+		"tag_after_tag_ms",
+	}); err != nil {
 		return err
 	}
-	if err := validatePollingModule("video", c.Polling.Video); err != nil {
+	if err := validatePollingModule("video", c.Polling.Video, nil); err != nil {
 		return err
 	}
-	if err := validatePollingModule("interaction", c.Polling.Interaction); err != nil {
+	if err := validatePollingModule("interaction", c.Polling.Interaction, nil); err != nil {
 		return err
 	}
-	if err := validatePollingModule("analytics", c.Polling.Analytics); err != nil {
+	if err := validatePollingModule("analytics", c.Polling.Analytics, nil); err != nil {
 		return err
 	}
-	if err := validatePollingModule("auth", c.Polling.Auth); err != nil {
+	if err := validatePollingModule("auth", c.Polling.Auth, nil); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validatePollingModule(name string, module PollingModule) error {
+func validatePollingModule(name string, module PollingModule, requiredDelays []string) error {
 	if module.TimeoutMs <= 0 {
 		return fmt.Errorf("polling.%s.timeout_ms missing or invalid", name)
 	}
@@ -86,6 +114,14 @@ func validatePollingModule(name string, module PollingModule) error {
 	}
 	if module.MaxRetries <= 0 {
 		return fmt.Errorf("polling.%s.max_retries missing or invalid", name)
+	}
+	for _, key := range requiredDelays {
+		if module.Delays == nil {
+			return fmt.Errorf("polling.%s.delays missing", name)
+		}
+		if value, ok := module.Delays[key]; !ok || value <= 0 {
+			return fmt.Errorf("polling.%s.delays.%s missing or invalid", name, key)
+		}
 	}
 	return nil
 }

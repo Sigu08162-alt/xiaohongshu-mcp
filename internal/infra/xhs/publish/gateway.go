@@ -20,11 +20,28 @@ type Config struct {
 	PublishImageURL string
 	PublishVideoURL string
 	Selectors       map[string]string
+	PublishPolling  PollingModule
+	DraftPolling    PollingModule
+	VideoPolling    PollingModule
 }
 
 type Gateway struct {
 	cfg    Config
 	engine browser.Engine
+}
+
+type UploadStateSelectors struct {
+	UploadingMask  string
+	UploadingClass string
+	UploadPreview  string
+	UploadingToast string
+}
+
+type PollingModule struct {
+	TimeoutMs  int
+	IntervalMs int
+	MaxRetries int
+	Delays     map[string]int
 }
 
 func NewGateway(cfg Config, engine browser.Engine) (*Gateway, error) {
@@ -79,7 +96,9 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 
 	// 等待页面完全稳定（允许cookie验证重定向完成）
 	logrus.Info("⏳ 等待页面稳定（包括cookie验证重定向）...")
-	time.Sleep(3 * time.Second)
+	if err := sleepDelay(g.cfg.PublishPolling, "page_stable_ms"); err != nil {
+		return fmt.Errorf("publish image page_stable_ms: %w", err)
+	}
 	logrus.Info("✅ 页面稳定")
 
 	// 等待上传输入框
@@ -169,7 +188,7 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	// 输入标签（如果有）
 	if len(content.Tags) > 0 {
 		logrus.Infof("🏷️ 开始输入标签 (共%d个)...", len(content.Tags))
-		if err := inputTags(page, content.Tags); err != nil {
+		if err := inputTags(page, content.Tags, g.cfg.PublishPolling); err != nil {
 			logrus.Warnf("⚠️ 标签输入失败: %v", err)
 			// 标签输入失败不影响发布，继续
 		} else {
@@ -203,8 +222,10 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	}
 
 	// 提交前等待
-	logrus.Info("⏱️ 等待2秒让页面渲染完成...")
-	time.Sleep(2 * time.Second)
+	logrus.Info("⏱️ 等待页面渲染完成...")
+	if err := sleepDelay(g.cfg.PublishPolling, "pre_submit_render_ms"); err != nil {
+		return fmt.Errorf("publish image pre_submit_render_ms: %w", err)
+	}
 	logrus.Info("✅ 等待完成")
 
 	// 点击发布按钮前最后检查URL
@@ -427,25 +448,118 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	return nil
 }
 
-func waitForUploadComplete(page browser.Page, maxWait, interval time.Duration) error {
-	uploadingSelectors := []string{
-		"text=图片上传中",
-		"text=上传中",
-		".upload-progress",
-		"[class*='uploading']",
+func resolveUploadSelectors(selectors map[string]string) UploadStateSelectors {
+	return UploadStateSelectors{
+		UploadingMask:  getSelectorOrDefault(selectors, "uploading_mask", ".mask.uploading"),
+		UploadingClass: getSelectorOrDefault(selectors, "uploading_class", "[class*='uploading']"),
+		UploadPreview:  getSelectorOrDefault(selectors, "upload_preview", "img.preview"),
+		UploadingToast: getSelectorOrDefault(selectors, "uploading_toast", ".creator-publish-toast"),
 	}
+}
 
+func getSelectorOrDefault(selectors map[string]string, key, defaultValue string) string {
+	if selectors == nil {
+		return defaultValue
+	}
+	if value, ok := selectors[key]; ok && strings.TrimSpace(value) != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getDelay(module PollingModule, key string) (time.Duration, error) {
+	if module.Delays == nil {
+		return 0, fmt.Errorf("polling delay missing: %s", key)
+	}
+	value, ok := module.Delays[key]
+	if !ok || value <= 0 {
+		return 0, fmt.Errorf("polling delay missing: %s", key)
+	}
+	return time.Duration(value) * time.Millisecond, nil
+}
+
+func getInterval(module PollingModule) (time.Duration, error) {
+	if module.IntervalMs <= 0 {
+		return 0, fmt.Errorf("polling interval missing")
+	}
+	return time.Duration(module.IntervalMs) * time.Millisecond, nil
+}
+
+func getTimeout(module PollingModule) (time.Duration, error) {
+	if module.TimeoutMs <= 0 {
+		return 0, fmt.Errorf("polling timeout missing")
+	}
+	return time.Duration(module.TimeoutMs) * time.Millisecond, nil
+}
+
+func splitSelectors(raw string) []string {
+	items := strings.Split(raw, ",")
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+func sleepDelay(module PollingModule, key string) error {
+	delay, err := getDelay(module, key)
+	if err != nil {
+		return err
+	}
+	time.Sleep(delay)
+	return nil
+}
+
+func (g *Gateway) pollingFor(isPublish bool) PollingModule {
+	if isPublish {
+		return g.cfg.PublishPolling
+	}
+	return g.cfg.DraftPolling
+}
+
+func waitForUploadComplete(page browser.Page, selectors UploadStateSelectors, expectedCount int, maxWait, interval time.Duration) error {
 	deadline := time.Now().Add(maxWait)
+	uploadingSelectors := append(splitSelectors(selectors.UploadingMask), splitSelectors(selectors.UploadingClass)...)
+	previewSelectors := splitSelectors(selectors.UploadPreview)
+
 	for {
 		isUploading := false
 		for _, sel := range uploadingSelectors {
-			if has, _ := page.Has(sel); has {
+			if visible, _ := page.IsVisible(sel); visible {
 				isUploading = true
 				break
 			}
 		}
 
-		if !isUploading {
+		countOk := true
+		if expectedCount > 0 && len(previewSelectors) > 0 {
+			countOk = false
+			if v, err := page.Eval(`(selectors) => {
+				let maxCount = 0;
+				for (const sel of selectors) {
+					const count = document.querySelectorAll(sel).length;
+					if (count > maxCount) maxCount = count;
+				}
+				return maxCount;
+			}`, previewSelectors); err == nil {
+				switch n := v.(type) {
+				case int:
+					countOk = n >= expectedCount
+				case int64:
+					countOk = int(n) >= expectedCount
+				case float64:
+					countOk = int(n) >= expectedCount
+				case float32:
+					countOk = int(n) >= expectedCount
+				}
+			}
+		}
+
+		if !isUploading && countOk {
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -456,7 +570,7 @@ func waitForUploadComplete(page browser.Page, maxWait, interval time.Duration) e
 }
 
 // inputTags 在内容编辑器中输入标签
-func inputTags(page browser.Page, tags []string) error {
+func inputTags(page browser.Page, tags []string, polling PollingModule) error {
 	if len(tags) == 0 {
 		return nil
 	}
@@ -467,25 +581,31 @@ func inputTags(page browser.Page, tags []string) error {
 		return fmt.Errorf("未找到内容编辑器: %w", err)
 	}
 
-	time.Sleep(1 * time.Second)
+	if err := sleepDelay(polling, "tag_editor_ready_ms"); err != nil {
+		return err
+	}
 
 	// 按下箭头键移动到底部
 	for i := 0; i < 20; i++ {
 		contentElem.Press("ArrowDown")
-		time.Sleep(10 * time.Millisecond)
+		if err := sleepDelay(polling, "tag_arrow_step_ms"); err != nil {
+			return err
+		}
 	}
 
 	// 按两次回车换行
 	contentElem.Press("Enter")
 	contentElem.Press("Enter")
 
-	time.Sleep(1 * time.Second)
+	if err := sleepDelay(polling, "tag_after_enter_ms"); err != nil {
+		return err
+	}
 
 	// 逐个输入标签
 	for i, tag := range tags {
 		tag = strings.TrimLeft(tag, "#")
 		logrus.Infof("  [%d/%d] 输入标签: #%s", i+1, len(tags), tag)
-		if err := inputTag(page, contentElem, tag); err != nil {
+		if err := inputTag(page, contentElem, tag, polling); err != nil {
 			logrus.Warnf("  ⚠️ 标签输入失败: %v", err)
 			// 继续下一个标签
 		}
@@ -495,37 +615,47 @@ func inputTags(page browser.Page, tags []string) error {
 }
 
 // inputTag 输入单个标签
-func inputTag(page browser.Page, contentElem browser.Element, tag string) error {
+func inputTag(page browser.Page, contentElem browser.Element, tag string, polling PollingModule) error {
 	// 输入 # 号
 	contentElem.Input("#")
-	time.Sleep(200 * time.Millisecond)
+	if err := sleepDelay(polling, "tag_hash_delay_ms"); err != nil {
+		return err
+	}
 
 	// 逐字符输入标签
 	for _, char := range tag {
 		contentElem.Input(string(char))
-		time.Sleep(50 * time.Millisecond)
+		if err := sleepDelay(polling, "tag_char_delay_ms"); err != nil {
+			return err
+		}
 	}
 
-	time.Sleep(1 * time.Second)
+	if err := sleepDelay(polling, "tag_after_text_ms"); err != nil {
+		return err
+	}
 
 	// 查找并点击标签联想选项
 	topicContainer, err := page.Element("#creator-editor-topic-container")
 	if err == nil && topicContainer != nil {
-		firstItem, err := topicContainer.Element(".item")
-		if err == nil && firstItem != nil {
-			firstItem.Click()
-			logrus.Infof("    ✅ 成功点击标签联想选项")
-			time.Sleep(200 * time.Millisecond)
-		} else {
-			logrus.Warnf("    ⚠️ 未找到标签联想选项，直接输入空格")
-			contentElem.Input(" ")
+			firstItem, err := topicContainer.Element(".item")
+			if err == nil && firstItem != nil {
+				firstItem.Click()
+				logrus.Infof("    ✅ 成功点击标签联想选项")
+				if err := sleepDelay(polling, "tag_suggestion_click_ms"); err != nil {
+					return err
+				}
+			} else {
+				logrus.Warnf("    ⚠️ 未找到标签联想选项，直接输入空格")
+				contentElem.Input(" ")
 		}
 	} else {
 		logrus.Warnf("    ⚠️ 未找到标签联想下拉框，直接输入空格")
 		contentElem.Input(" ")
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	if err := sleepDelay(polling, "tag_after_tag_ms"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -565,7 +695,9 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 
 	// 等待页面完全稳定
 	logrus.Info("⏳ 等待页面稳定（包括cookie验证重定向）...")
-	time.Sleep(3 * time.Second)
+	if err := sleepDelay(g.pollingFor(isPublish), "page_stable_ms"); err != nil {
+		return fmt.Errorf("%s page_stable_ms: %w", actionName, err)
+	}
 	logrus.Info("✅ 页面稳定")
 
 	// 等待上传输入框
@@ -645,7 +777,7 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	// 处理标签（如果有）
 	if len(content.Tags) > 0 {
 		logrus.Infof("🏷️  添加标签 (共%d个)...", len(content.Tags))
-		if err := inputTags(page, content.Tags); err != nil {
+		if err := inputTags(page, content.Tags, g.pollingFor(isPublish)); err != nil {
 			logrus.Warnf("⚠️ 标签添加失败: %v (继续)", err)
 		} else {
 			logrus.Info("✅ 标签添加成功")
@@ -653,8 +785,10 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	}
 
 	// 等待页面渲染完成
-	logrus.Info("内容填写完成，等待2秒...")
-	time.Sleep(2 * time.Second)
+	logrus.Info("内容填写完成，等待渲染...")
+	if err := sleepDelay(g.pollingFor(isPublish), "post_content_render_ms"); err != nil {
+		return fmt.Errorf("%s post_content_render_ms: %w", actionName, err)
+	}
 
 	// 点击前检查URL
 	beforeClickURL := page.URL()
@@ -683,7 +817,16 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 
 	// 等待图片上传完成（条件等待）
 	logrus.Info("检查图片上传状态...")
-	if err := waitForUploadComplete(page, 90*time.Second, time.Second); err != nil {
+	uploadSelectors := resolveUploadSelectors(g.cfg.Selectors)
+	uploadTimeout, err := getTimeout(g.pollingFor(isPublish))
+	if err != nil {
+		return fmt.Errorf("%s upload timeout: %w", actionName, err)
+	}
+	uploadInterval, err := getInterval(g.pollingFor(isPublish))
+	if err != nil {
+		return fmt.Errorf("%s upload interval: %w", actionName, err)
+	}
+	if err := waitForUploadComplete(page, uploadSelectors, len(content.ImagePaths), uploadTimeout, uploadInterval); err != nil {
 		logrus.Errorf("❌ 图片仍在上传中，已超时: %v", err)
 		return fmt.Errorf("%s失败: %w", actionName, err)
 	}
@@ -699,15 +842,19 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 		if err := page.ScrollIntoView(buttonSelector); err != nil {
 			logrus.Warnf("滚动到%s失败: %v", buttonName, err)
 		}
-		time.Sleep(500 * time.Millisecond)
+		if err := sleepDelay(g.pollingFor(isPublish), "scroll_into_view_wait_ms"); err != nil {
+			return fmt.Errorf("%s scroll_into_view_wait_ms: %w", actionName, err)
+		}
 	}
 
 	// 点击按钮（先尝试常规点击，失败后使用JS点击兜底）
 	logrus.Infof("点击%s...", buttonName)
 	clickErr := page.Click(buttonSelector)
 	if clickErr != nil {
-		logrus.Warnf("常规点击%s失败: %v，等待2秒后尝试 JS 点击", buttonName, clickErr)
-		time.Sleep(2 * time.Second)
+		logrus.Warnf("常规点击%s失败: %v，等待后尝试 JS 点击", buttonName, clickErr)
+		if err := sleepDelay(g.pollingFor(isPublish), "click_retry_wait_ms"); err != nil {
+			return fmt.Errorf("%s click_retry_wait_ms: %w", actionName, err)
+		}
 
 		// 备用方案1：强制点击
 		if forceErr := page.ClickForce(buttonSelector); forceErr != nil {
@@ -789,9 +936,17 @@ func (g *Gateway) waitForCompletion(page browser.Page, isPublish bool) error {
 		actionName = "发布"
 	}
 
+	uploadSelectors := resolveUploadSelectors(g.cfg.Selectors)
+	polling := g.pollingFor(isPublish)
 	logrus.Infof("等待%s完成（检查URL变化和成功标志）...", actionName)
-	maxWait := 60 * time.Second // 增加到60秒，给小红书更多处理时间
-	checkInterval := 500 * time.Millisecond
+	maxWait, err := getTimeout(polling)
+	if err != nil {
+		return fmt.Errorf("%s wait timeout: %w", actionName, err)
+	}
+	checkInterval, err := getInterval(polling)
+	if err != nil {
+		return fmt.Errorf("%s wait interval: %w", actionName, err)
+	}
 	startTime := time.Now()
 
 	// 保存页面HTML用于调试
@@ -857,6 +1012,22 @@ func (g *Gateway) waitForCompletion(page browser.Page, isPublish bool) error {
 				logrus.Info("✅ 草稿保存成功！检测到成功提示")
 				return nil
 			}
+		}
+
+		// 上传中提示：属于可恢复状态，继续等待
+		uploadingToastDetected := false
+		for _, selector := range splitSelectors(uploadSelectors.UploadingToast) {
+			if hasToast, _ := page.Has(selector); hasToast {
+				if text, err := page.Text(selector); err == nil && strings.Contains(text, "上传中") {
+					logrus.Warnf("⏳ 检测到上传中提示，继续等待: %s", strings.TrimSpace(text))
+					uploadingToastDetected = true
+					break
+				}
+			}
+		}
+		if uploadingToastDetected {
+			time.Sleep(checkInterval)
+			continue
 		}
 
 		// 检查是否有验证码
