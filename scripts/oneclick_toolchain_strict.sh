@@ -50,30 +50,40 @@ fi
 
 echo ""
 
-# Step 1: 发现页面
-read -p "选择系统 [1=创作者(默认), 2=用户]: " SYSTEM_CHOICE
-SYSTEM_CHOICE=${SYSTEM_CHOICE:-1}
-
-DEFAULT_DISCOVERED_FILE="discovered_pages_creator.yaml"
-read -p "请输入 discover 输出文件名 [默认: ${DEFAULT_DISCOVERED_FILE}]: " DISCOVERED_FILE
+# Step 1: 链接配置（默认读取固定链接文件）
+DEFAULT_DISCOVERED_FILE="configs/fixed_pages.yaml"
+read -p "请输入 links 配置文件 [默认: ${DEFAULT_DISCOVERED_FILE}]，或输入 d 运行 discover: " DISCOVERED_FILE
 if [ -z "$DISCOVERED_FILE" ]; then
   DISCOVERED_FILE="$DEFAULT_DISCOVERED_FILE"
 fi
 
-if [ "$SYSTEM_CHOICE" = "2" ]; then
-  SYSTEM_TYPE="user"
-else
-  SYSTEM_TYPE="creator"
-fi
+if [ "$DISCOVERED_FILE" = "d" ] || [ "$DISCOVERED_FILE" = "D" ]; then
+  read -p "选择系统 [1=创作者(默认), 2=用户]: " SYSTEM_CHOICE
+  SYSTEM_CHOICE=${SYSTEM_CHOICE:-1}
 
-echo -e "${BLUE}📋 步骤1: 发现页面${NC}"
-./bin/discover_pages --system "$SYSTEM_TYPE" --no-interactive --wait 8 --output "$DISCOVERED_FILE"
+  DEFAULT_DISCOVERED_FILE="discovered_pages_creator.yaml"
+  read -p "请输入 discover 输出文件名 [默认: ${DEFAULT_DISCOVERED_FILE}]: " DISCOVERED_FILE
+  if [ -z "$DISCOVERED_FILE" ]; then
+    DISCOVERED_FILE="$DEFAULT_DISCOVERED_FILE"
+  fi
+
+  if [ "$SYSTEM_CHOICE" = "2" ]; then
+    SYSTEM_TYPE="user"
+  else
+    SYSTEM_TYPE="creator"
+  fi
+
+  echo -e "${BLUE}📋 步骤1: 发现页面${NC}"
+  ./bin/discover_pages --system "$SYSTEM_TYPE" --no-interactive --wait 8 --output "$DISCOVERED_FILE"
+else
+  echo -e "${BLUE}📋 步骤1: 使用链接配置文件${NC}"
+fi
 require_file "$DISCOVERED_FILE"
 
 echo ""
 
 # Step 2: 采集选择器
-DEFAULT_SELECTORS_FILE="selectors_discovered_pages_creator.yaml"
+DEFAULT_SELECTORS_FILE="selectors_discovered_pages_fixed.yaml"
 read -p "请输入 selectors 输出文件名 [默认: ${DEFAULT_SELECTORS_FILE}]: " SELECTORS_FILE
 if [ -z "$SELECTORS_FILE" ]; then
   SELECTORS_FILE="$DEFAULT_SELECTORS_FILE"
@@ -97,7 +107,7 @@ echo ""
 read -p "是否采集完整元数据？(y/N): " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-  DEFAULT_METADATA_FILE="metadata_discovered_pages_creator.yaml"
+  DEFAULT_METADATA_FILE="metadata_discovered_pages_fixed.yaml"
   read -p "请输入 metadata 输出文件名 [默认: ${DEFAULT_METADATA_FILE}]: " METADATA_FILE
   if [ -z "$METADATA_FILE" ]; then
     METADATA_FILE="$DEFAULT_METADATA_FILE"

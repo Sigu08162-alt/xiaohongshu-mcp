@@ -29,7 +29,7 @@
       "position": {
         "height": 36,
         "left": 24,
-        "top": 937,
+        "top": 839,
         "width": 104
       },
       "selector": "button.d-button",
@@ -65,7 +65,7 @@
       "position": {
         "height": 36,
         "left": 148,
-        "top": 937,
+        "top": 839,
         "width": 104
       },
       "selector": "button.d-button",
@@ -245,6 +245,6 @@
       "visible": true
     }
   ],
-  "timestamp": "2026-02-01T08:31:19.858Z",
+  "timestamp": "2026-02-01T21:44:26.552Z",
   "url": "https://creator.xiaohongshu.com/publish/publish?source=official\u0026target=image"
 }

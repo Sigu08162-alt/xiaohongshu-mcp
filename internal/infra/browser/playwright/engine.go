@@ -3,6 +3,8 @@ package playwright
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,10 +17,18 @@ type Config struct {
 	ActionTimeout     time.Duration
 	NavigationTimeout time.Duration
 	CookiePath        string
+	ViewportWidth     int
+	ViewportHeight    int
 }
 
 func DefaultConfig() Config {
-	return Config{Headless: true}
+	width := getEnvInt("XHS_VIEWPORT_WIDTH", 1920)
+	height := getEnvInt("XHS_VIEWPORT_HEIGHT", 1080)
+	return Config{
+		Headless:       true,
+		ViewportWidth:  width,
+		ViewportHeight: height,
+	}
 }
 
 type Engine struct {
@@ -68,10 +78,18 @@ func (e *Engine) NewPage() (browser.Page, error) {
 	}
 
 	// 创建上下文选项，设置视口大小（确保无头模式下有足够大的视口）
+	viewportWidth := e.cfg.ViewportWidth
+	viewportHeight := e.cfg.ViewportHeight
+	if viewportWidth <= 0 {
+		viewportWidth = 1920
+	}
+	if viewportHeight <= 0 {
+		viewportHeight = 1080
+	}
 	contextOptions := playwright.BrowserNewContextOptions{
 		Viewport: &playwright.Size{
-			Width:  1920,
-			Height: 1080,
+			Width:  viewportWidth,
+			Height: viewportHeight,
 		},
 		// 设置 User-Agent，避免被检测为自动化
 		UserAgent: playwright.String("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
@@ -142,4 +160,16 @@ func wrapPlaywrightError(err error) error {
 		return fmt.Errorf("playwright driver not installed; run: go run github.com/playwright-community/playwright-go/cmd/playwright install: %w", err)
 	}
 	return err
+}
+
+func getEnvInt(name string, defaultValue int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return defaultValue
+	}
+	return value
 }
