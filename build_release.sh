@@ -12,7 +12,7 @@ rm -f "$RELEASE_DIR/$ASSET"
 GH_REPO="vmxmy/xiaohongshu-mcp"
 
 START_TS=$(date +%s)
-gh release download --repo "$GH_REPO" --pattern "$ASSET" --dir "$RELEASE_DIR"
+gh release download --repo "$GH_REPO" --pattern "$ASSET" --dir "$RELEASE_DIR" --clobber
 END_TS=$(date +%s)
 
 ELAPSED=$((END_TS - START_TS))
