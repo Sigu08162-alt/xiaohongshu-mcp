@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"os"
 	"time"
 
 	playwrightgo "github.com/playwright-community/playwright-go"
