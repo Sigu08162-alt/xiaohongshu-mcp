@@ -1,21 +1,3 @@
-# ---- build stage ----
-FROM golang:1.24 AS builder
-
-WORKDIR /src
-# 配置 Go 模块代理为国内源
-ENV GOPROXY=https://goproxy.cn,direct
-ENV GOSUMDB=sum.golang.google.cn
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-ENV GOMAXPROCS=2
-ENV GOMEMLIMIT=800MiB
-ENV GOGC=50
-RUN GOMAXPROCS=2 GOMEMLIMIT=800MiB GOGC=50 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /out/app .
-
-# ---- run stage ----
 FROM ubuntu:22.04
 
 # 设置时区
@@ -79,13 +61,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 4. 安装 Playwright 浏览器与依赖（无 GUI 环境）
 RUN npx playwright install --with-deps chromium
 
-COPY --from=builder /out/app .
+# 5. 拷贝宿主机预编译二进制（必须先在宿主机构建到 bin/app）
+COPY bin/app /app/app
 
-# 5. 创建共享目录并设置权限
+# 6. 创建共享目录并设置权限
 RUN mkdir -p /app/images && \
     chmod 777 /app/images
 
-# 6. 设置默认 Chrome 路径（rod 会用）
+# 7. 设置默认 Chrome 路径（rod 会用）
 ENV ROD_BROWSER_BIN=/usr/bin/google-chrome
 
 EXPOSE 18060

@@ -306,9 +306,12 @@ go env -w  GOPROXY=https://goproxy.io,direct
 
 **1. 使用 Docker Compose 启动（推荐）**
 
-使用仓库内的 `docker/docker-compose.yml`，从本地代码构建并启动：
+先在宿主机编译二进制，再使用 `docker/docker-compose.yml` 构建并启动：
 
 ```bash
+# 宿主机编译二进制
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/app .
+
 # 已经克隆项目后，进入 docker 目录
 cd docker
 
@@ -325,7 +328,8 @@ docker compose stop
 **2. 自己构建镜像（可选）**
 
 ```bash
-# 在项目根目录运行
+# 在项目根目录先编译，再构建
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/app .
 docker build -t xiaohongshu-mcp .
 ```
 

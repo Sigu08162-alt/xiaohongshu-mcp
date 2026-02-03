@@ -7,9 +7,17 @@
 - 启动后，会产生一个 `images/` 目录，用于存储发布的图片。它会挂载到 Docker 容器里面。
   如果要使用本地图片发布的话，请确保图片拷贝到 `./images/` 目录下，并且让 MCP 在发布的时候，指定文件夹为：`/app/images`，否则一定失败。
 
-## 1. 本地构建 Docker 镜像
+## 1. 宿主机先编译二进制
 
-在项目根目录（有 `Dockerfile` 的目录）运行：
+在项目根目录运行：
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/app .
+```
+
+生成的二进制在 `bin/app`。
+
+## 2. 构建 Docker 镜像
 
 ```bash
 docker build -t xiaohongshu-mcp .
@@ -19,7 +27,7 @@ docker build -t xiaohongshu-mcp .
 
 <img width="2576" height="874" alt="image" src="https://github.com/user-attachments/assets/fe7e87f1-623f-409f-8b54-e11d380fc7b8" />
 
-## 2. 使用 Docker Compose（本地构建）
+## 3. 使用 Docker Compose（本地构建）
 
 ```bash
 # 注意：在 docker-compose.yml 文件的同一个目录，或者手动指定 docker-compose.yml。
