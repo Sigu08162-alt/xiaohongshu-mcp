@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/sirupsen/logrus"
-	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
+	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
 )
 
 // AppServer 应用服务器结构体，封装所有服务和处理器

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"gopkg.in/yaml.v3"
 )
 

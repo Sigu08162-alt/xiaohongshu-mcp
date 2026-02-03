@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
 type Config struct {

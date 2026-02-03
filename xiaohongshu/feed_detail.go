@@ -12,9 +12,9 @@ import (
 
 	"github.com/avast/retry-go/v4"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/errors"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
+	"github.com/vmxmy/xiaohongshu-mcp/errors"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // ========== 配置常量 ==========

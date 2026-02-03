@@ -1,12 +1,12 @@
 package wiring
 
 import (
-	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
-	domainpublish "github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/config"
-	xhspublish "github.com/xpzouying/xiaohongshu-mcp/internal/infra/xhs/publish"
-	"github.com/xpzouying/xiaohongshu-mcp/pkg/downloader"
+	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
+	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
+	xhspublish "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/pkg/downloader"
 )
 
 func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, engine browser.Engine) (*apppublish.Usecase, error) {

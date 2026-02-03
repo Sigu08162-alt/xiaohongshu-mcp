@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	infraconfig "github.com/xpzouying/xiaohongshu-mcp/internal/infra/config"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
+	infraconfig "github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
 
 func loadPollingModules() (PollingModules, error) {

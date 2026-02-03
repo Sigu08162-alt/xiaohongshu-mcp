@@ -9,14 +9,14 @@ import (
 
 	"github.com/mattn/go-runewidth"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/configs"
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
-	domainpublish "github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
-	"github.com/xpzouying/xiaohongshu-mcp/pkg/downloader"
-	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
+	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
+	"github.com/vmxmy/xiaohongshu-mcp/pkg/downloader"
+	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
 )
 
 type loginProvider interface {

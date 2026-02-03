@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // DeleteAction 删除操作

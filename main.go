@@ -4,11 +4,11 @@ import (
 	"flag"
 	"os"
 
-	_ "github.com/xpzouying/xiaohongshu-mcp/docs" // Swagger docs
+	_ "github.com/vmxmy/xiaohongshu-mcp/docs" // Swagger docs
 
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/config"
-	"github.com/xpzouying/xiaohongshu-mcp/configs"
+	"github.com/vmxmy/xiaohongshu-mcp/config"
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
 )
 
 // @title 小红书 MCP API
@@ -30,7 +30,7 @@ import (
 // @description - REST 端点: /api/v1/*
 
 // @contact.name API Support
-// @contact.url https://github.com/xpzouying/xiaohongshu-mcp
+// @contact.url
 
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT

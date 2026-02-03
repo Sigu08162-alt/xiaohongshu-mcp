@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	apperrors "github.com/xpzouying/xiaohongshu-mcp/errors"
-	domainpublish "github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
-	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	apperrors "github.com/vmxmy/xiaohongshu-mcp/errors"
+	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
 )
 
 // MCP 工具处理函数

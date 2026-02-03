@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/errors"
-	browser "github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
+	"github.com/vmxmy/xiaohongshu-mcp/errors"
+	browser "github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
 
 type SearchResult struct {

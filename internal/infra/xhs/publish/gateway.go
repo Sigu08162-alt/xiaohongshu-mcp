@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
 var ErrNotReady = errors.New("publish not implemented")

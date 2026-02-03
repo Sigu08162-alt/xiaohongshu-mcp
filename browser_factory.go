@@ -3,10 +3,10 @@ package main
 import (
 	"time"
 
-	"github.com/xpzouying/xiaohongshu-mcp/configs"
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser/playwright"
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser/playwright"
 )
 
 // newBrowserEngine 创建 Playwright 浏览器引擎

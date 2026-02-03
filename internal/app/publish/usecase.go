@@ -3,9 +3,9 @@ package publish
 import (
 	"context"
 
-	"github.com/xpzouying/xiaohongshu-mcp/internal/app/ports"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
-	"github.com/xpzouying/xiaohongshu-mcp/pkg/downloader"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/app/ports"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/pkg/downloader"
 )
 
 // ImageProcessorInterface 图片处理接口，用于依赖注入和测试

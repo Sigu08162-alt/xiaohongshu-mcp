@@ -6,9 +6,9 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	myerrors "github.com/xpzouying/xiaohongshu-mcp/errors"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
+	myerrors "github.com/vmxmy/xiaohongshu-mcp/errors"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
 
 // ActionResult 通用动作响应（点赞/收藏等）

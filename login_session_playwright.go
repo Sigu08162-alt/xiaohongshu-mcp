@@ -10,8 +10,8 @@ import (
 
 	"github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
 const (

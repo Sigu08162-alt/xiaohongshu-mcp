@@ -9,13 +9,13 @@ import (
 
 	playwrightgo "github.com/playwright-community/playwright-go"
 	"github.com/sirupsen/logrus"
-	"github.com/xpzouying/xiaohongshu-mcp/configs"
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser/playwright"
-	infraconfig "github.com/xpzouying/xiaohongshu-mcp/internal/infra/config"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/infra/polling"
-	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser/playwright"
+	infraconfig "github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
+	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
 )
 
 func main() {

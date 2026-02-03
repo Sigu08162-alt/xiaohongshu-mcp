@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/xpzouying/xiaohongshu-mcp/internal/domain/publish"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 )
 
 type PublishGateway interface {

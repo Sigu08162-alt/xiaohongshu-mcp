@@ -4,8 +4,8 @@ import (
 	"encoding/base64"
 	"net/http"
 
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	"github.com/xpzouying/xiaohongshu-mcp/xiaohongshu"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"

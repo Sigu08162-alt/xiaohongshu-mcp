@@ -10,11 +10,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 
-	"github.com/xpzouying/xiaohongshu-mcp/cookies"
-	apppublish "github.com/xpzouying/xiaohongshu-mcp/internal/app/publish"
-	browserplaywright "github.com/xpzouying/xiaohongshu-mcp/internal/infra/browser/playwright"
-	infraconfig "github.com/xpzouying/xiaohongshu-mcp/internal/infra/config"
-	"github.com/xpzouying/xiaohongshu-mcp/internal/interfaces/wiring"
+	"github.com/vmxmy/xiaohongshu-mcp/cookies"
+	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
+	browserplaywright "github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser/playwright"
+	infraconfig "github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/interfaces/wiring"
 )
 
 func buildPublishUsecase(cfg *infraconfig.Config, selectors map[string]string, headless bool) (*apppublish.Usecase, error) {
