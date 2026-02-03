@@ -1,21 +1,12 @@
 package main
 
 import (
-	"os"
-
 	infraconfig "github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
 
 func loadPollingModules() (PollingModules, error) {
-	configPath := os.Getenv("XHS_CONFIG_PATH")
-	if configPath == "" {
-		configPath = "config.yaml"
-	}
-	cfg, err := infraconfig.LoadFromFile(configPath)
-	if err != nil {
-		return PollingModules{}, err
-	}
+	cfg := infraconfig.DefaultConfig()
 	return PollingModules{
 		Publish:     toPollingModule(cfg.Polling.Publish),
 		Draft:       toPollingModule(cfg.Polling.Draft),

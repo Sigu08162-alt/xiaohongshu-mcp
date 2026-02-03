@@ -41,15 +41,7 @@ func buildPublishUsecase(cfg *infraconfig.Config, selectors map[string]string, h
 }
 
 func loadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
-	configPath := os.Getenv("XHS_CONFIG_PATH")
-	if configPath == "" {
-		configPath = "config.yaml"
-	}
-	cfg, err := infraconfig.LoadFromFile(configPath)
-	if err != nil {
-		logrus.Warnf("配置文件加载失败，使用默认配置: %v", err)
-		cfg = infraconfig.DefaultConfig()
-	}
+	cfg := infraconfig.DefaultConfig()
 
 	// 优先查找采集器生成的选择器文件
 	selectorsPath := os.Getenv("XHS_SELECTORS_PATH")
@@ -66,7 +58,6 @@ func loadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
 		"selectors_discovered_pages_creator.yaml", // 优先：采集器生成
 		"selectors_discovered_pages_fixed.yaml",   // 兼容：固定URL采集结果
 		"selectors_discovered_pages.yaml",         // 次优：采集器生成（旧命名）
-		"config.yaml",                             // 备用：传统配置
 	}
 
 	var lastErr error
@@ -99,22 +90,6 @@ func initPublishUsecase(headless bool) *apppublish.Usecase {
 	return usecase
 }
 
-type publishSelectorConfig struct {
-	Selectors struct {
-		Publish struct {
-			UploadInput     string `yaml:"upload_input"`
-			TitleInput      string `yaml:"title_input"`
-			ContentEditorQL string `yaml:"content_editor_ql"`
-			SubmitButton    string `yaml:"submit_button"`
-			SaveDraftButton string `yaml:"save_draft_button"`
-			UploadingMask   string `yaml:"uploading_mask"`
-			UploadingClass  string `yaml:"uploading_class"`
-			UploadPreview   string `yaml:"upload_preview"`
-			UploadingToast  string `yaml:"uploading_toast"`
-		} `yaml:"publish"`
-	} `yaml:"selectors"`
-}
-
 // 采集器生成的YAML格式
 type collectedSelectorsConfig struct {
 	Version   string `yaml:"version"`
@@ -144,30 +119,13 @@ func loadPublishSelectors(path string) (map[string]string, error) {
 		return nil, err
 	}
 
-	// 尝试识别文件格式：先尝试采集器格式
 	var collected collectedSelectorsConfig
-	if err := yaml.Unmarshal(data, &collected); err == nil && collected.Pages != nil {
-		logrus.Info("📦 检测到采集器生成的选择器文件，正在提取发布页面选择器...")
-		return extractPublishSelectorsFromCollected(&collected)
+	if err := yaml.Unmarshal(data, &collected); err != nil || collected.Pages == nil {
+		return nil, fmt.Errorf("无效的选择器文件格式: %w", err)
 	}
 
-	// 回退到旧格式（config.yaml）
-	var cfg publishSelectorConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-	logrus.Info("📄 使用传统config.yaml格式的选择器")
-	return map[string]string{
-		"upload_input":    cfg.Selectors.Publish.UploadInput,
-		"title_input":     cfg.Selectors.Publish.TitleInput,
-		"content":         cfg.Selectors.Publish.ContentEditorQL,
-		"submit":          cfg.Selectors.Publish.SubmitButton,
-		"save_draft":      cfg.Selectors.Publish.SaveDraftButton,
-		"uploading_mask":  cfg.Selectors.Publish.UploadingMask,
-		"uploading_class": cfg.Selectors.Publish.UploadingClass,
-		"upload_preview":  cfg.Selectors.Publish.UploadPreview,
-		"uploading_toast": cfg.Selectors.Publish.UploadingToast,
-	}, nil
+	logrus.Info("📦 检测到采集器生成的选择器文件，正在提取发布页面选择器...")
+	return extractPublishSelectorsFromCollected(&collected)
 }
 
 func extractPublishSelectorsFromCollected(collected *collectedSelectorsConfig) (map[string]string, error) {

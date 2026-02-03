@@ -80,14 +80,7 @@ func main() {
 }
 
 func loadAuthPollingModule() (polling.Module, error) {
-	configPath := os.Getenv("XHS_CONFIG_PATH")
-	if configPath == "" {
-		configPath = "config.yaml"
-	}
-	cfg, err := infraconfig.LoadFromFile(configPath)
-	if err != nil {
-		return polling.Module{}, err
-	}
+	cfg := infraconfig.DefaultConfig()
 	return polling.Module{
 		TimeoutMs:  cfg.Polling.Auth.TimeoutMs,
 		IntervalMs: cfg.Polling.Auth.IntervalMs,
