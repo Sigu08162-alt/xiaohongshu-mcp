@@ -4,8 +4,6 @@ import (
 	"flag"
 	"os"
 
-	_ "github.com/vmxmy/xiaohongshu-mcp/docs" // Swagger docs
-
 	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/config"
 	"github.com/vmxmy/xiaohongshu-mcp/configs"

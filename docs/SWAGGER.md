@@ -1,12 +1,15 @@
 # Swagger API 文档
 
+> 本仓库默认未启用 Swagger UI（已移除内置 docs 包与路由）。
+> 如需启用，请按 `docs/SWAGGER_SETUP.md` 手动恢复路由并生成 docs 包。
+
 ## 简介
 
-xiaohongshu-mcp 现在提供了完整的 Swagger/OpenAPI 文档支持,可以像 FastAPI 一样交互式地测试 API。
+xiaohongshu-mcp 可提供 Swagger/OpenAPI 文档支持，用于交互式测试 API（需手动启用）。
 
 ## 访问文档
 
-启动服务后,通过浏览器访问:
+启用 Swagger UI 后，通过浏览器访问:
 
 ```
 http://localhost:18060/swagger/index.html

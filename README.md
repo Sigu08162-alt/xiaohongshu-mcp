@@ -825,7 +825,7 @@ ls -lh bin/
 
 xiaohongshu-mcp 提供了完整的 Swagger/OpenAPI 文档,可以像 FastAPI 一样交互式地测试 API。
 
-**访问文档**: 启动服务后,在浏览器中打开 [http://localhost:18060/swagger/index.html](http://localhost:18060/swagger/index.html)
+**访问文档**: 本仓库默认未启用 Swagger UI，如需使用请参考 `docs/SWAGGER_SETUP.md` 手动开启。
 
 **功能特性**:
 - ✅ 交互式 API 测试 - 在线测试所有接口
