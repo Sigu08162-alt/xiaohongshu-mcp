@@ -51,28 +51,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxss1 \
     libxtst6 \
     lsb-release \
-    nodejs \
-    npm \
+    curl \
     wget \
     xdg-utils \
     google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. 安装 Playwright 浏览器与依赖（无 GUI 环境）
+# 4. 安装 Node.js 18（Playwright 需要）
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get update && apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# 5. 安装 Playwright 浏览器与依赖（无 GUI 环境）
 RUN npx playwright install --with-deps chromium
 
-# 5. 拷贝宿主机下载的 release 产物并解压
+# 6. 拷贝宿主机下载的 release 产物并解压
 COPY release/xiaohongshu-mcp-linux-amd64.tar.gz /tmp/xhs.tar.gz
 RUN tar -xzf /tmp/xhs.tar.gz -C /tmp && \
     mv /tmp/xiaohongshu-mcp-linux-amd64 /app/app && \
     chmod +x /app/app && \
     rm -f /tmp/xhs.tar.gz
 
-# 6. 创建共享目录并设置权限
+# 7. 创建共享目录并设置权限
 RUN mkdir -p /app/images && \
     chmod 777 /app/images
 
-# 7. 设置默认 Chrome 路径（rod 会用）
+# 8. 设置默认 Chrome 路径（rod 会用）
 ENV ROD_BROWSER_BIN=/usr/bin/google-chrome
 
 EXPOSE 18060
