@@ -176,3 +176,41 @@ func validatePollingModule(name string, module PollingModule, requiredDelays []s
 	}
 	return nil
 }
+
+// DefaultConfig returns a config with sensible defaults
+func DefaultConfig() *Config {
+	return &Config{
+		URLs: struct {
+			Creator struct {
+				PublishImage string `yaml:"publish_image"`
+				PublishVideo string `yaml:"publish_video"`
+			} `yaml:"creator"`
+		}{
+			Creator: struct {
+				PublishImage string `yaml:"publish_image"`
+				PublishVideo string `yaml:"publish_video"`
+			}{
+				PublishImage: "https://creator.xiaohongshu.com/publish/publish?source=official&target=image",
+				PublishVideo: "https://creator.xiaohongshu.com/publish/publish?source=official&target=video",
+			},
+		},
+		Limits: struct {
+			MaxTags   int `yaml:"max_tags"`
+			MinImages int `yaml:"min_images"`
+			MaxImages int `yaml:"max_images"`
+		}{
+			MaxTags:   10,
+			MinImages: 1,
+			MaxImages: 9,
+		},
+		Timeouts: struct {
+			Navigate    int `yaml:"navigate"`
+			ElementWait int `yaml:"element_wait"`
+			ImageUpload int `yaml:"image_upload"`
+		}{
+			Navigate:    300,
+			ElementWait: 30,
+			ImageUpload: 60,
+		},
+	}
+}

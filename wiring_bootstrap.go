@@ -47,7 +47,8 @@ func loadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
 	}
 	cfg, err := infraconfig.LoadFromFile(configPath)
 	if err != nil {
-		return nil, err
+		logrus.Warnf("配置文件加载失败，使用默认配置: %v", err)
+		cfg = infraconfig.DefaultConfig()
 	}
 
 	// 优先查找采集器生成的选择器文件
