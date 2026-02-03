@@ -199,9 +199,9 @@ func DefaultConfig() *Config {
 			MinImages int `yaml:"min_images"`
 			MaxImages int `yaml:"max_images"`
 		}{
-			MaxTags:   10,
+			MaxTags:   20,
 			MinImages: 1,
-			MaxImages: 9,
+			MaxImages: 18,
 		},
 		Timeouts: struct {
 			Navigate    int `yaml:"navigate"`
