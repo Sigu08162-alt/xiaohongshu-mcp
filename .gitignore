@@ -36,6 +36,9 @@ go.work.sum
 
 # Build artifacts
 xiaohongshu-mcp
+xiaohongshu-login
+xiaohongshu-mcp-*
+xiaohongshu-login-*
 xhs-mcp
 
 # Test scripts
