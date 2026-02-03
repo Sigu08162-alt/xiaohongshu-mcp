@@ -63,6 +63,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     rm -rf /var/lib/apt/lists/*
 
 # 5. 安装 Playwright 浏览器与依赖（无 GUI 环境）
+# 使用国内镜像源加速下载
+ENV PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright/
 RUN npx playwright install --with-deps chromium
 
 # 6. 拷贝宿主机下载的 release 产物并解压
