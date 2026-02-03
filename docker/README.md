@@ -7,15 +7,15 @@
 - 启动后，会产生一个 `images/` 目录，用于存储发布的图片。它会挂载到 Docker 容器里面。
   如果要使用本地图片发布的话，请确保图片拷贝到 `./images/` 目录下，并且让 MCP 在发布的时候，指定文件夹为：`/app/images`，否则一定失败。
 
-## 1. 宿主机先编译二进制
+## 1. 下载 Release 并准备二进制
 
 在项目根目录运行：
 
 ```bash
-./build_bin.sh
+./build_release.sh
 ```
 
-生成的二进制在 `bin/app`。
+会下载最新 release 并生成 `bin/app`。
 
 ## 2. 构建 Docker 镜像
 

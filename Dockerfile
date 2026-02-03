@@ -61,8 +61,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 4. 安装 Playwright 浏览器与依赖（无 GUI 环境）
 RUN npx playwright install --with-deps chromium
 
-# 5. 拷贝宿主机预编译二进制（必须先在宿主机构建到 bin/app）
-COPY bin/app /app/app
+# 5. 拷贝宿主机下载的 release 产物并解压
+COPY release/xiaohongshu-mcp-linux-amd64.tar.gz /tmp/xhs.tar.gz
+RUN tar -xzf /tmp/xhs.tar.gz -C /tmp && \
+    mv /tmp/xiaohongshu-mcp-linux-amd64 /app/app && \
+    chmod +x /app/app && \
+    rm -f /tmp/xhs.tar.gz
 
 # 6. 创建共享目录并设置权限
 RUN mkdir -p /app/images && \
