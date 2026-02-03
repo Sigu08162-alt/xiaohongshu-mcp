@@ -6,6 +6,38 @@ echo "小红书 MCP 登录工具"
 echo "========================================"
 echo ""
 
+# 自动检测系统浏览器路径
+detect_chrome_path() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        if [ -f "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
+            echo "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        elif [ -f "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" ]; then
+            echo "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
+        elif [ -f "/Applications/Chromium.app/Contents/MacOS/Chromium" ]; then
+            echo "/Applications/Chromium.app/Contents/MacOS/Chromium"
+        fi
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux
+        which google-chrome || which chromium-browser || which chromium || echo ""
+    fi
+}
+
+# 如果未设置 CHROME_PATH，尝试自动检测
+if [ -z "$CHROME_PATH" ]; then
+    DETECTED_CHROME=$(detect_chrome_path)
+    if [ -n "$DETECTED_CHROME" ]; then
+        export CHROME_PATH="$DETECTED_CHROME"
+        echo "✓ 检测到系统浏览器: $CHROME_PATH"
+        echo ""
+    else
+        echo "⚠️  未检测到系统浏览器，将使用 Playwright 下载浏览器（首次运行需要下载）"
+        echo "💡 提示：设置 CHROME_PATH 环境变量可使用系统浏览器，避免下载"
+        echo "   例如：export CHROME_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'"
+        echo ""
+    fi
+fi
+
 # 检查登录程序是否存在
 LOGIN_BIN=""
 if [ -f "./xiaohongshu-login" ]; then

@@ -60,9 +60,18 @@ func (e *Engine) Start() error {
 			return wrapPlaywrightError(err)
 		}
 	}
-	b, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+
+	// 准备启动选项
+	launchOptions := playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(e.cfg.Headless),
-	})
+	}
+
+	// 如果设置了环境变量 CHROME_PATH，使用系统浏览器
+	if chromePath := os.Getenv("CHROME_PATH"); chromePath != "" {
+		launchOptions.ExecutablePath = playwright.String(chromePath)
+	}
+
+	b, err := pw.Chromium.Launch(launchOptions)
 	if err != nil {
 		_ = pw.Stop()
 		return err
