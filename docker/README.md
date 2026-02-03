@@ -12,7 +12,7 @@
 在项目根目录运行：
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/app .
+./build_bin.sh
 ```
 
 生成的二进制在 `bin/app`。

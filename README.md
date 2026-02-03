@@ -310,7 +310,7 @@ go env -w  GOPROXY=https://goproxy.io,direct
 
 ```bash
 # 宿主机编译二进制
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/app .
+./build_bin.sh
 
 # 已经克隆项目后，进入 docker 目录
 cd docker
@@ -329,7 +329,7 @@ docker compose stop
 
 ```bash
 # 在项目根目录先编译，再构建
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/app .
+./build_bin.sh
 docker build -t xiaohongshu-mcp .
 ```
 
