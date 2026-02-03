@@ -7,26 +7,22 @@ BIN_NAME="xiaohongshu-mcp-linux-amd64"
 
 mkdir -p "$RELEASE_DIR"
 
-# 下载最新 release 产物（显示进度与速度）
+# 下载最新 release 产物（gh 自带进度显示）
 rm -f "$RELEASE_DIR/$ASSET"
 GH_REPO="vmxmy/xiaohongshu-mcp"
 
-ASSET_URL=$(gh api "repos/$GH_REPO/releases/latest" --jq ".assets[] | select(.name==\"$ASSET\") | .url")
-if [ -z "$ASSET_URL" ]; then
-  echo "release asset not found: $ASSET"
-  exit 1
+START_TS=$(date +%s)
+gh release download --repo "$GH_REPO" --pattern "$ASSET" --dir "$RELEASE_DIR"
+END_TS=$(date +%s)
+
+ELAPSED=$((END_TS - START_TS))
+if [ "$ELAPSED" -lt 1 ]; then
+  ELAPSED=1
 fi
 
-TOKEN=$(gh auth token)
-if [ -z "$TOKEN" ]; then
-  echo "gh auth token not found, run: gh auth login"
-  exit 1
-fi
-
-curl -L --progress-bar \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/octet-stream" \
-  "$ASSET_URL" -o "$RELEASE_DIR/$ASSET"
+SIZE_BYTES=$(wc -c < "$RELEASE_DIR/$ASSET" | tr -d ' ')
+SPEED_MBPS=$(awk "BEGIN {printf \"%.2f\", $SIZE_BYTES/1024/1024/$ELAPSED}")
+echo "downloaded $ASSET: ${SIZE_BYTES} bytes in ${ELAPSED}s (${SPEED_MBPS} MB/s)"
 
 # 解压并放到 bin/app
 mkdir -p bin
