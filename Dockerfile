@@ -57,8 +57,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. 安装 Node.js 18（Playwright 需要）
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+# 4. 安装 Node.js 20（Playwright 需要）
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get update && apt-get install -y --no-install-recommends nodejs && \
     rm -rf /var/lib/apt/lists/*
 
