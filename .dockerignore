@@ -6,6 +6,7 @@
 .github
 **/*.log
 bin
+!bin/app
 dist
 vendor
 Dockerfile
