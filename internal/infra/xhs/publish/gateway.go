@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/selector"
 )
 
 var ErrNotReady = errors.New("publish not implemented")
@@ -20,6 +21,7 @@ type Config struct {
 	PublishImageURL string
 	PublishVideoURL string
 	Selectors       map[string]string
+	SelectorCfg     *selector.SelectorConfig // 自适应选择器配置（nil时降级到Selectors）
 	PublishPolling  PollingModule
 	DraftPolling    PollingModule
 	VideoPolling    PollingModule
@@ -56,6 +58,25 @@ func NewGateway(cfg Config, engine browser.Engine) (*Gateway, error) {
 	logrus.Infof("  - 图文发布URL: %s", cfg.PublishImageURL)
 	logrus.Infof("  - 视频发布URL: %s", cfg.PublishVideoURL)
 	return &Gateway{cfg: cfg, engine: engine}, nil
+}
+
+// newResolver 创建页面级选择器解析器（SelectorCfg为nil时返回nil）
+func (g *Gateway) newResolver(page browser.Page) *selector.ElementResolver {
+	if g.cfg.SelectorCfg != nil {
+		return selector.NewElementResolver(g.cfg.SelectorCfg, page)
+	}
+	return nil
+}
+
+// resolveOrFallback 优先用自适应解析，失败降级到静态配置
+func resolveOrFallback(resolver *selector.ElementResolver, smartName, legacySelector string) string {
+	if resolver != nil {
+		if sel, err := resolver.Resolve(smartName); err == nil {
+			return sel
+		}
+		logrus.Warnf("自适应解析失败: %s, 降级到静态配置: %s", smartName, legacySelector)
+	}
+	return legacySelector
 }
 
 func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent) error {
@@ -101,13 +122,23 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	}
 	logrus.Info("✅ 页面稳定")
 
+	// 创建自适应选择器解析器
+	resolver := g.newResolver(page)
+
 	// 等待上传输入框
-	logrus.Infof("⏳ 等待上传输入框可见 (选择器: %s)...", g.cfg.Selectors["upload_input"])
-	if err := page.WaitVisible(g.cfg.Selectors["upload_input"]); err != nil {
+	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
+	logrus.Infof("⏳ 等待上传输入框出现 (选择器: %s)...", uploadSelector)
+	jsCheck := fmt.Sprintf(`() => document.querySelector('%s') !== null`, uploadSelector)
+	if err := page.WaitForFunction(jsCheck, 60*time.Second); err != nil {
+		actualURL := page.URL()
 		logrus.Errorf("❌ 上传输入框未出现: %v", err)
-		return fmt.Errorf("publish image wait upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
+		logrus.Errorf("📍 当前URL: %s", actualURL)
+		screenshotPath := fmt.Sprintf("debug_upload_wait_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		logrus.Infof("📸 已保存截图: %s", screenshotPath)
+		return fmt.Errorf("publish image wait upload_input(%s): %w", uploadSelector, err)
 	}
-	logrus.Info("✅ 上传输入框已可见")
+	logrus.Info("✅ 上传输入框已就绪")
 
 	// 上传图片前检查URL
 	beforeUploadURL := page.URL()
@@ -124,9 +155,9 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 	for i, path := range content.ImagePaths {
 		logrus.Infof("  [%d/%d] %s", i+1, len(content.ImagePaths), path)
 	}
-	if err := page.SetFiles(g.cfg.Selectors["upload_input"], content.ImagePaths); err != nil {
+	if err := page.SetFiles(uploadSelector, content.ImagePaths); err != nil {
 		logrus.Errorf("❌ 图片上传失败: %v", err)
-		return fmt.Errorf("publish image upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
+		return fmt.Errorf("publish image upload_input(%s): %w", uploadSelector, err)
 	}
 	logrus.Info("✅ 图片���传成功")
 
@@ -154,34 +185,36 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 		logrus.Errorf("📍 实际URL: %s", afterTitleURL)
 		return fmt.Errorf("填写标题后URL异常: %s", afterTitleURL)
 	}
-	logrus.Infof("⏳ 等待标题输入框可见 (选择器: %s)...", g.cfg.Selectors["title_input"])
-	if err := page.WaitVisible(g.cfg.Selectors["title_input"]); err != nil {
+	titleSelector := resolveOrFallback(resolver, "publish_title", g.cfg.Selectors["title_input"])
+	logrus.Infof("⏳ 等待标题输入框可见 (选择器: %s)...", titleSelector)
+	if err := page.WaitVisible(titleSelector); err != nil {
 		logrus.Errorf("❌ 标题输入框未出现: %v", err)
-		return fmt.Errorf("publish image wait title_input(%s): %w", g.cfg.Selectors["title_input"], err)
+		return fmt.Errorf("publish image wait title_input(%s): %w", titleSelector, err)
 	}
 	logrus.Info("✅ 标题输入框已可见")
 
 	// 填写标题
 	logrus.Infof("✍️ 填写标题: '%s'", content.Title)
-	if err := page.Fill(g.cfg.Selectors["title_input"], content.Title); err != nil {
+	if err := page.Fill(titleSelector, content.Title); err != nil {
 		logrus.Errorf("❌ 标题填写失败: %v", err)
-		return fmt.Errorf("publish image title_input(%s): %w", g.cfg.Selectors["title_input"], err)
+		return fmt.Errorf("publish image title_input(%s): %w", titleSelector, err)
 	}
 	logrus.Info("✅ 标题填写完成")
 
 	// 等待内容编辑器
-	logrus.Infof("⏳ 等待内容编辑器可见 (选择器: %s)...", g.cfg.Selectors["content"])
-	if err := page.WaitVisible(g.cfg.Selectors["content"]); err != nil {
+	contentSelector := resolveOrFallback(resolver, "publish_content", g.cfg.Selectors["content"])
+	logrus.Infof("⏳ 等待内容编辑器可见 (选择器: %s)...", contentSelector)
+	if err := page.WaitVisible(contentSelector); err != nil {
 		logrus.Errorf("❌ 内容编辑器未出现: %v", err)
-		return fmt.Errorf("publish image wait content(%s): %w", g.cfg.Selectors["content"], err)
+		return fmt.Errorf("publish image wait content(%s): %w", contentSelector, err)
 	}
 	logrus.Info("✅ 内容编辑器已可见")
 
 	// 填写内容
 	logrus.Infof("✍️ 填写内容: '%s'", content.Content)
-	if err := page.Fill(g.cfg.Selectors["content"], content.Content); err != nil {
+	if err := page.Fill(contentSelector, content.Content); err != nil {
 		logrus.Errorf("❌ 内容填写失败: %v", err)
-		return fmt.Errorf("publish image content(%s): %w", g.cfg.Selectors["content"], err)
+		return fmt.Errorf("publish image content(%s): %w", contentSelector, err)
 	}
 	logrus.Info("✅ 内容填写完成")
 
@@ -239,17 +272,18 @@ func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent
 		return fmt.Errorf("点击前URL异常: %s", beforeClickURL)
 	}
 
-	// 点���发布按钮
-	submitSelector := g.cfg.Selectors["submit"]
+	// 点击发布按钮（自适应解析已包含降级逻辑）
+	submitSelector := resolveOrFallback(resolver, "publish_submit", g.cfg.Selectors["submit"])
 	logrus.Infof("=== 准备点击发布按钮 ===")
 	logrus.Infof("选择器: %s", submitSelector)
 
-	// 等待按钮出现并可点击
 	if err := page.WaitVisible(submitSelector); err != nil {
-		logrus.Warnf("等待发布按钮可见失败: %v (继续尝试)", err)
+		logrus.Warnf("等待发布按钮可见失败: %v", err)
+		screenshotPath := fmt.Sprintf("debug_submit_not_found_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		return fmt.Errorf("发布按钮未找到: selector=%s, err=%v", submitSelector, err)
 	}
 
-	// 使用普通点击（更可靠，能正确触发Vue事件）
 	logrus.Info("点击发布按钮...")
 	if err := page.Click(submitSelector); err != nil {
 		return fmt.Errorf("点击发布按钮失败: %w", err)
@@ -287,26 +321,33 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 	if err := page.Goto(g.cfg.PublishVideoURL); err != nil {
 		return fmt.Errorf("publish video goto url: %w", err)
 	}
+
+	// 创建自适应选择器解析器
+	resolver := g.newResolver(page)
+
 	// 等待上传输入框可见
-	if err := page.WaitVisible(g.cfg.Selectors["upload_input"]); err != nil {
-		return fmt.Errorf("publish video wait upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
+	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
+	if err := page.WaitVisible(uploadSelector); err != nil {
+		return fmt.Errorf("publish video wait upload_input(%s): %w", uploadSelector, err)
 	}
-	if err := page.SetFiles(g.cfg.Selectors["upload_input"], []string{content.VideoPath}); err != nil {
-		return fmt.Errorf("publish video upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
+	if err := page.SetFiles(uploadSelector, []string{content.VideoPath}); err != nil {
+		return fmt.Errorf("publish video upload_input(%s): %w", uploadSelector, err)
 	}
 	// 等待标题输入框可见（视频上传后才出现）
-	if err := page.WaitVisible(g.cfg.Selectors["title_input"]); err != nil {
-		return fmt.Errorf("publish video wait title_input(%s): %w", g.cfg.Selectors["title_input"], err)
+	titleSelector := resolveOrFallback(resolver, "publish_title", g.cfg.Selectors["title_input"])
+	if err := page.WaitVisible(titleSelector); err != nil {
+		return fmt.Errorf("publish video wait title_input(%s): %w", titleSelector, err)
 	}
-	if err := page.Fill(g.cfg.Selectors["title_input"], content.Title); err != nil {
-		return fmt.Errorf("publish video title_input(%s): %w", g.cfg.Selectors["title_input"], err)
+	if err := page.Fill(titleSelector, content.Title); err != nil {
+		return fmt.Errorf("publish video title_input(%s): %w", titleSelector, err)
 	}
 	// 等待内容编辑器可见
-	if err := page.WaitVisible(g.cfg.Selectors["content"]); err != nil {
-		return fmt.Errorf("publish video wait content(%s): %w", g.cfg.Selectors["content"], err)
+	contentSelector := resolveOrFallback(resolver, "publish_content", g.cfg.Selectors["content"])
+	if err := page.WaitVisible(contentSelector); err != nil {
+		return fmt.Errorf("publish video wait content(%s): %w", contentSelector, err)
 	}
-	if err := page.Fill(g.cfg.Selectors["content"], content.Content); err != nil {
-		return fmt.Errorf("publish video content(%s): %w", g.cfg.Selectors["content"], err)
+	if err := page.Fill(contentSelector, content.Content); err != nil {
+		return fmt.Errorf("publish video content(%s): %w", contentSelector, err)
 	}
 
 	// 提交前短暂等待，确保内容已输入完成
@@ -316,16 +357,17 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 	}
 
 	// 点击发布按钮
-	submitSelector := g.cfg.Selectors["submit"]
+	submitSelector := resolveOrFallback(resolver, "publish_submit", g.cfg.Selectors["submit"])
 	logrus.Infof("=== 准备点击发布按钮 ===")
 	logrus.Infof("选择器: %s", submitSelector)
 
-	// 等待按钮出现并可点击
 	if err := page.WaitVisible(submitSelector); err != nil {
-		logrus.Warnf("等待发布按钮可见失败: %v (继续尝试)", err)
+		logrus.Warnf("等待发布按钮可见失败: %v", err)
+		screenshotPath := fmt.Sprintf("debug_submit_not_found_%d.png", time.Now().Unix())
+		page.Screenshot(screenshotPath)
+		return fmt.Errorf("发布按钮未找到: selector=%s, err=%v", submitSelector, err)
 	}
 
-	// 使用普通点击（更可靠，能正确触发Vue事件）
 	logrus.Info("点击发布按钮...")
 	if err := page.Click(submitSelector); err != nil {
 		return fmt.Errorf("点击发布按钮失败: %w", err)
@@ -344,18 +386,44 @@ func (g *Gateway) PublishVideo(ctx context.Context, content publish.VideoContent
 	}
 	startTime := time.Now()
 
+	lastLogTime := startTime
 	for time.Since(startTime) < maxWait {
 		currentURL := page.URL()
-		logrus.Debugf("当前URL: %s", currentURL)
+		if time.Since(lastLogTime) >= 5*time.Second {
+			logrus.Infof("⏳ 视频发布等待中 (%.0fs)，当前URL: %s", time.Since(startTime).Seconds(), currentURL)
+			lastLogTime = time.Now()
+		}
 
-		// 检查URL是否包含 published=true，这是发布成功的标志
 		if strings.Contains(currentURL, "published=true") {
 			logrus.Info("✅ 发布成功！URL已更新为发布完成状态")
 			logrus.Infof("发布完成URL: %s", currentURL)
 			return nil
 		}
 
-		// 检查是否有错误消息
+		if strings.Contains(currentURL, "/creator/post") || strings.Contains(currentURL, "/creator/content") {
+			logrus.Info("✅ 发布成功！页面已跳转到内容管理")
+			logrus.Infof("发布完成URL: %s", currentURL)
+			return nil
+		}
+
+		if !strings.Contains(currentURL, "/publish/publish") {
+			logrus.Infof("✅ 发布成功！页面已离开发布页")
+			logrus.Infof("发布完成URL: %s", currentURL)
+			return nil
+		}
+
+		successSelectors := []string{
+			"text=发布成功",
+			"text=发送成功",
+			"text=已发布",
+		}
+		for _, sel := range successSelectors {
+			if hasSuccess, _ := page.Has(sel); hasSuccess {
+				logrus.Infof("✅ 发布成功！检测到成功提示 (%s)", sel)
+				return nil
+			}
+		}
+
 		if hasError, _ := page.Has(".error-message"); hasError {
 			if errText, err := page.Text(".error-message"); err == nil {
 				logrus.Errorf("❌ 发布失败：%s", errText)
@@ -409,36 +477,43 @@ func (g *Gateway) SaveVideoDraft(ctx context.Context, content publish.VideoConte
 	if err := page.Goto(g.cfg.PublishVideoURL); err != nil {
 		return fmt.Errorf("save video draft goto url: %w", err)
 	}
+
+	// 创建自适应选择器解析器
+	resolver := g.newResolver(page)
+
 	// 等待上传输入框可见
-	if err := page.WaitVisible(g.cfg.Selectors["upload_input"]); err != nil {
-		return fmt.Errorf("save video draft wait upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
+	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
+	if err := page.WaitVisible(uploadSelector); err != nil {
+		return fmt.Errorf("save video draft wait upload_input(%s): %w", uploadSelector, err)
 	}
-	if err := page.SetFiles(g.cfg.Selectors["upload_input"], []string{content.VideoPath}); err != nil {
-		return fmt.Errorf("save video draft upload_input(%s): %w", g.cfg.Selectors["upload_input"], err)
+	if err := page.SetFiles(uploadSelector, []string{content.VideoPath}); err != nil {
+		return fmt.Errorf("save video draft upload_input(%s): %w", uploadSelector, err)
 	}
 	// 等待标题输入框可见（视频上传后才出现）
-	if err := page.WaitVisible(g.cfg.Selectors["title_input"]); err != nil {
-		return fmt.Errorf("save video draft wait title_input(%s): %w", g.cfg.Selectors["title_input"], err)
+	titleSelector := resolveOrFallback(resolver, "publish_title", g.cfg.Selectors["title_input"])
+	if err := page.WaitVisible(titleSelector); err != nil {
+		return fmt.Errorf("save video draft wait title_input(%s): %w", titleSelector, err)
 	}
-	if err := page.Fill(g.cfg.Selectors["title_input"], content.Title); err != nil {
-		return fmt.Errorf("save video draft title_input(%s): %w", g.cfg.Selectors["title_input"], err)
+	if err := page.Fill(titleSelector, content.Title); err != nil {
+		return fmt.Errorf("save video draft title_input(%s): %w", titleSelector, err)
 	}
 	// 等待内容编辑器可见
-	if err := page.WaitVisible(g.cfg.Selectors["content"]); err != nil {
-		return fmt.Errorf("save video draft wait content(%s): %w", g.cfg.Selectors["content"], err)
+	contentSelector := resolveOrFallback(resolver, "publish_content", g.cfg.Selectors["content"])
+	if err := page.WaitVisible(contentSelector); err != nil {
+		return fmt.Errorf("save video draft wait content(%s): %w", contentSelector, err)
 	}
-	if err := page.Fill(g.cfg.Selectors["content"], content.Content); err != nil {
-		return fmt.Errorf("save video draft content(%s): %w", g.cfg.Selectors["content"], err)
+	if err := page.Fill(contentSelector, content.Content); err != nil {
+		return fmt.Errorf("save video draft content(%s): %w", contentSelector, err)
 	}
 
 	// 等待页面渲染完成
-	logrus.Info("内容填写完成，等待页面渲染...")
+	logrus.Info("内容填写完成，等待页��渲染...")
 	if err := sleepDelay(g.cfg.VideoPolling, "post_content_render_ms"); err != nil {
 		return fmt.Errorf("save video draft post_content_render_ms: %w", err)
 	}
 
 	// 点击暂存按钮
-	saveDraftSelector := g.cfg.Selectors["save_draft"]
+	saveDraftSelector := resolveOrFallback(resolver, "publish_save_draft", g.cfg.Selectors["save_draft"])
 	logrus.Infof("准备点击暂存按钮: %s", saveDraftSelector)
 
 	// 滚动并强制点击
@@ -651,16 +726,16 @@ func inputTag(page browser.Page, contentElem browser.Element, tag string, pollin
 	// 查找并点击标签联想选项
 	topicContainer, err := page.Element("#creator-editor-topic-container")
 	if err == nil && topicContainer != nil {
-			firstItem, err := topicContainer.Element(".item")
-			if err == nil && firstItem != nil {
-				firstItem.Click()
-				logrus.Infof("    ✅ 成功点击标签联想选项")
-				if err := sleepDelay(polling, "tag_suggestion_click_ms"); err != nil {
-					return err
-				}
-			} else {
-				logrus.Warnf("    ⚠️ 未找到标签联想选项，直接输入空格")
-				contentElem.Input(" ")
+		firstItem, err := topicContainer.Element(".item")
+		if err == nil && firstItem != nil {
+			firstItem.Click()
+			logrus.Infof("    ✅ 成功点击标签联想选项")
+			if err := sleepDelay(polling, "tag_suggestion_click_ms"); err != nil {
+				return err
+			}
+		} else {
+			logrus.Warnf("    ⚠️ 未找到标签联想选项，直接输入空格")
+			contentElem.Input(" ")
 		}
 	} else {
 		logrus.Warnf("    ⚠️ 未找到标签联想下拉框，直接输入空格")
@@ -714,11 +789,15 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	}
 	logrus.Info("✅ 页面稳定")
 
+	// 创建自适应选择器解析器
+	resolver := g.newResolver(page)
+
 	// 等待上传输入框
-	logrus.Infof("⏳ 等待上传输入框可见 (选择器: %s)...", g.cfg.Selectors["upload_input"])
-	if err := page.WaitVisible(g.cfg.Selectors["upload_input"]); err != nil {
+	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
+	logrus.Infof("⏳ 等待上传输入框可见 (选择器: %s)...", uploadSelector)
+	if err := page.WaitVisible(uploadSelector); err != nil {
 		logrus.Errorf("❌ 上传输入框未出现: %v", err)
-		return fmt.Errorf("%s wait upload_input(%s): %w", actionName, g.cfg.Selectors["upload_input"], err)
+		return fmt.Errorf("%s wait upload_input(%s): %w", actionName, uploadSelector, err)
 	}
 	logrus.Info("✅ 上传输入框已可见")
 
@@ -737,9 +816,9 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	for i, path := range content.ImagePaths {
 		logrus.Infof("  [%d/%d] %s", i+1, len(content.ImagePaths), path)
 	}
-	if err := page.SetFiles(g.cfg.Selectors["upload_input"], content.ImagePaths); err != nil {
+	if err := page.SetFiles(uploadSelector, content.ImagePaths); err != nil {
 		logrus.Errorf("❌ 图片上传失败: %v", err)
-		return fmt.Errorf("%s upload_input(%s): %w", actionName, g.cfg.Selectors["upload_input"], err)
+		return fmt.Errorf("%s upload_input(%s): %w", actionName, uploadSelector, err)
 	}
 	logrus.Info("✅ 图片上传成功")
 
@@ -757,34 +836,36 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	}
 
 	// 等待标题输入框
-	logrus.Infof("⏳ 等待标题输入框可见 (选择器: %s)...", g.cfg.Selectors["title_input"])
-	if err := page.WaitVisible(g.cfg.Selectors["title_input"]); err != nil {
+	titleSelector := resolveOrFallback(resolver, "publish_title", g.cfg.Selectors["title_input"])
+	logrus.Infof("⏳ 等待标题输入框可见 (选择器: %s)...", titleSelector)
+	if err := page.WaitVisible(titleSelector); err != nil {
 		logrus.Errorf("❌ 标题输入框未出现: %v", err)
-		return fmt.Errorf("%s wait title_input(%s): %w", actionName, g.cfg.Selectors["title_input"], err)
+		return fmt.Errorf("%s wait title_input(%s): %w", actionName, titleSelector, err)
 	}
 	logrus.Info("✅ 标题输入框已可见")
 
 	// 填写标题
 	logrus.Infof("📝 填写标题: %s", content.Title)
-	if err := page.Fill(g.cfg.Selectors["title_input"], content.Title); err != nil {
+	if err := page.Fill(titleSelector, content.Title); err != nil {
 		logrus.Errorf("❌ 填写标题失败: %v", err)
-		return fmt.Errorf("%s title_input(%s): %w", actionName, g.cfg.Selectors["title_input"], err)
+		return fmt.Errorf("%s title_input(%s): %w", actionName, titleSelector, err)
 	}
 	logrus.Info("✅ 标题填写成功")
 
 	// 等待内容编辑器
-	logrus.Infof("⏳ 等待内容编辑器可见 (选择器: %s)...", g.cfg.Selectors["content"])
-	if err := page.WaitVisible(g.cfg.Selectors["content"]); err != nil {
+	contentSelector := resolveOrFallback(resolver, "publish_content", g.cfg.Selectors["content"])
+	logrus.Infof("⏳ 等待内容编辑器可见 (选择器: %s)...", contentSelector)
+	if err := page.WaitVisible(contentSelector); err != nil {
 		logrus.Errorf("❌ 内容编辑器未出现: %v", err)
-		return fmt.Errorf("%s wait content(%s): %w", actionName, g.cfg.Selectors["content"], err)
+		return fmt.Errorf("%s wait content(%s): %w", actionName, contentSelector, err)
 	}
 	logrus.Info("✅ 内容编辑器已可见")
 
 	// 填写正文
 	logrus.Infof("📝 填写正文: %s", content.Content)
-	if err := page.Fill(g.cfg.Selectors["content"], content.Content); err != nil {
+	if err := page.Fill(contentSelector, content.Content); err != nil {
 		logrus.Errorf("❌ 填写正文失败: %v", err)
-		return fmt.Errorf("%s content(%s): %w", actionName, g.cfg.Selectors["content"], err)
+		return fmt.Errorf("%s content(%s): %w", actionName, contentSelector, err)
 	}
 	logrus.Info("✅ 正文填写成功")
 
@@ -819,10 +900,10 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	var buttonSelector string
 	var buttonName string
 	if isPublish {
-		buttonSelector = g.cfg.Selectors["submit"]
+		buttonSelector = resolveOrFallback(resolver, "publish_submit", g.cfg.Selectors["submit"])
 		buttonName = "发布按钮"
 	} else {
-		buttonSelector = g.cfg.Selectors["save_draft"]
+		buttonSelector = resolveOrFallback(resolver, "publish_save_draft", g.cfg.Selectors["save_draft"])
 		buttonName = "暂存按钮"
 	}
 
@@ -979,39 +1060,47 @@ func (g *Gateway) waitForCompletion(page browser.Page, isPublish bool) error {
 		}
 	}
 
+	lastLogTime := startTime
 	for time.Since(startTime) < maxWait {
 		currentURL := page.URL()
-		logrus.Debugf("当前URL: %s", currentURL)
+		if time.Since(lastLogTime) >= 5*time.Second {
+			logrus.Infof("⏳ %s等待中 (%.0fs)，当前URL: %s", actionName, time.Since(startTime).Seconds(), currentURL)
+			lastLogTime = time.Now()
+		}
 
-		// 检查成功标志
 		if isPublish {
-			// 发布成功：检查URL是否包含 published=true
 			if strings.Contains(currentURL, "published=true") {
 				logrus.Info("✅ 发布成功！URL已更新为发布完成状态")
 				logrus.Infof("发布完成URL: %s", currentURL)
 				return nil
 			}
 
-			// 新增：检查是否有成功Toast提示
+			if strings.Contains(currentURL, "/creator/post") || strings.Contains(currentURL, "/creator/content") {
+				logrus.Info("✅ 发布成功！页面已跳转到内容管理")
+				logrus.Infof("发布完成URL: %s", currentURL)
+				return nil
+			}
+
+			if !strings.Contains(currentURL, "/publish/publish") {
+				logrus.Infof("✅ 发布成功！页面已离开发布页")
+				logrus.Infof("发布完成URL: %s", currentURL)
+				savePageState("success_redirect")
+				return nil
+			}
+
 			successSelectors := []string{
 				"text=发布成功",
 				"text=发送成功",
+				"text=已发布",
 				".success-toast",
 				".toast-success",
-				"[class*='success']",
 			}
 			for _, selector := range successSelectors {
 				if hasSuccess, _ := page.Has(selector); hasSuccess {
-					logrus.Info("✅ 发布成功！检测到成功提示")
+					logrus.Infof("✅ 发布成功！检测到成功提示 (%s)", selector)
 					savePageState("success")
 					return nil
 				}
-			}
-
-			// 新增：检查发布按钮是否变为"已发布"或消失
-			if hasPublished, _ := page.Has("text=已发布"); hasPublished {
-				logrus.Info("✅ 发布成功！按钮显示已发布")
-				return nil
 			}
 		} else {
 			// 保存草稿成功：检查是否回到创作者中心或草稿列表

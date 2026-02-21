@@ -5,15 +5,17 @@ import (
 	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/selector"
 	xhspublish "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/publish"
 	"github.com/vmxmy/xiaohongshu-mcp/pkg/downloader"
 )
 
-func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, engine browser.Engine) (*apppublish.Usecase, error) {
+func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, selectorCfg *selector.SelectorConfig, engine browser.Engine) (*apppublish.Usecase, error) {
 	gw, err := xhspublish.NewGateway(xhspublish.Config{
 		PublishImageURL: cfg.URLs.Creator.PublishImage,
 		PublishVideoURL: cfg.URLs.Creator.PublishVideo,
 		Selectors:       selectors,
+		SelectorCfg:     selectorCfg,
 		PublishPolling: xhspublish.PollingModule{
 			TimeoutMs:  cfg.Polling.Publish.TimeoutMs,
 			IntervalMs: cfg.Polling.Publish.IntervalMs,

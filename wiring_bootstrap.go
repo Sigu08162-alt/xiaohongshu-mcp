@@ -14,6 +14,7 @@ import (
 	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
 	browserplaywright "github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser/playwright"
 	infraconfig "github.com/vmxmy/xiaohongshu-mcp/internal/infra/config"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/selector"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/interfaces/wiring"
 )
 
@@ -37,7 +38,17 @@ func buildPublishUsecase(cfg *infraconfig.Config, selectors map[string]string, h
 		}
 	}
 	engine := browserplaywright.New(engineCfg)
-	return wiring.BuildPublishUsecase(cfg, selectors, engine)
+
+	// 加载自适应选择器配置
+	var selectorCfg *selector.SelectorConfig
+	selectorConfigPath := "configs/selectors.yaml"
+	if sc, err := selector.LoadSelectorConfig(selectorConfigPath); err != nil {
+		logrus.Warnf("自适应选择器配置加载失败: %v (使用静态选择器)", err)
+	} else {
+		selectorCfg = sc
+	}
+
+	return wiring.BuildPublishUsecase(cfg, selectors, selectorCfg, engine)
 }
 
 func loadPublishUsecase(headless bool) (*apppublish.Usecase, error) {

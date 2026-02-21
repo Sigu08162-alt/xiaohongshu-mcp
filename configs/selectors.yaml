@@ -194,3 +194,92 @@ follow_button:
     must_be_clickable: true
     text_contains: ["关注"]
 
+# ==========================================
+# 发布页面选择器（语义优先，class降级）
+# ==========================================
+
+# 发布页面 - 文件上传
+publish_upload:
+  name: "文件上传输入"
+  primary:
+    - selector: 'input[type="file"]'
+      version: "semantic"
+      confidence: 0.99
+      description: "语义选择器，type=file不变"
+
+# 发布页面 - 标题输入框
+publish_title:
+  name: "标题输入框"
+  primary:
+    - selector: 'input[placeholder*="标题"]'
+      version: "semantic"
+      confidence: 0.95
+      description: "基于placeholder文本"
+  validation:
+    must_be_visible: true
+
+# 发布页面 - 内容编辑器
+publish_content:
+  name: "内容编辑器"
+  primary:
+    - selector: "[role='textbox']"
+      version: "semantic"
+      confidence: 0.95
+      description: "ARIA role属性"
+    - selector: ".tiptap.ProseMirror"
+      version: "2026-02"
+      confidence: 0.85
+      description: "富文本框架class"
+  fallback:
+    - selector: "[contenteditable='true']"
+      version: "semantic"
+      confidence: 0.70
+      description: "通用可编辑元素"
+  validation:
+    must_be_visible: true
+    must_be_editable: true
+
+# 发布页面 - 发���按钮
+publish_submit:
+  name: "发布按钮"
+  primary:
+    - selector: 'button:has-text("发布")'
+      version: "semantic"
+      confidence: 0.95
+      description: "基于按钮文本，最稳定"
+  fallback:
+    - selector: "button.publishBtn"
+      version: "2026-01"
+      confidence: 0.50
+      description: "旧版class（已过期）"
+    - selector: "button.d-button"
+      version: "2026-02"
+      confidence: 0.50
+      description: "当前class（可能变化）"
+  text_match:
+    - "发布"
+  validation:
+    must_be_visible: true
+    must_be_clickable: true
+    text_contains: ["发布"]
+
+# 发布页面 - 暂存按钮
+publish_save_draft:
+  name: "暂存按钮"
+  primary:
+    - selector: 'button:has-text("暂存")'
+      version: "semantic"
+      confidence: 0.95
+      description: "基于按钮文本"
+  fallback:
+    - selector: "button.d-button"
+      version: "2026-02"
+      confidence: 0.40
+      description: "通用按钮class"
+  text_match:
+    - "暂存"
+    - "暂存离开"
+  validation:
+    must_be_visible: true
+    must_be_clickable: true
+    text_contains: ["暂存"]
