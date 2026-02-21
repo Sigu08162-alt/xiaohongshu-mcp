@@ -1,15 +1,3 @@
-FROM golang:1.24 AS builder
-
-WORKDIR /src
-ENV GOPROXY=https://goproxy.cn,direct
-
-COPY go.mod go.sum ./
-RUN go mod download
-
-COPY . .
-RUN CGO_ENABLED=0 GOMAXPROCS=1 go build -p 1 -ldflags="-s -w" -o /out/app .
-RUN CGO_ENABLED=0 GOMAXPROCS=1 go build -p 1 -ldflags="-s -w" -o /out/login ./cmd/login
-
 FROM ubuntu:22.04
 
 ENV TZ=Asia/Shanghai
@@ -53,8 +41,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /out/app .
-COPY --from=builder /out/login .
+COPY release/xiaohongshu-mcp-linux-amd64 /app/app
+COPY release/xiaohongshu-login-linux-amd64 /app/login
+RUN chmod +x /app/app /app/login
+
 COPY configs/ /app/configs/
 
 RUN mkdir -p /app/images /app/data && \
