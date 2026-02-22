@@ -89,7 +89,10 @@ func loadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, errors.New("未找到可用的选择器文件")
+
+	// 无采集产物时使用空选择器，依赖自适应选择器(configs/selectors.yaml)
+	logrus.Info("未找到采集器选择器文件，使用自适应选择器")
+	return buildPublishUsecase(cfg, map[string]string{}, headless)
 }
 
 func initPublishUsecase(headless bool) *apppublish.Usecase {
