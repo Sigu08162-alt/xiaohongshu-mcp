@@ -210,10 +210,12 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 // findMoreButton 查找更多按钮（三个点）
 func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error) {
 	selectors := []string{
+		".info-right-area-more-container",
 		".more-button",
-		"[class*='more']",
-		"button[aria-label*='更多']",
 		".operate-button",
+		"button[aria-label*='更多']",
+		"[class*='more-container']",
+		"[class*='more']",
 	}
 
 	for _, sel := range selectors {
