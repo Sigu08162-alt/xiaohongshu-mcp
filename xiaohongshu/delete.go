@@ -54,6 +54,13 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	// 查找更多按钮（三个点）
 	moreBtn, err := d.findMoreButton(page)
 	if err != nil {
+		// 截图+dump类名用于调试
+		if sErr := page.Screenshot("/tmp/delete_debug.png"); sErr == nil {
+			logrus.Infof("调试截图已保存: /tmp/delete_debug.png")
+		}
+		if classes, eErr := page.Eval(`() => [...document.querySelectorAll('*')].filter(e => e.className && typeof e.className === 'string').map(e => e.className).filter(c => /more|operate|action|btn|button|ellipsis|dot/i.test(c)).slice(0, 30).join('\n')`); eErr == nil {
+			logrus.Infof("页面相关class名:\n%v", classes)
+		}
 		return fmt.Errorf("未找到更多按钮: %w", err)
 	}
 
