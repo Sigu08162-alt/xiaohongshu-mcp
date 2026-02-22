@@ -40,7 +40,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return err
 	}
 	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		return fmt.Errorf("等待DOM稳定失败: %w", err)
+		logrus.Warnf("等待DOM稳定超时，继续执行: %v", err)
 	}
 	if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
 		return err
@@ -123,7 +123,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 		return err
 	}
 	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		return fmt.Errorf("等待DOM稳定失败: %w", err)
+		logrus.Warnf("等待DOM稳定超时，继续执行: %v", err)
 	}
 	if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
 		return err
