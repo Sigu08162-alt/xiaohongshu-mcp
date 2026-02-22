@@ -7,8 +7,7 @@
 **/*.log
 bin
 !bin/app
-release
-!release/xiaohongshu-mcp-linux-amd64.tar.gz
+release/*.tar.gz
 dist
 vendor
 Dockerfile
