@@ -1,5 +1,6 @@
-version: "1.0"
+version: "2026-02-24"
 last_updated: "2026-01-21T04:00:00+08:00"
+updated_at: "2026-02-24T00:00:00Z"
 description: "小红书页面元素选择器配置"
 
 # 点赞按钮

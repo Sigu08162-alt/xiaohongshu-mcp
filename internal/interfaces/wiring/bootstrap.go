@@ -76,10 +76,12 @@ func BuildPublishUsecaseFromConfig(cfg *infraconfig.Config, selectors map[string
 	engine := browserplaywright.New(engineCfg)
 
 	var selectorCfg *selector.SelectorConfig
-	if sc, err := selector.LoadSelectorConfig("configs/selectors.yaml"); err != nil {
+	if hl, err := selector.NewHotLoader("configs/selectors.yaml", 30*time.Second); err != nil {
 		slog.Warn("自适应选择器配置加载失败: (使用静态选择器)", "arg1", err)
 	} else {
-		selectorCfg = sc
+		selectorCfg = hl.Get()
+		// HotLoader runs in background; its lifecycle is tied to the process.
+		// Call hl.Stop() on graceful shutdown if needed.
 	}
 
 	return BuildPublishUsecase(cfg, selectors, selectorCfg, engine)
