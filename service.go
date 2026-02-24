@@ -46,20 +46,6 @@ type XiaohongshuService struct {
 	polling          PollingModules
 }
 
-// NewXiaohongshuService 创建小红书服务实例
-func NewXiaohongshuService() (*XiaohongshuService, error) {
-	return NewXiaohongshuServiceWithUsecase(nil)
-}
-
-// NewXiaohongshuServiceWithUsecase 支持注入发布用例
-func NewXiaohongshuServiceWithUsecase(publishUsecase *apppublish.Usecase) (*XiaohongshuService, error) {
-	modules, err := loadPollingModules()
-	if err != nil {
-		return nil, err
-	}
-	return NewXiaohongshuServiceWithModules(publishUsecase, nil, nil, nil, nil, modules)
-}
-
 // NewXiaohongshuServiceWithModules 使用已加载的轮询配置创建服务
 func NewXiaohongshuServiceWithModules(
 	publishUsecase *apppublish.Usecase,
@@ -283,9 +269,6 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 	if titleWidth := runewidth.StringWidth(req.Title); titleWidth > 40 {
 		return nil, fmt.Errorf("标题长度超过限制")
 	}
-
-	// 注意：不再在这里处理图片，交给 Usecase 层统一处理
-	// imagePaths, err := s.processImages(req.Images)
 
 	// 解析定时发布时间
 	var scheduleTime *time.Time
