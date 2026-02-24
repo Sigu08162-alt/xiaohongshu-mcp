@@ -338,6 +338,18 @@ go test ./...
 
 ---
 
+## 🙏 致谢
+
+本项目 Fork 自 **[xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp)**，感谢原作者 [@xpzouying](https://github.com/xpzouying) 的出色工作！
+
+原项目是一个功能完整的小红书 MCP Server，支持登录、笔记发布、评论互动、数据分析等丰富功能。作者还将项目所有赞赏款项悉数捐赠慈善，精神令人钦佩。
+
+- 🔗 原项目：[github.com/xpzouying/xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp)
+- 📝 作者博客：[haha.ai/xiaohongshu-mcp](https://www.haha.ai/xiaohongshu-mcp)
+- 💝 原项目支持慈善捐赠，欢迎前往原仓库支持作者
+
+---
+
 ## 🌟 Star History
 
 如果这个项目对你有帮助，欢迎给个 Star ⭐
