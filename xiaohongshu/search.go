@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/errors"
 	browser "github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
@@ -192,7 +192,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	}
 	startTime := time.Now()
 
-	logrus.Info("等待搜索数据加载...")
+	slog.Info("等待搜索数据加载...")
 	dataLoaded := false
 	for time.Since(startTime) < maxWait {
 		hasSearchData, err := page.Eval(`() => {
@@ -207,7 +207,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 			return Array.isArray(feedsData) && feedsData.length > 0;
 		}`)
 		if err == nil && hasSearchData == true {
-			logrus.Info("搜索数据已加载")
+			slog.Info("搜索数据已加载")
 			dataLoaded = true
 			break
 		}
@@ -215,7 +215,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 	}
 
 	if !dataLoaded {
-		logrus.Warn("搜索数据加载超时，尝试继续提取")
+		slog.Warn("搜索数据加载超时，尝试继续提取")
 	}
 
 	// 额外等待500ms确保搜索数据完全加载
@@ -322,7 +322,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 		return nil, fmt.Errorf("JavaScript 返回值类型错误，期望 string，实际为 %T", resultRaw)
 	}
 
-	logrus.Infof("搜索结果 JSON 长度: %d", len(result))
+	slog.Info("搜索结果 JSON 长度:", "arg1", len(result))
 	if result == "" {
 		// 调试：打印 __INITIAL_STATE__ 的结构
 		debugInfo, _ := page.Eval(`() => {
@@ -332,7 +332,7 @@ func (s *SearchAction) Search(ctx context.Context, keyword string, filters ...Fi
 			const feeds = window.__INITIAL_STATE__.search.feeds;
 			return "feeds 类型: " + typeof feeds + ", keys: " + Object.keys(feeds).join(",");
 		}`)
-		logrus.Warnf("搜索结果为空，调试信息: %v", debugInfo)
+		slog.Warn("搜索结果为空，调试信息:", "arg1", debugInfo)
 		return nil, errors.ErrNoFeeds
 	}
 

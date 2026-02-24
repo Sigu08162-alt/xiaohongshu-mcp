@@ -7,7 +7,7 @@ import (
 	"time"
 
 	playwrightgo "github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
@@ -27,53 +27,53 @@ func main() {
 	// 登录的时候，需要界面，所以不能无头模式
 	engine := newBrowserEngine()
 	if err := engine.Start(); err != nil {
-		logrus.Fatalf("failed to start browser: %v", err)
+		slog.Error("failed to start browser:", "arg1", err)
 	}
 	defer engine.Close()
 
 	page, err := engine.NewPage()
 	if err != nil {
-		logrus.Fatalf("failed to create page: %v", err)
+		slog.Error("failed to create page:", "arg1", err)
 	}
 	defer page.Close()
 
 	pollingModule, err := loadAuthPollingModule()
 	if err != nil {
-		logrus.Fatalf("加载轮询配置失败: %v", err)
+		slog.Error("加载轮询配置失败:", "arg1", err)
 	}
 	action := xiaohongshu.NewLogin(page, pollingModule)
 
 	status, err := action.CheckLoginStatus(context.Background())
 	if err != nil {
-		logrus.Fatalf("failed to check login status: %v", err)
+		slog.Error("failed to check login status:", "arg1", err)
 	}
 
-	logrus.Infof("当前登录状态: %v", status)
+	slog.Info("当前登录状态:", "arg1", status)
 
 	if status {
 		return
 	}
 
 	// 开始登录流程
-	logrus.Info("开始登录流程...")
+	slog.Info("开始登录流程...")
 	if err = action.Login(context.Background()); err != nil {
-		logrus.Fatalf("登录失败: %v", err)
+		slog.Error("登录失败:", "arg1", err)
 	} else {
 		if err := saveCookies(page); err != nil {
-			logrus.Fatalf("failed to save cookies: %v", err)
+			slog.Error("failed to save cookies:", "arg1", err)
 		}
 	}
 
 	// 再次检查登录状态确认成功
 	status, err = action.CheckLoginStatus(context.Background())
 	if err != nil {
-		logrus.Fatalf("failed to check login status after login: %v", err)
+		slog.Error("failed to check login status after login:", "arg1", err)
 	}
 
 	if status {
-		logrus.Info("登录成功！")
+		slog.Info("登录成功！")
 	} else {
-		logrus.Error("登录流程完成但仍未登录")
+		slog.Error("登录流程完成但仍未登录")
 	}
 
 }
@@ -107,7 +107,7 @@ func saveCookies(page browser.Page) error {
 
 	pg, ok := page.(contextGetter)
 	if !ok {
-		logrus.Warn("无法获取 Playwright context，跳过保存 cookies")
+		slog.Warn("无法获取 Playwright context，跳过保存 cookies")
 		return nil
 	}
 

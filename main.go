@@ -4,7 +4,8 @@ import (
 	"flag"
 	"os"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
+
 	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/interfaces/wiring"
@@ -76,7 +77,8 @@ func main() {
 	// 加载轮询配置
 	modules, err := loadPollingModules()
 	if err != nil {
-		logrus.Fatalf("加载轮询配置失败: %v", err)
+		slog.Error("加载轮询配置失败", "error", err)
+		os.Exit(1)
 	}
 
 	// 构建 engine factory（使用全局 headless 配置）
@@ -98,12 +100,12 @@ func main() {
 		modules,
 	)
 	if err != nil {
-		logrus.Fatalf("初始化服务失败: %v", err)
+		slog.Error("初始化服务失败:", "arg1", err)
 	}
 
 	// 创建并启动应用服务器
 	appServer := NewAppServerWithPublish(xiaohongshuService, publishUsecase)
 	if err := appServer.Start(port); err != nil {
-		logrus.Fatalf("failed to run server: %v", err)
+		slog.Error("failed to run server:", "arg1", err)
 	}
 }

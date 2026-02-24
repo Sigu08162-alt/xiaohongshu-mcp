@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
@@ -41,7 +41,7 @@ func (d *DataAction) GetMyFeeds(ctx context.Context, limit int, userID string) (
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 通过侧边栏导航到个人主页
-	logrus.Info("通过侧边栏导航到个人主页获取笔记...")
+	slog.Info("通过侧边栏导航到个人主页获取笔记...")
 	navigate := NewNavigate(page, d.polling)
 	if err := navigate.ToProfilePageWithUserID(ctx, userID); err != nil {
 		return nil, fmt.Errorf("导航到个人主页失败: %w", err)
@@ -79,7 +79,7 @@ func (d *DataAction) GetMyFeeds(ctx context.Context, limit int, userID string) (
 	// 使用JavaScript提取笔记列表
 	feeds := d.extractFeedsFromPage(page, limit)
 
-	logrus.Infof("获取笔记列表成功，共 %d 条", len(feeds))
+	slog.Info("获取笔记列表成功，共 条", "arg1", len(feeds))
 	return feeds, nil
 }
 
@@ -93,7 +93,7 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 	coverMap := map[string]string{}
 
 	if currentURL, err := page.Eval(`() => location.href`); err == nil {
-		logrus.WithField("url", currentURL).Info("开始提取个人主页笔记列表")
+		slog.Info("开始提取个人主页笔记列表", "url", currentURL)
 	}
 	if debugSamples, err := page.Eval(`() => {
 		const links = Array.from(document.querySelectorAll('a[href*="xsec_token"]'));
@@ -119,12 +119,12 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 		}
 		return samples;
 	}`); err == nil {
-		logrus.WithField("samples", debugSamples).Info("个人主页笔记链接样本")
+		slog.Info("个人主页笔记链接样本", "samples", debugSamples)
 	}
 
 	stateNotesRaw, err := page.Eval(`() => window.__INITIAL_STATE__?.user?.notes ?? null`)
 	if err != nil {
-		logrus.WithError(err).Debug("获取 __INITIAL_STATE__.user.notes 失败")
+		slog.Debug("获取 __INITIAL_STATE__.user.notes 失败", "error", err)
 	} else {
 		titleMap, coverMap = buildStateNoteMapsFromRaw(stateNotesRaw)
 	}
@@ -254,32 +254,32 @@ func (d *DataAction) extractFeedsFromPage(page browser.Page, limit int) []Feed {
 		}`, limit)
 
 		if err != nil {
-			logrus.WithError(err).Error("执行 JavaScript 失败")
+			slog.Error("执行 JavaScript 失败", "error", err)
 			break
 		}
 
 		resultStr, ok := result.(string)
 		if !ok {
-			logrus.Error("JavaScript 返回类型错误")
+			slog.Error("JavaScript 返回类型错误")
 			break
 		}
 
 		parsedFeeds, err := parseFeedsJSON(resultStr)
 		if err != nil {
-			logrus.WithError(err).Error("解析笔记数据失败")
+			slog.Error("解析笔记数据失败", "error", err)
 			break
 		}
 		feeds = applyStateNoteMaps(parsedFeeds, titleMap, coverMap)
 
 		currentCount := len(feeds)
 		if currentCount != lastCount {
-			logrus.Infof("加载笔记: %d -> %d", lastCount, currentCount)
+			slog.Info("加载笔记: ->", "arg1", lastCount, "arg2", currentCount)
 			lastCount = currentCount
 			stagnantChecks = 0
 		} else {
 			stagnantChecks++
 			if stagnantChecks >= 3 {
-				logrus.Info("笔记列表停滞，停止加载")
+				slog.Info("笔记列表停滞，停止加载")
 				break
 			}
 		}
@@ -482,7 +482,7 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 导航到创作者中心页面（包含更详细的运营数据）
-	logrus.Info("导航到创作者中心页面...")
+	slog.Info("导航到创作者中心页面...")
 	if err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official"); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
 	}
@@ -491,7 +491,7 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 		return nil, err
 	}
 	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		logrus.Warn("等待 DOM 稳定出现问题", "error", err)
+		slog.Warn("等待 DOM 稳定出现问题", "error", err)
 	}
 	if err := polling.SleepDelay(d.polling, "wait_5000ms"); err != nil {
 		return nil, err
@@ -538,7 +538,7 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 		return nil, fmt.Errorf("获取统计数据为空，可能未登录或接口返回异常")
 	}
 
-	logrus.Infof("获取统计数据成功: %+v", stats)
+	slog.Info("获取统计数据成功", "stats", stats)
 	return &stats, nil
 }
 
@@ -655,13 +655,7 @@ func (d *DataAction) fetchJSON(page browser.Page, url string) (map[string]interf
 		if len(preview) > 200 {
 			preview = preview[:200]
 		}
-		logrus.WithFields(logrus.Fields{
-			"url":      url,
-			"status":   fetchResult.Status,
-			"body":     preview,
-			"headers":  fetchResult.Headers,
-			"has_csrf": fetchResult.HasCSRF,
-		}).Warn("统计接口返回非200状态")
+		slog.Info("operation")
 		return nil, fmt.Errorf("接口返回异常状态: %d", fetchResult.Status)
 	}
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
@@ -39,9 +39,9 @@ func inputTags(page browser.Page, tags []string, polling PollingModule) error {
 
 	for i, tag := range tags {
 		tag = strings.TrimLeft(tag, "#")
-		logrus.Infof("  [%d/%d] 输入标签: #%s", i+1, len(tags), tag)
+		slog.Info("输入标签", "index", i+1, "total", len(tags), "tag", tag)
 		if err := inputTag(page, contentElem, tag, polling); err != nil {
-			logrus.Warnf("  ⚠️ 标签输入失败: %v", err)
+			slog.Warn("⚠️ 标签输入失败:", "arg1", err)
 		}
 	}
 
@@ -71,16 +71,16 @@ func inputTag(page browser.Page, contentElem browser.Element, tag string, pollin
 		firstItem, err := topicContainer.Element(".item")
 		if err == nil && firstItem != nil {
 			firstItem.Click()
-			logrus.Infof("    ✅ 成功点击标签联想选项")
+			slog.Info("    ✅ 成功点击标签联想选项")
 			if err := sleepDelay(polling, "tag_suggestion_click_ms"); err != nil {
 				return err
 			}
 		} else {
-			logrus.Warnf("    ⚠️ 未找到标签联想选项，直接输入空格")
+			slog.Warn("    ⚠️ 未找到标签联想选项，直接输入空格")
 			contentElem.Input(" ")
 		}
 	} else {
-		logrus.Warnf("    ⚠️ 未找到标签联想下拉框，直接输入空格")
+		slog.Warn("    ⚠️ 未找到标签联想下拉框，直接输入空格")
 		contentElem.Input(" ")
 	}
 

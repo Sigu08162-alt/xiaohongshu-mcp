@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"gopkg.in/yaml.v3"
 
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
@@ -77,7 +77,7 @@ func BuildPublishUsecaseFromConfig(cfg *infraconfig.Config, selectors map[string
 
 	var selectorCfg *selector.SelectorConfig
 	if sc, err := selector.LoadSelectorConfig("configs/selectors.yaml"); err != nil {
-		logrus.Warnf("自适应选择器配置加载失败: %v (使用静态选择器)", err)
+		slog.Warn("自适应选择器配置加载失败: (使用静态选择器)", "arg1", err)
 	} else {
 		selectorCfg = sc
 	}
@@ -108,11 +108,11 @@ func LoadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
 		if _, err := os.Stat(candidate); err != nil {
 			continue
 		}
-		logrus.Infof("📂 找到选择器文件: %s", candidate)
+		slog.Info("📂 找到选择器文件:", "arg1", candidate)
 		selectors, err := LoadPublishSelectors(candidate)
 		if err != nil {
 			lastErr = err
-			logrus.Warnf("选择器加载失败(%s): %v", candidate, err)
+			slog.Warn("选择器加载失败( ):", "arg1", candidate, "arg2", err)
 			continue
 		}
 		return BuildPublishUsecaseFromConfig(cfg, selectors, headless)
@@ -122,7 +122,7 @@ func LoadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
 		return nil, lastErr
 	}
 
-	logrus.Info("未找到采集器选择器文件，使用自适应选择器")
+	slog.Info("未找到采集器选择器文件，使用自适应选择器")
 	return BuildPublishUsecaseFromConfig(cfg, map[string]string{}, headless)
 }
 
@@ -130,7 +130,7 @@ func LoadPublishUsecase(headless bool) (*apppublish.Usecase, error) {
 func InitPublishUsecase(headless bool) *apppublish.Usecase {
 	usecase, err := LoadPublishUsecase(headless)
 	if err != nil {
-		logrus.Warnf("初始化发布用例失败: %v", err)
+		slog.Warn("初始化发布用例失败:", "arg1", err)
 		return nil
 	}
 	return usecase
@@ -148,7 +148,7 @@ func LoadPublishSelectors(path string) (map[string]string, error) {
 		return nil, fmt.Errorf("无效的选择器文件格式: %w", err)
 	}
 
-	logrus.Info("📦 检测到采集器生成的选择器文件，正在提取发布页面选择器...")
+	slog.Info("📦 检测到采集器生成的选择器文件，正在提取发布页面选择器...")
 	return ExtractPublishSelectorsFromCollected(&collected)
 }
 
@@ -158,7 +158,7 @@ func ExtractPublishSelectorsFromCollected(collected *collectedSelectorsConfig) (
 	if !ok {
 		return nil, errors.New("采集文件中未找到发布页面")
 	}
-	logrus.Infof("📌 发布页面命中: %s", pageKey)
+	slog.Info("📌 发布页面命中:", "arg1", pageKey)
 
 	selectors := map[string]string{
 		"upload_input":    "",
@@ -179,12 +179,12 @@ func ExtractPublishSelectorsFromCollected(collected *collectedSelectorsConfig) (
 				s = `input[type="file"]`
 			}
 			selectors["upload_input"] = s
-			logrus.Infof("  ✓ upload_input: %s", s)
+			slog.Info("✓ upload_input:", "arg1", s)
 		}
 		if containsStr(inp.Placeholder, "标题") {
 			s := fmt.Sprintf(`input[placeholder*="%s"]`, "标题")
 			selectors["title_input"] = s
-			logrus.Infof("  ✓ title_input: %s", s)
+			slog.Info("✓ title_input:", "arg1", s)
 		}
 		if containsAnyStr(inp.Classes, []string{"tiptap", "ProseMirror"}) {
 			if containsStr(inp.Selector, "tiptap") && containsStr(inp.Selector, "ProseMirror") {
@@ -192,7 +192,7 @@ func ExtractPublishSelectorsFromCollected(collected *collectedSelectorsConfig) (
 			} else {
 				selectors["content"] = "[role='textbox']"
 			}
-			logrus.Infof("  ✓ content: %s", selectors["content"])
+			slog.Info("✓ content:", "arg1", selectors["content"])
 		}
 	}
 
@@ -203,17 +203,17 @@ func ExtractPublishSelectorsFromCollected(collected *collectedSelectorsConfig) (
 			} else {
 				selectors["submit"] = btn.Selector
 			}
-			logrus.Infof("  ✓ submit: %s", selectors["submit"])
+			slog.Info("✓ submit:", "arg1", selectors["submit"])
 		}
 		if containsStr(btn.Text, "暂存") {
 			selectors["save_draft"] = btn.Selector
-			logrus.Infof("  ✓ save_draft: %s", btn.Selector)
+			slog.Info("✓ save_draft:", "arg1", btn.Selector)
 		}
 	}
 
 	for _, key := range []string{"upload_input", "title_input", "content", "submit"} {
 		if selectors[key] == "" {
-			logrus.Warnf("  ⚠️  缺少选择器: %s", key)
+			slog.Warn("⚠️ 缺少选择器:", "arg1", key)
 		}
 	}
 

@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 // Helper functions for annotation pointers
@@ -216,7 +216,7 @@ func InitMCPServer(appServer *AppServer) *mcp.Server {
 	// 注册所有工具
 	registerTools(server, appServer)
 
-	logrus.Info("MCP Server initialized with official SDK")
+	slog.Info("MCP Server initialized with official SDK")
 
 	return server
 }
@@ -229,12 +229,9 @@ func withPanicRecovery[T any](
 	return func(ctx context.Context, req *mcp.CallToolRequest, args T) (result *mcp.CallToolResult, resp any, err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.WithFields(logrus.Fields{
-					"tool":  toolName,
-					"panic": r,
-				}).Error("Tool handler panicked")
+				slog.Error("Tool handler panicked", "tool", toolName, "panic", r)
 
-				logrus.Errorf("Stack trace:\n%s", debug.Stack())
+				slog.Error("Stack trace:\n", "arg1", debug.Stack())
 
 				result = &mcp.CallToolResult{
 					Content: []mcp.Content{
@@ -772,7 +769,7 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 		}),
 	)
 
-	logrus.Infof("Registered %d MCP tools", 23)
+	slog.Info("Registered MCP tools", "arg1", 23)
 }
 
 // convertToMCPResult 将自定义的 MCPToolResult 转换为官方 SDK 的格式
@@ -786,7 +783,7 @@ func convertToMCPResult(result *MCPToolResult) *mcp.CallToolResult {
 			// 解码 base64 字符串为 []byte
 			imageData, err := base64.StdEncoding.DecodeString(c.Data)
 			if err != nil {
-				logrus.WithError(err).Error("Failed to decode base64 image data")
+				slog.Error("Failed to decode base64 image data", "error", err)
 				// 如果解码失败，添加错误文本
 				contents = append(contents, &mcp.TextContent{
 					Text: "图片数据解码失败: " + err.Error(),

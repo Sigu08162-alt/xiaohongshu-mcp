@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 // respondError 返回错误响应
@@ -15,7 +15,7 @@ func respondError(c *gin.Context, statusCode int, code, message string, details 
 		Details: details,
 	}
 
-	logrus.Errorf("%s %s %s %d", c.Request.Method, c.Request.URL.Path,
+	slog.Error("%s %s %s %d", c.Request.Method, c.Request.URL.Path,
 		c.GetString("account"), statusCode)
 
 	c.JSON(statusCode, response)
@@ -31,7 +31,7 @@ func respondSuccess(c *gin.Context, data any, message string) {
 		Message: message,
 	}
 
-	logrus.Infof("%s %s %s %d", c.Request.Method, c.Request.URL.Path,
+	slog.Info("%s %s %s %d", c.Request.Method, c.Request.URL.Path,
 		c.GetString("account"), http.StatusOK)
 
 	c.JSON(http.StatusOK, response)

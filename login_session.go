@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 type loginSession interface {
@@ -76,7 +76,7 @@ func (m *LoginManager) GetQRCode(ctx context.Context) (loginQRResult, error) {
 		m.openedAt = m.now()
 		m.sessionID = m.newSessionID()
 		m.opened = false
-		logrus.WithField("session_id", m.sessionID).Info("login session created")
+		slog.Info("login session created", "session_id", m.sessionID)
 	}
 
 	if !m.opened {
@@ -97,7 +97,7 @@ func (m *LoginManager) GetQRCode(ctx context.Context) (loginQRResult, error) {
 			_ = m.closeLocked()
 			return loginQRResult{}, err
 		}
-		logrus.WithField("session_id", m.sessionID).Info("login status logged_in")
+		slog.Info("login status logged_in", "session_id", m.sessionID)
 		sessionID := m.sessionID
 		_ = m.closeLocked()
 		return loginQRResult{
@@ -124,12 +124,7 @@ func (m *LoginManager) GetQRCode(ctx context.Context) (loginQRResult, error) {
 	if qr.Stage == "security" {
 		status = loginStatusSecurityNeeded
 	}
-	logrus.WithFields(logrus.Fields{
-		"session_id": m.sessionID,
-		"status":     status,
-		"stage":      qr.Stage,
-		"timeout":    remaining.String(),
-	}).Info("login qrcode status")
+	slog.Info("login qrcode status", "session_id", m.sessionID, "status", status, "stage", qr.Stage, "timeout", remaining.String())
 	return loginQRResult{
 		LoginQrcodeResponse: LoginQrcodeResponse{
 			Timeout:    remaining.String(),

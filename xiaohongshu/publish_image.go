@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
@@ -39,7 +38,12 @@ const (
 	urlOfPublic = `https://creator.xiaohongshu.com/publish/publish?source=official&target=image`
 )
 
-func NewPublishImageAction(page browser.Page) (*PublishAction, error) {
+func NewPublishImageAction(ctx context.Context, page browser.Page) (*PublishAction, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
 
 	pp := page.WithTimeout(300 * time.Second)
 
@@ -50,27 +54,27 @@ func NewPublishImageAction(page browser.Page) (*PublishAction, error) {
 
 	// 等待页面加载
 	if err := pp.WaitLoad(); err != nil {
-		logrus.Warnf("等待页面加载出现问题: %v，继续尝试", err)
+		slog.Warn("等待页面加载出现问题: ，继续尝试", "arg1", err)
 	}
 
 	// 等待上传内容区域出现，替代固定等待
 	if err := pp.WaitForSelector("div.upload-content", 10*time.Second); err != nil {
-		logrus.Warnf("等待上传区域出现出现问题: %v，继续尝试", err)
+		slog.Warn("等待上传区域出现出现问题: ，继续尝试", "arg1", err)
 	}
 
 	// 等待页面稳定
 	if err := pp.WaitDOMStable(time.Second, 0.1); err != nil {
-		logrus.Warnf("等待 DOM 稳定出现问题: %v，继续尝试", err)
+		slog.Warn("等待 DOM 稳定出现问题: ，继续尝试", "arg1", err)
 	}
 
 	if err := mustClickPublishTab(pp, "上传图文"); err != nil {
-		logrus.Errorf("点击上传图文 TAB 失败: %v", err)
+		slog.Error("点击上传图文 TAB 失败:", "arg1", err)
 		return nil, err
 	}
 
 	// 等待上传输入框就绪，替代固定等待
 	if err := pp.WaitForSelector(".upload-input", 5*time.Second); err != nil {
-		logrus.Warnf("等待上传输入框出现出现问题: %v，继续尝试", err)
+		slog.Warn("等待上传输入框出现出现问题: ，继续尝试", "arg1", err)
 	}
 
 	return &PublishAction{
@@ -94,11 +98,11 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 
 	tags := content.Tags
 	if len(tags) >= 10 {
-		logrus.Warnf("标签数量超过10，截取前10个标签")
+		slog.Warn("标签数量超过10，截取前10个标签")
 		tags = tags[:10]
 	}
 
-	logrus.Infof("发布内容: title=%s, images=%v, tags=%v, location=%s, schedule=%v", content.Title, len(content.ImagePaths), tags, content.Location, content.ScheduleTime)
+	slog.Info("发布内容", "title", content.Title, "images", len(content.ImagePaths), "tags", tags, "location", content.Location, "schedule", content.ScheduleTime)
 
 	if err := submitPublish(page, content.Title, content.Content, tags, content.Location, content, content.ScheduleTime); err != nil {
 		return errors.Wrap(err, "小红书发布失败")
@@ -108,7 +112,7 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 	// WaitForNavigation is not yet part of the browser.Page interface;
 	// using WaitForFunction to detect URL change or success toast instead.
 	if err := page.WaitForFunction(`() => !window.location.href.includes('/publish/publish') || document.querySelector('.d-message--success') !== null`, 10*time.Second); err != nil {
-		logrus.Warnf("等待发布完成: %v", err)
+		slog.Warn("等待发布完成:", "arg1", err)
 	}
 	return nil
 }
@@ -144,7 +148,7 @@ func mustClickPublishTab(page browser.Page, tabname string) error {
 	for time.Now().Before(deadline) {
 		tab, blocked, err := getTabElement(page, tabname)
 		if err != nil {
-			logrus.Warnf("获取发布 TAB 元素失败: %v", err)
+			slog.Warn("获取发布 TAB 元素失败:", "arg1", err)
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
@@ -155,14 +159,14 @@ func mustClickPublishTab(page browser.Page, tabname string) error {
 		}
 
 		if blocked {
-			logrus.Info("发布 TAB 被遮挡，尝试移除遮挡")
+			slog.Info("发布 TAB 被遮挡，尝试移除遮挡")
 			removePopCover(page)
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
 
 		if err := tab.Click(); err != nil {
-			logrus.Warnf("点击发布 TAB 失败: %v", err)
+			slog.Warn("点击发布 TAB 失败:", "arg1", err)
 			time.Sleep(200 * time.Millisecond)
 			continue
 		}
@@ -186,7 +190,7 @@ func getTabElement(page browser.Page, tabname string) (browser.Element, bool, er
 
 		text, err := elem.Text()
 		if err != nil {
-			logrus.Debugf("获取发布 TAB 文本失败: %v", err)
+			slog.Debug("获取发布 TAB 文本失败:", "arg1", err)
 			continue
 		}
 

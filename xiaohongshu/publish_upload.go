@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
@@ -26,12 +25,12 @@ func uploadImages(page browser.Page, imagesPaths []string) error {
 	validPaths := make([]string, 0, len(imagesPaths))
 	for _, path := range imagesPaths {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			logrus.Warnf("图片文件不存在: %s", path)
+			slog.Warn("图片文件不存在:", "arg1", path)
 			continue
 		}
 		validPaths = append(validPaths, path)
 
-		logrus.Infof("获取有效图片：%s", path)
+		slog.Info("获取有效图片：", "arg1", path)
 	}
 
 	// 等待上传输入框出现

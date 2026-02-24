@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"gopkg.in/yaml.v3"
 )
@@ -80,7 +80,7 @@ func LoadSelectorConfig(path string) (*SelectorConfig, error) {
 		return nil, fmt.Errorf("解析选择器配置失败: %w", err)
 	}
 
-	logrus.Infof("✓ 加载选择器配置: version=%s, 元素数=%d", config.Version, len(config.Elements))
+	slog.Info("✓ 加载选择器配置: version= , 元素数=", "arg1", config.Version, "arg2", len(config.Elements))
 	return &config, nil
 }
 
@@ -102,13 +102,13 @@ func (r *ElementResolver) Resolve(elementName string) (string, error) {
 		return "", fmt.Errorf("未找到元素配置: %s", elementName)
 	}
 
-	logrus.Debugf("解析选择器: %s (%s)", elementName, elemConfig.Name)
+	slog.Debug("解析选择器: ( )", "arg1", elementName, "arg2", elemConfig.Name)
 
 	// 第一级：Primary选择器
 	for _, item := range elemConfig.Primary {
 		if r.selectorExists(item.Selector) {
 			r.recordSuccess(elementName, item.Selector, "primary")
-			logrus.Infof("✓ [%s] 命中primary: %s", elementName, item.Selector)
+			slog.Info("✓ [ ] 命中primary:", "arg1", elementName, "arg2", item.Selector)
 			return item.Selector, nil
 		}
 	}
@@ -117,7 +117,7 @@ func (r *ElementResolver) Resolve(elementName string) (string, error) {
 	for _, item := range elemConfig.Fallback {
 		if r.selectorExists(item.Selector) {
 			r.recordSuccess(elementName, item.Selector, "fallback")
-			logrus.Warnf("⚠ [%s] 降级到fallback: %s", elementName, item.Selector)
+			slog.Warn("⚠ [ ] 降级到fallback:", "arg1", elementName, "arg2", item.Selector)
 			return item.Selector, nil
 		}
 	}
@@ -127,7 +127,7 @@ func (r *ElementResolver) Resolve(elementName string) (string, error) {
 		selector := fmt.Sprintf(`button:has-text("%s")`, text)
 		if r.selectorExists(selector) {
 			r.recordSuccess(elementName, selector, "text_match")
-			logrus.Warnf("⚠ [%s] 降级到text_match: %s", elementName, selector)
+			slog.Warn("⚠ [ ] 降级到text_match:", "arg1", elementName, "arg2", selector)
 			return selector, nil
 		}
 	}
@@ -136,7 +136,7 @@ func (r *ElementResolver) Resolve(elementName string) (string, error) {
 	selector, err := r.runtimeDiscover(elementName)
 	if err == nil {
 		r.recordSuccess(elementName, selector, "runtime_discovery")
-		logrus.Warnf("⚠ [%s] 降级到runtime_discovery: %s", elementName, selector)
+		slog.Warn("⚠ [ ] 降级到runtime_discovery:", "arg1", elementName, "arg2", selector)
 		return selector, nil
 	}
 
@@ -146,7 +146,7 @@ func (r *ElementResolver) Resolve(elementName string) (string, error) {
 
 // runtimeDiscover 通过JS探测DOM查找元素
 func (r *ElementResolver) runtimeDiscover(elementName string) (string, error) {
-	logrus.Infof("🔍 [%s] 启动运行时DOM探测...", elementName)
+	slog.Info("🔍 [ ] 启动运行时DOM探测...", "arg1", elementName)
 
 	strategies := runtimeStrategies[elementName]
 	if len(strategies) == 0 {
@@ -159,7 +159,7 @@ func (r *ElementResolver) runtimeDiscover(elementName string) (string, error) {
 			continue
 		}
 		if selector, ok := result.(string); ok && selector != "" {
-			logrus.Infof("✓ [%s] 运行时发现: %s", elementName, selector)
+			slog.Info("✓ [ ] 运行时发现:", "arg1", elementName, "arg2", selector)
 			return selector, nil
 		}
 	}

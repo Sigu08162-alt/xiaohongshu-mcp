@@ -6,25 +6,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 )
 
 func (g *Gateway) PublishImage(ctx context.Context, content publish.ImageContent) error {
-	logrus.Info(strings.Repeat("=", 60))
-	logrus.Info("🚀 开始图文发布流程")
-	logrus.Info(strings.Repeat("=", 60))
-	logrus.Infof("  - 标题: %s", content.Title)
-	logrus.Infof("  - 图片数量: %d", len(content.ImagePaths))
+	slog.Info(strings.Repeat("=", 60))
+	slog.Info("🚀 开始图文发布流程")
+	slog.Info(strings.Repeat("=", 60))
+	slog.Info("- 标题:", "arg1", content.Title)
+	slog.Info("- 图片数量:", "arg1", len(content.ImagePaths))
 	return g.publishOrSaveCommon(ctx, content, true)
 }
 
 func (g *Gateway) SaveImageDraft(ctx context.Context, content publish.ImageContent) error {
-	logrus.Info(strings.Repeat("=", 60))
-	logrus.Info("💾 开始保存草稿流程")
-	logrus.Info(strings.Repeat("=", 60))
-	logrus.Infof("  - 标题: %s", content.Title)
-	logrus.Infof("  - 图片数量: %d", len(content.ImagePaths))
+	slog.Info(strings.Repeat("=", 60))
+	slog.Info("💾 开始保存草稿流程")
+	slog.Info(strings.Repeat("=", 60))
+	slog.Info("- 标题:", "arg1", content.Title)
+	slog.Info("- 图片数量:", "arg1", len(content.ImagePaths))
 	return g.publishOrSaveCommon(ctx, content, false)
 }
 
@@ -57,7 +57,7 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	resolver := g.newResolver(page)
 
 	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
-	logrus.Infof("⏳ 等待上传输入框可见 (选择器: %s)...", uploadSelector)
+	slog.Info("⏳ 等待上传输入框可见 (选择器: )...", "arg1", uploadSelector)
 	if err := page.WaitVisible(uploadSelector); err != nil {
 		return fmt.Errorf("%s wait upload_input(%s): %w", actionName, uploadSelector, err)
 	}
@@ -67,7 +67,7 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 		return fmt.Errorf("上传前URL异常: %s", beforeUploadURL)
 	}
 
-	logrus.Infof("📤 开始上传图片 (共%d张)...", len(content.ImagePaths))
+	slog.Info("📤 开始上传图片 (共 张)...", "arg1", len(content.ImagePaths))
 	if err := page.SetFiles(uploadSelector, content.ImagePaths); err != nil {
 		return fmt.Errorf("%s upload_input(%s): %w", actionName, uploadSelector, err)
 	}
@@ -96,9 +96,9 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	}
 
 	if len(content.Tags) > 0 {
-		logrus.Infof("🏷️  添加标签 (共%d个)...", len(content.Tags))
+		slog.Info("🏷️ 添加标签 (共 个)...", "arg1", len(content.Tags))
 		if err := inputTags(page, content.Tags, g.pollingFor(isPublish)); err != nil {
-			logrus.Warnf("⚠️ 标签添加失败: %v (继续)", err)
+			slog.Warn("⚠️ 标签添加失败: (继续)", "arg1", err)
 		}
 	}
 
@@ -132,7 +132,7 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	} else {
 		buttonSelector = resolveOrFallback(resolver, "publish_save_draft", g.cfg.Selectors["save_draft"])
 	}
-	logrus.Infof("选择器: %s", buttonSelector)
+	slog.Info("选择器:", "arg1", buttonSelector)
 
 	uploadSelectors := resolveUploadSelectors(g.cfg.Selectors)
 	uploadTimeout, err := getTimeout(g.pollingFor(isPublish))
@@ -148,12 +148,12 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	}
 
 	if err := page.WaitVisible(buttonSelector); err != nil {
-		logrus.Warnf("等待按钮可见失败: %v (继续尝试)", err)
+		slog.Warn("等待按钮可见失败: (继续尝试)", "arg1", err)
 	}
 
 	if !isPublish {
 		if err := page.ScrollIntoView(buttonSelector); err != nil {
-			logrus.Warnf("滚动到按钮失败: %v", err)
+			slog.Warn("滚动到按钮失败:", "arg1", err)
 		}
 		if err := sleepDelay(g.pollingFor(isPublish), "scroll_into_view_wait_ms"); err != nil {
 			return fmt.Errorf("%s scroll_into_view_wait_ms: %w", actionName, err)
@@ -162,7 +162,7 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 
 	clickErr := page.Click(buttonSelector)
 	if clickErr != nil {
-		logrus.Warnf("常规点击失败: %v，尝试强制点击", clickErr)
+		slog.Warn("常规点击失败: ，尝试强制点击", "arg1", clickErr)
 		if err := sleepDelay(g.pollingFor(isPublish), "click_retry_wait_ms"); err != nil {
 			return fmt.Errorf("%s click_retry_wait_ms: %w", actionName, err)
 		}
@@ -264,7 +264,7 @@ func (g *Gateway) videoFlow(ctx context.Context, content publish.VideoContent, i
 
 	if isPublish {
 		submitSelector := resolveOrFallback(resolver, "publish_submit", g.cfg.Selectors["submit"])
-		logrus.Infof("选择器: %s", submitSelector)
+		slog.Info("选择器:", "arg1", submitSelector)
 		if err := page.WaitVisible(submitSelector); err != nil {
 			screenshotPath := fmt.Sprintf("debug_submit_not_found_%d.png", time.Now().Unix())
 			page.Screenshot(screenshotPath)
@@ -278,9 +278,9 @@ func (g *Gateway) videoFlow(ctx context.Context, content publish.VideoContent, i
 
 	// save draft path
 	saveDraftSelector := resolveOrFallback(resolver, "publish_save_draft", g.cfg.Selectors["save_draft"])
-	logrus.Infof("准备点击暂存按钮: %s", saveDraftSelector)
+	slog.Info("准备点击暂存按钮:", "arg1", saveDraftSelector)
 	if err := page.ScrollIntoView(saveDraftSelector); err != nil {
-		logrus.Warnf("滚动到暂存按钮失败: %v", err)
+		slog.Warn("滚动到暂存按钮失败:", "arg1", err)
 	}
 	if err := sleepDelay(g.cfg.VideoPolling, "scroll_into_view_wait_ms"); err != nil {
 		return fmt.Errorf("%s scroll_into_view_wait_ms: %w", actionName, err)

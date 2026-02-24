@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
@@ -47,7 +47,7 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 		actionName = "取关"
 	}
 
-	logrus.Infof("打开用户主页进行%s: %s", actionName, url)
+	slog.Info("打开用户主页进行 :", "arg1", actionName, "arg2", url)
 
 	// 导航到用户主页
 	if err := page.Goto(url); err != nil {
@@ -91,15 +91,15 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 	// 获取当前关注状态
 	followed, err := f.getFollowState(page)
 	if err != nil {
-		logrus.Warnf("获取关注状态失败: %v，继续尝试点击", err)
+		slog.Warn("获取关注状态失败: ，继续尝试点击", "arg1", err)
 	} else {
 		// 检查是否需要操作
 		if targetFollowed && followed {
-			logrus.Infof("用户 %s 已关注，跳过操作", userID)
+			slog.Info("用户 已关注，跳过操作", "arg1", userID)
 			return nil
 		}
 		if !targetFollowed && !followed {
-			logrus.Infof("用户 %s 未关注，跳过取关操作", userID)
+			slog.Info("用户 未关注，跳过取关操作", "arg1", userID)
 			return nil
 		}
 	}
@@ -111,27 +111,27 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 	}
 
 	// 滚动到按钮位置
-	logrus.Info("滚动到关注按钮...")
+	slog.Info("滚动到关注按钮...")
 	if err := followBtn.ScrollIntoView(); err != nil {
-		logrus.Warnf("滚动失败: %v", err)
+		slog.Warn("滚动失败:", "arg1", err)
 	}
 	if err := polling.SleepDelay(f.polling, "wait_500ms"); err != nil {
 		return err
 	}
 
 	// 等待按钮可见
-	logrus.Info("等待关注按钮可见...")
+	slog.Info("等待关注按钮可见...")
 	if err := followBtn.WaitVisible(); err != nil {
-		logrus.Warnf("等待可见失败: %v", err)
+		slog.Warn("等待可见失败:", "arg1", err)
 	}
 	if err := polling.SleepDelay(f.polling, "wait_500ms"); err != nil {
 		return err
 	}
 
 	// 点击按钮
-	logrus.Infof("点击%s按钮...", actionName)
+	slog.Info("点击 按钮...", "arg1", actionName)
 	if err := followBtn.Click(); err != nil {
-		logrus.Warnf("点击失败: %v，尝试使用 JS 点击", err)
+		slog.Warn("点击失败: ，尝试使用 JS 点击", "arg1", err)
 
 		// 备用方案：使用 JavaScript 点击
 		_, err = page.Eval(`() => {
@@ -160,16 +160,16 @@ func (f *FollowAction) perform(ctx context.Context, userID, xsecToken string, ta
 	// 验证操作结果
 	followed, err = f.getFollowState(page)
 	if err != nil {
-		logrus.Warnf("验证%s状态失败: %v", actionName, err)
+		slog.Warn("验证 状态失败:", "arg1", actionName, "arg2", err)
 		return nil
 	}
 
 	if followed == targetFollowed {
-		logrus.Infof("用户 %s %s成功", userID, actionName)
+		slog.Info("用户 成功", "arg1", userID, "arg2", actionName)
 		return nil
 	}
 
-	logrus.Warnf("用户 %s %s可能未成功，状态未变化", userID, actionName)
+	slog.Warn("用户 可能未成功，状态未变化", "arg1", userID, "arg2", actionName)
 	return nil
 }
 
@@ -190,7 +190,7 @@ func (f *FollowAction) findFollowButton(page browser.Page) (browser.Element, err
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到关注按钮: %s", sel)
+			slog.Info("找到关注按钮:", "arg1", sel)
 			return elem, nil
 		}
 	}
@@ -201,7 +201,7 @@ func (f *FollowAction) findFollowButton(page browser.Page) (browser.Element, err
 		for _, btn := range buttons {
 			text, _ := btn.Text()
 			if text == "关注" || text == "已关注" || text == "+ 关注" {
-				logrus.Info("通过文本找到关注按钮")
+				slog.Info("通过文本找到关注按钮")
 				return btn, nil
 			}
 		}
@@ -227,7 +227,7 @@ func (f *FollowAction) getFollowState(page browser.Page) (bool, error) {
 		return "";
 	}`)
 	if err != nil {
-		logrus.Warnf("Eval 失败: %v", err)
+		slog.Warn("Eval 失败:", "arg1", err)
 	}
 
 	if resultStr, ok := result.(string); ok && resultStr != "" {
@@ -235,7 +235,7 @@ func (f *FollowAction) getFollowState(page browser.Page) (bool, error) {
 			Followed bool `json:"followed"`
 		}
 		if err := json.Unmarshal([]byte(resultStr), &state); err == nil {
-			logrus.Infof("从页面状态读取关注状态: %v", state.Followed)
+			slog.Info("从页面状态读取关注状态:", "arg1", state.Followed)
 			return state.Followed, nil
 		}
 	}
@@ -246,11 +246,11 @@ func (f *FollowAction) getFollowState(page browser.Page) (bool, error) {
 		for _, btn := range buttons {
 			text, _ := btn.Text()
 			if text == "已关注" {
-				logrus.Info("从按钮文本判断: 已关注")
+				slog.Info("从按钮文本判断: 已关注")
 				return true, nil
 			}
 			if text == "关注" || text == "+ 关注" {
-				logrus.Info("从按钮文本判断: 未关注")
+				slog.Info("从按钮文本判断: 未关注")
 				return false, nil
 			}
 		}

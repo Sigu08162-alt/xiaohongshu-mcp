@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
@@ -45,7 +45,7 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 		actionName = "取消点赞评论"
 	}
 
-	logrus.Infof("打开 feed 详情页进行%s: %s", actionName, url)
+	slog.Info("打开 feed 详情页进行 :", "arg1", actionName, "arg2", url)
 
 	// 导航到详情页
 	if err := page.Goto(url); err != nil {
@@ -98,9 +98,9 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 	}
 
 	// 滚动到评论位置
-	logrus.Info("滚动到评论位置...")
+	slog.Info("滚动到评论位置...")
 	if err := commentEl.ScrollIntoView(); err != nil {
-		logrus.Warnf("滚动失败: %v", err)
+		slog.Warn("滚动失败:", "arg1", err)
 	}
 	if err := polling.SleepDelay(c.polling, "wait_1000ms"); err != nil {
 		return err
@@ -115,23 +115,23 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 	// 获取当前点赞状态
 	liked, err := c.getCommentLikeState(likeBtn)
 	if err != nil {
-		logrus.Warnf("获取点赞状态失败: %v，继续尝试点击", err)
+		slog.Warn("获取点赞状态失败: ，继续尝试点击", "arg1", err)
 	} else {
 		// 检查是否需要操作
 		if targetLiked && liked {
-			logrus.Infof("评论已点赞，跳过操作")
+			slog.Info("评论已点赞，跳过操作")
 			return nil
 		}
 		if !targetLiked && !liked {
-			logrus.Infof("评论未点赞，跳过取消点赞操作")
+			slog.Info("评论未点赞，跳过取消点赞操作")
 			return nil
 		}
 	}
 
 	// 点击点赞按钮
-	logrus.Infof("点击%s按钮...", actionName)
+	slog.Info("点击 按钮...", "arg1", actionName)
 	if err := likeBtn.Click(); err != nil {
-		logrus.Warnf("点击失败: %v，尝试使用 JS 点击", err)
+		slog.Warn("点击失败: ，尝试使用 JS 点击", "arg1", err)
 
 		// 备用方案：使用 JavaScript 点击
 		_, err = commentEl.Eval(`(commentEl) => {
@@ -155,16 +155,16 @@ func (c *CommentLikeAction) perform(ctx context.Context, feedID, xsecToken, comm
 	// 验证操作结果
 	liked, err = c.getCommentLikeState(likeBtn)
 	if err != nil {
-		logrus.Warnf("验证%s状态失败: %v", actionName, err)
+		slog.Warn("验证 状态失败:", "arg1", actionName, "arg2", err)
 		return nil
 	}
 
 	if liked == targetLiked {
-		logrus.Infof("评论%s成功", actionName)
+		slog.Info("评论 成功", "arg1", actionName)
 		return nil
 	}
 
-	logrus.Warnf("评论%s可能未成功，状态未变化", actionName)
+	slog.Warn("评论 可能未成功，状态未变化", "arg1", actionName)
 	return nil
 }
 
@@ -181,7 +181,7 @@ func (c *CommentLikeAction) findCommentLikeButton(commentEl browser.Element) (br
 	for _, sel := range selectors {
 		elem, err := commentEl.Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到评论点赞按钮: %s", sel)
+			slog.Info("找到评论点赞按钮:", "arg1", sel)
 			return elem, nil
 		}
 	}
@@ -195,10 +195,10 @@ func (c *CommentLikeAction) getCommentLikeState(likeBtn browser.Element) (bool, 
 	class, err := likeBtn.Attribute("class")
 	if err == nil && class != "" {
 		if contains(class, "active") || contains(class, "liked") {
-			logrus.Info("从 class 判断: 已点赞")
+			slog.Info("从 class 判断: 已点赞")
 			return true, nil
 		}
-		logrus.Info("从 class 判断: 未点赞")
+		slog.Info("从 class 判断: 未点赞")
 		return false, nil
 	}
 
@@ -206,10 +206,10 @@ func (c *CommentLikeAction) getCommentLikeState(likeBtn browser.Element) (bool, 
 	html, err := likeBtn.HTML()
 	if err == nil {
 		if contains(html, "active") || contains(html, "liked") {
-			logrus.Info("从 HTML 判断: 已点赞")
+			slog.Info("从 HTML 判断: 已点赞")
 			return true, nil
 		}
-		logrus.Info("从 HTML 判断: 未点赞")
+		slog.Info("从 HTML 判断: 未点赞")
 		return false, nil
 	}
 

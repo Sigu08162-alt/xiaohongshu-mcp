@@ -27,7 +27,13 @@ type PublishVideoAction struct {
 }
 
 // NewPublishVideoAction 进入发布页并切换到"上传视频"
-func NewPublishVideoAction(page browser.Page, pollingModule polling.Module) (*PublishVideoAction, error) {
+func NewPublishVideoAction(ctx context.Context, page browser.Page, pollingModule polling.Module) (*PublishVideoAction, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	timeout, err := pollingModule.Delay("wait_300000ms")
 	if err != nil {
 		return nil, err

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	appanalytics "github.com/vmxmy/xiaohongshu-mcp/internal/app/analytics"
@@ -293,7 +293,7 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 		}
 
 		scheduleTime = &t
-		logrus.Infof("设置定时发布时间: %s", t.Format("2006-01-02 15:04"))
+		slog.Info("设置定时发布时间:", "arg1", t.Format("2006-01-02 15:04"))
 	}
 
 	markerTags := domainpublish.FilterMarkerTags(req.MarkerTags)
@@ -320,7 +320,7 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 			MarkerTags:   markerTags,
 			ScheduleTime: content.ScheduleTime,
 		}); err != nil {
-			logrus.Errorf("发布内容失败(新用例): title=%s %v", content.Title, err)
+			slog.Error("发布内容失败(新用例): title=", "arg1", content.Title, "arg2", err)
 			return nil, err
 		}
 	} else {
@@ -340,7 +340,7 @@ func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishReq
 // publishContent 执行内容发布
 func (s *XiaohongshuService) publishContent(ctx context.Context, content xiaohongshu.PublishImageContent) error {
 	return withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewPublishImageAction(page)
+		action, err := xiaohongshu.NewPublishImageAction(ctx, page)
 		if err != nil {
 			return err
 		}
@@ -388,7 +388,7 @@ func (s *XiaohongshuService) PublishVideo(ctx context.Context, req *PublishVideo
 		}
 
 		scheduleTime = &t
-		logrus.Infof("设置定时发布时间: %s", t.Format("2006-01-02 15:04"))
+		slog.Info("设置定时发布时间:", "arg1", t.Format("2006-01-02 15:04"))
 	}
 
 	// 构建发布内容
@@ -417,7 +417,7 @@ func (s *XiaohongshuService) PublishVideo(ctx context.Context, req *PublishVideo
 // publishVideo 执行视频发布
 func (s *XiaohongshuService) publishVideo(ctx context.Context, content xiaohongshu.PublishVideoContent) error {
 	return withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewPublishVideoAction(page, s.polling.Video)
+		action, err := xiaohongshu.NewPublishVideoAction(ctx, page, s.polling.Video)
 		if err != nil {
 			return err
 		}
@@ -430,7 +430,7 @@ func (s *XiaohongshuService) publishVideo(ctx context.Context, content xiaohongs
 func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse, error) {
 	feeds, err := s.feedUsecase.ListFeeds(ctx)
 	if err != nil {
-		logrus.Errorf("获取 Feeds 列表失败: %v", err)
+		slog.Error("获取 Feeds 列表失败:", "arg1", err)
 		return nil, err
 	}
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
@@ -109,7 +109,7 @@ func (n *NavigateAction) ToProfilePageWithUserID(ctx context.Context, userID str
 		return err
 	}
 	if currentURL, err := page.Eval(`() => location.href`); err == nil {
-		logrus.WithField("url", currentURL).Info("导航到个人主页完成")
+		slog.Info("导航到个人主页完成", "url", currentURL)
 	}
 
 	// 等待导航完成

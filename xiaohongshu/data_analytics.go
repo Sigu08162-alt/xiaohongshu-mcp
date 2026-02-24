@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 )
@@ -118,7 +118,7 @@ func (d *DataAction) GetFanAnalytics(ctx context.Context, period string) (*FanAn
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 导航到粉丝数据页面
-	logrus.Info("导航到粉丝数据页面...")
+	slog.Info("导航到粉丝数据页面...")
 	url := "https://creator.xiaohongshu.com/statistics/fans-data?source=official"
 	if err := page.Goto(url); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
@@ -128,7 +128,7 @@ func (d *DataAction) GetFanAnalytics(ctx context.Context, period string) (*FanAn
 		return nil, err
 	}
 	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		logrus.Warn("等待 DOM 稳定出现问题", "error", err)
+		slog.Warn("等待 DOM 稳定出现问题", "error", err)
 	}
 	if err := polling.SleepDelay(d.polling, "wait_5000ms"); err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func (d *DataAction) GetFanAnalytics(ctx context.Context, period string) (*FanAn
 		return nil, fmt.Errorf("解析粉丝分析数据失败: %w", err)
 	}
 
-	logrus.Infof("获取粉丝分析数据成功")
+	slog.Info("获取粉丝分析数据成功")
 	return &analytics, nil
 }
 
@@ -212,7 +212,7 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	// 导航到数据分析页面
-	logrus.Info("导航到数据分析页面...")
+	slog.Info("导航到数据分析页面...")
 	url := "https://creator.xiaohongshu.com/statistics/data-analysis?source=official"
 
 	if err := page.Goto(url); err != nil {
@@ -220,7 +220,7 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	}
 
 	// 等待表格加载完成
-	logrus.Info("等待数据表格加载...")
+	slog.Info("等待数据表格加载...")
 	waitTableJS := `() => {
 		const table = document.querySelector('table tbody tr');
 		return table !== null;
@@ -239,7 +239,7 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	for time.Since(startTime) < maxWaitTime {
 		hasTable, err := page.Eval(waitTableJS)
 		if err == nil && hasTable == true {
-			logrus.Info("表格加载成功")
+			slog.Info("表格加载成功")
 			break
 		}
 		time.Sleep(checkInterval)
@@ -253,11 +253,11 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	// 如果指定了排序字段，先进行排序
 	if sortBy != "" {
 		if err := d.applySorting(page, sortBy, sortOrder); err != nil {
-			logrus.Warnf("应用排序失败: %v，继续使用默认顺序", err)
+			slog.Warn("应用排序失败: ，继续使用默认顺序", "arg1", err)
 		}
 	}
 
-	logrus.Info("从表格提取内容分析数据")
+	slog.Info("从表格提取内容分析数据")
 
 	allNotes := []NoteMetrics{}
 	pageNum := 1
@@ -354,13 +354,13 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 	for pageNum <= maxPages && len(allNotes) < limit {
 		result, err := page.Eval(extractJS)
 		if err != nil {
-			logrus.Warnf("第 %d 页提取数据失败: %v", pageNum, err)
+			slog.Warn("第 页提取数据失败:", "arg1", pageNum, "arg2", err)
 			break
 		}
 
 		resultStr, ok := result.(string)
 		if !ok {
-			logrus.Warnf("第 %d 页提取数据类型错误", pageNum)
+			slog.Warn("第 页提取数据类型错误", "arg1", pageNum)
 			break
 		}
 
@@ -369,12 +369,12 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 			Count int           `json:"count"`
 		}
 		if err := json.Unmarshal([]byte(resultStr), &pageData); err != nil {
-			logrus.Warnf("第 %d 页解析数据失败: %v", pageNum, err)
+			slog.Warn("第 页解析数据失败:", "arg1", pageNum, "arg2", err)
 			break
 		}
 
 		if len(pageData.Notes) == 0 {
-			logrus.Infof("第 %d 页没有数据，停止翻页", pageNum)
+			slog.Info("第 页没有数据，停止翻页", "arg1", pageNum)
 			break
 		}
 
@@ -385,7 +385,7 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 			allNotes = append(allNotes, note)
 		}
 
-		logrus.Infof("第 %d 页提取 %d 条笔记，累计 %d 条", pageNum, len(pageData.Notes), len(allNotes))
+		slog.Info("第N页提取笔记", "page", pageNum, "page_count", len(pageData.Notes), "total", len(allNotes))
 
 		if len(allNotes) >= limit {
 			break
@@ -397,12 +397,12 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 			return nextBtn !== null && !nextBtn.classList.contains('disabled');
 		}`)
 		if err != nil || hasNext == false {
-			logrus.Info("没有更多页面，停止翻页")
+			slog.Info("没有更多页面，停止翻页")
 			break
 		}
 
 		// 点击下一页
-		logrus.Infof("点击下一页...")
+		slog.Info("点击下一页...")
 		_, clickErr := page.Eval(`() => {
 			const nextBtn = document.querySelector('.d-pagination-page.d-clickable:not(.disabled):last-of-type');
 			if (nextBtn) {
@@ -412,7 +412,7 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 			return false;
 		}`)
 		if clickErr != nil {
-			logrus.Warnf("点击下一页失败: %v", clickErr)
+			slog.Warn("点击下一页失败:", "arg1", clickErr)
 			break
 		}
 
@@ -422,7 +422,7 @@ func (d *DataAction) GetContentAnalytics(ctx context.Context, limit int, sortBy 
 		pageNum++
 	}
 
-	logrus.Infof("获取内容分析数据成功，共 %d 条笔记", len(allNotes))
+	slog.Info("获取内容分析数据成功，共 条笔记", "arg1", len(allNotes))
 	return &ContentAnalytics{Notes: allNotes}, nil
 }
 
@@ -446,7 +446,7 @@ func (d *DataAction) applySorting(page browser.Page, sortBy SortField, sortOrder
 		return fmt.Errorf("不支持的排序字段: %s", sortBy)
 	}
 
-	logrus.Infof("按 %s %s 排序", sortBy, sortOrder)
+	slog.Info("按 排序", "arg1", sortBy, "arg2", sortOrder)
 
 	clickCount := 1
 	if sortOrder == SortDesc {
@@ -476,7 +476,7 @@ func (d *DataAction) applySorting(page browser.Page, sortBy SortField, sortOrder
 		}
 	}
 
-	logrus.Info("排序应用成功")
+	slog.Info("排序应用成功")
 	return nil
 }
 

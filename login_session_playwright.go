@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
@@ -319,13 +319,7 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 	}
 	ok, err := s.page.Has(ctx, loginStatusSelector)
 	loginVisible, loginErr := s.page.Has(ctx, ".login-container")
-	logrus.WithFields(logrus.Fields{
-		"login_status_selector": loginStatusSelector,
-		"login_status_match":    ok,
-		"login_status_err":      err,
-		"login_container_match": loginVisible,
-		"login_container_err":   loginErr,
-	}).Info("login status selector check")
+	slog.Info("login status selector check", "login_status_selector", loginStatusSelector, "login_status_match", ok, "login_status_err", err, "login_container_match", loginVisible, "login_container_err", loginErr)
 	if err != nil {
 		return false, err
 	}
@@ -341,17 +335,14 @@ func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error
 		stage = "security"
 	}
 
-	logrus.WithField("stage", stage).Info("login qrcode stage detect")
+	slog.Info("login qrcode stage detect", "stage", stage)
 
 	if forceFullPageQRCode {
 		shotter, ok := s.page.(fullPageScreenshotter)
 		if ok {
 			img, shotErr := fullPageScreenshotBase64(shotter)
 			if shotErr == nil {
-				logrus.WithFields(logrus.Fields{
-					"source": "full_page_forced",
-					"stage":  stage,
-				}).Info("login qrcode captured")
+				slog.Info("login qrcode captured", "source", "full_page_forced", "stage", stage)
 				return loginQRCode{
 					Image: img,
 					Stage: stage,
@@ -370,7 +361,7 @@ func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error
 		if shotErr != nil {
 			return loginQRCode{}, err
 		}
-		logrus.WithField("source", "full_page").Info("login qrcode screenshot fallback")
+		slog.Info("login qrcode screenshot fallback", "source", "full_page")
 		return loginQRCode{
 			Image: img,
 			Stage: stage,
@@ -386,10 +377,7 @@ func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error
 	if stage == "security" {
 		source = "security_qrcode"
 	}
-	logrus.WithFields(logrus.Fields{
-		"source": source,
-		"stage":  stage,
-	}).Info("login qrcode captured")
+	slog.Info("login qrcode captured", "source", source, "stage", stage)
 
 	return loginQRCode{
 		Image: base64.StdEncoding.EncodeToString(img),
@@ -438,14 +426,7 @@ func (s *playwrightLoginSession) Close() error {
 func (s *playwrightLoginSession) hasSecurityHint(ctx context.Context) bool {
 	ok, err := s.page.HasRegex(ctx, "body", securityHintRegexp)
 	scanOK, scanErr := s.page.HasRegex(ctx, "body", scanSuccessRegexp)
-	logrus.WithFields(logrus.Fields{
-		"match":       ok,
-		"err":         err,
-		"scan_match":  scanOK,
-		"scan_err":    scanErr,
-		"scan_regex":  scanSuccessRegexp,
-		"security_re": securityHintRegexp,
-	}).Info("login qrcode security hint on page")
+	slog.Info("login qrcode security hint on page", "match", ok, "err", err, "scan_match", scanOK, "scan_err", scanErr, "scan_regex", scanSuccessRegexp, "security_re", securityHintRegexp)
 	if err == nil && ok {
 		return true
 	}
@@ -455,7 +436,7 @@ func (s *playwrightLoginSession) hasSecurityHint(ctx context.Context) bool {
 func (s *playwrightLoginSession) findQRCodeElement(ctx context.Context, preferFrames bool) (qrElement, error) {
 	if preferFrames {
 		if el, ok := s.findQRCodeElementInChildFrames(ctx, s.page); ok {
-			logrus.WithField("source", "frame").Info("login qrcode element found")
+			slog.Info("login qrcode element found", "source", "frame")
 			return el, nil
 		}
 	}
@@ -463,59 +444,42 @@ func (s *playwrightLoginSession) findQRCodeElement(ctx context.Context, preferFr
 	for _, selector := range qrSelectors {
 		el, err := s.findLargestElement(ctx, s.page, selector)
 		if err == nil && el != nil {
-			logrus.WithFields(logrus.Fields{
-				"source":   "page",
-				"selector": selector,
-			}).Info("login qrcode element found")
+			slog.Info("login qrcode element found", "source", "page", "selector", selector)
 			return el, nil
 		}
 	}
 
 	el, err := s.page.ElementByRegex(ctx, "div", qrFallbackRegex)
 	if err == nil && el != nil {
-		logrus.WithField("source", "page_fallback").Info("login qrcode element found")
+		slog.Info("login qrcode element found", "source", "page_fallback")
 		return el, nil
 	}
 
 	if !preferFrames {
 		if el, ok := s.findQRCodeElementInChildFrames(ctx, s.page); ok {
-			logrus.WithField("source", "frame").Info("login qrcode element found")
+			slog.Info("login qrcode element found", "source", "frame")
 			return el, nil
 		}
 	}
 
-	logrus.WithFields(logrus.Fields{
-		"prefer_frames": preferFrames,
-	}).Info("login qrcode element not found")
+	slog.Info("login qrcode element not found", "prefer_frames", preferFrames)
 	return nil, errors.New("login qrcode element not found")
 }
 
 func (s *playwrightLoginSession) frameHasSecurityHint(ctx context.Context, frame qrFrame, depth int) bool {
 	if depth >= maxFrameDepth {
-		logrus.WithField("depth", depth).Warn("login qrcode frame scan depth exceeded")
+		slog.Warn("login qrcode frame scan depth exceeded", "depth", depth)
 		return false
 	}
 	frames, err := frame.Frames(ctx)
-	logrus.WithFields(logrus.Fields{
-		"count": len(frames),
-		"err":   err,
-		"depth": depth,
-	}).Debug("login qrcode scan frames")
+	slog.Debug("login qrcode scan frames", "count", len(frames), "err", err, "depth", depth)
 	if err != nil {
 		return false
 	}
 	for _, child := range frames {
 		ok, err := child.HasRegex(ctx, "body", securityHintRegexp)
 		scanOK, scanErr := child.HasRegex(ctx, "body", scanSuccessRegexp)
-		logrus.WithFields(logrus.Fields{
-			"match":       ok,
-			"err":         err,
-			"scan_match":  scanOK,
-			"scan_err":    scanErr,
-			"scan_regex":  scanSuccessRegexp,
-			"security_re": securityHintRegexp,
-			"depth":       depth,
-		}).Debug("login qrcode security hint on frame")
+		slog.Debug("login qrcode security hint on frame", "match", ok, "err", err, "scan_match", scanOK, "scan_err", scanErr, "scan_regex", scanSuccessRegexp, "security_re", securityHintRegexp, "depth", depth)
 		if err == nil && ok {
 			return true
 		}

@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 // corsMiddleware CORS 中间件
@@ -26,7 +26,7 @@ func corsMiddleware() gin.HandlerFunc {
 // errorHandlingMiddleware 错误处理中间件
 func errorHandlingMiddleware() gin.HandlerFunc {
 	return gin.CustomRecovery(func(c *gin.Context, recovered any) {
-		logrus.Errorf("服务器内部错误: %v, path: %s", recovered, c.Request.URL.Path)
+		slog.Error("服务器内部错误: %v, path: %s", recovered, c.Request.URL.Path)
 
 		respondError(c, http.StatusInternalServerError, "INTERNAL_ERROR",
 			"服务器内部错误", recovered)

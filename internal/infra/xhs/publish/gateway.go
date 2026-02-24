@@ -3,7 +3,7 @@ package publish
 import (
 	"errors"
 
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/selector"
 )
@@ -46,9 +46,9 @@ func NewGateway(cfg Config, engine browser.Engine) (*Gateway, error) {
 	if engine == nil {
 		return nil, errors.New("engine missing")
 	}
-	logrus.Infof("🔧 Gateway配置:")
-	logrus.Infof("  - 图文发布URL: %s", cfg.PublishImageURL)
-	logrus.Infof("  - 视频发布URL: %s", cfg.PublishVideoURL)
+	slog.Info("🔧 Gateway配置:")
+	slog.Info("- 图文发布URL:", "arg1", cfg.PublishImageURL)
+	slog.Info("- 视频发布URL:", "arg1", cfg.PublishVideoURL)
 	return &Gateway{cfg: cfg, engine: engine}, nil
 }
 
@@ -64,7 +64,7 @@ func resolveOrFallback(resolver *selector.ElementResolver, smartName, legacySele
 		if sel, err := resolver.Resolve(smartName); err == nil {
 			return sel
 		}
-		logrus.Warnf("自适应解析失败: %s, 降级到静态配置: %s", smartName, legacySelector)
+		slog.Warn("自适应解析失败: , 降级到静态配置:", "arg1", smartName, "arg2", legacySelector)
 	}
 	return legacySelector
 }

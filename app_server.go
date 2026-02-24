@@ -10,7 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/sirupsen/logrus"
+	"log/slog"
 	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
 )
 
@@ -59,9 +59,9 @@ func (s *AppServer) Start(port string) error {
 
 	// 启动服务器的 goroutine
 	go func() {
-		logrus.Infof("启动 HTTP 服务器: %s", port)
+		slog.Info("启动 HTTP 服务器:", "arg1", port)
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logrus.Errorf("服务器启动失败: %v", err)
+			slog.Error("服务器启动失败:", "arg1", err)
 			os.Exit(1)
 		}
 	}()
@@ -71,15 +71,15 @@ func (s *AppServer) Start(port string) error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logrus.Infof("正在关闭服务器...")
+	slog.Info("正在关闭服务器...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := s.httpServer.Shutdown(ctx); err != nil {
-		logrus.Warnf("等待连接关闭超时，强制退出: %v", err)
+		slog.Warn("等待连接关闭超时，强制退出:", "arg1", err)
 	} else {
-		logrus.Infof("服务器已优雅关闭")
+		slog.Info("服务器已优雅关闭")
 	}
 
 	return nil

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
@@ -299,25 +298,25 @@ func setSchedulePublish(page browser.Page, t time.Time) error {
 		return err
 	}
 	if err := page.WaitForSelector("input.el-input__inner[placeholder='选择日期和时间']", 5*time.Second); err != nil {
-		logrus.Warnf("等待时间选择器出现: %v，继续尝试", err)
+		slog.Warn("等待时间选择器出现: ，继续尝试", "arg1", err)
 	}
 	if err := clickDateTimePicker(page); err != nil {
 		return err
 	}
 	if err := page.WaitForSelector("input.el-input__inner[placeholder='选择日期']", 5*time.Second); err != nil {
-		logrus.Warnf("等待日期输入框出现: %v，继续尝试", err)
+		slog.Warn("等待日期输入框出现: ，继续尝试", "arg1", err)
 	}
 	if err := setDateTime(page, t); err != nil {
 		return err
 	}
 	if err := page.WaitForSelector("button.el-picker-panel__link-btn", 3*time.Second); err != nil {
-		logrus.Warnf("等待确定按钮: %v，继续尝试", err)
+		slog.Warn("等待确定按钮: ，继续尝试", "arg1", err)
 	}
 	if err := clickConfirmButton(page); err != nil {
 		return err
 	}
 	if err := page.WaitHidden("input.el-input__inner[placeholder='选择日期']"); err != nil {
-		logrus.Warnf("等待日期面板关闭: %v，继续尝试", err)
+		slog.Warn("等待日期面板关闭: ，继续尝试", "arg1", err)
 	}
 	return nil
 }
@@ -375,7 +374,7 @@ func setDateTime(page browser.Page, t time.Time) error {
 	slog.Info("已设置日期", "date", dateStr)
 
 	if err := page.WaitForSelector("input.el-input__inner[placeholder='选择时间']", 3*time.Second); err != nil {
-		logrus.Warnf("等待时间输入框: %v，继续尝试", err)
+		slog.Warn("等待时间输入框: ，继续尝试", "arg1", err)
 	}
 	timeInput, err := page.Element("input.el-input__inner[placeholder='选择时间']")
 	if err != nil {
@@ -431,7 +430,7 @@ func setLocation(page browser.Page, location string) error {
 	slog.Info("已输入地点关键词", "location", location)
 
 	if err := page.WaitForSelector(".d-dropdown-wrapper", 5*time.Second); err != nil {
-		logrus.Warnf("等待地点下拉列表出现: %v，继续尝试", err)
+		slog.Warn("等待地点下拉列表出现: ，继续尝试", "arg1", err)
 	}
 	dropdown, err := findVisibleLocationDropdown(page, location)
 	if err != nil {
@@ -446,7 +445,7 @@ func setLocation(page browser.Page, location string) error {
 	}
 	slog.Info("已选择地点", "location", location)
 	if err := page.WaitHidden(".d-dropdown-wrapper"); err != nil {
-		logrus.Warnf("等待地点下拉框关闭: %v，继续尝试", err)
+		slog.Warn("等待地点下拉框关闭: ，继续尝试", "arg1", err)
 	}
 	return nil
 }
