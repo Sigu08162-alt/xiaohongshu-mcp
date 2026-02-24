@@ -15,6 +15,7 @@ import (
 type SelectorConfig struct {
 	Version     string                       `yaml:"version"`
 	LastUpdated string                       `yaml:"last_updated"`
+	UpdatedAt   string                       `yaml:"updated_at"`
 	Description string                       `yaml:"description"`
 	Elements    map[string]*ElementSelectors `yaml:",inline"`
 }

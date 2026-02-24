@@ -1,6 +1,8 @@
 package wiring
 
 import (
+	"fmt"
+
 	appanalytics "github.com/vmxmy/xiaohongshu-mcp/internal/app/analytics"
 	appfeed "github.com/vmxmy/xiaohongshu-mcp/internal/app/feed"
 	appinteraction "github.com/vmxmy/xiaohongshu-mcp/internal/app/interaction"
@@ -60,14 +62,24 @@ func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, select
 }
 
 // pageFactoryFromEngine creates a page factory from an engine factory func.
+// Each call starts a fresh engine, creates a page, and returns a cleanup func
+// that closes both the page and the engine.
 func pageFactoryFromEngine(engineFactory func() browser.Engine) func() (browser.Page, func(), error) {
 	return func() (browser.Page, func(), error) {
 		engine := engineFactory()
+		if err := engine.Start(); err != nil {
+			return nil, nil, fmt.Errorf("start browser engine: %w", err)
+		}
 		page, err := engine.NewPage()
 		if err != nil {
-			return nil, nil, err
+			_ = engine.Close()
+			return nil, nil, fmt.Errorf("new browser page: %w", err)
 		}
-		return page, func() { page.Close() }, nil
+		cleanup := func() {
+			_ = page.Close()
+			_ = engine.Close()
+		}
+		return page, cleanup, nil
 	}
 }
 
