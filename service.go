@@ -680,24 +680,10 @@ func (s *XiaohongshuService) GetMyFeeds(ctx context.Context, limit int, userID s
 
 // GetFanAnalytics 获取粉丝分析数据
 func (s *XiaohongshuService) GetFanAnalytics(ctx context.Context, period string) (*xiaohongshu.FanAnalytics, error) {
-	raw, err := s.analyticsUsecase.GetFanAnalytics(ctx, period)
-	if err != nil {
-		return nil, err
-	}
-	if result, ok := raw.(*xiaohongshu.FanAnalytics); ok {
-		return result, nil
-	}
-	return nil, nil
+	return s.analyticsUsecase.GetFanAnalytics(ctx, period)
 }
 
 // GetContentAnalytics 获取内容分析数据
 func (s *XiaohongshuService) GetContentAnalytics(ctx context.Context, limit int, sortBy xiaohongshu.SortField, sortOrder xiaohongshu.SortOrder) (*xiaohongshu.ContentAnalytics, error) {
-	raw, err := s.analyticsUsecase.GetContentAnalytics(ctx, limit, string(sortBy), string(sortOrder))
-	if err != nil {
-		return nil, err
-	}
-	if result, ok := raw.(*xiaohongshu.ContentAnalytics); ok {
-		return result, nil
-	}
-	return nil, nil
+	return s.analyticsUsecase.GetContentAnalytics(ctx, limit, string(sortBy), string(sortOrder))
 }

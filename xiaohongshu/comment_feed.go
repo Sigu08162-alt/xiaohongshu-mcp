@@ -15,13 +15,13 @@ import (
 type CommentFeedAction struct {
 	page    browser.Page
 	polling polling.Module
-	// TODO: smartSelector 需要等待迁移到 browser 接口后再启用
+	// smartSelector is disabled until selector logic is migrated to the browser interface.
 	// smartSelector *selector.SmartSelector
 }
 
 // NewCommentFeedAction 创建 Feed 评论动作
 func NewCommentFeedAction(page browser.Page, pollingModule polling.Module) (*CommentFeedAction, error) {
-	// TODO: 等待 selector 迁移后再启用
+	// Smart selector is disabled until selector logic is migrated to the browser interface.
 	// 尝试加载智能选择器
 	// configPath := filepath.Join("configs", "selectors.yaml")
 	// smartSelector, err := selector.NewSmartSelector(configPath, page)
@@ -90,7 +90,7 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 	// 使用智能选择器查找评论输入框
 	var inputElem browser.Element
 
-	// TODO: 等待 selector 迁移后再启用
+	// Smart selector is disabled until selector logic is migrated to the browser interface.
 	// if f.smartSelector != nil {
 	// 	logrus.Info("使用智能选择器查找评论输入框...")
 	// 	inputElem, err = f.smartSelector.FindElement("comment_input")

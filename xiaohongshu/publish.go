@@ -89,8 +89,8 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 
 	page := p.page.WithContext(ctx)
 
-	// TODO: Playwright 网络拦截功能待实现
-	// 暂时使用 UI 检测方式
+	// Network interception is not yet supported by the browser.Page interface;
+	// using UI-based detection as a fallback.
 
 	if err := uploadImages(page, content.ImagePaths); err != nil {
 		return errors.Wrap(err, "小红书上传图片失败")
@@ -109,8 +109,8 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 	}
 
 	// 等待发布完成（等待页面跳转或成功提示）
-	// TODO: replace with WaitForNavigation when page interface supports it
-	// 等待页面URL变化或成功提示出现
+	// WaitForNavigation is not yet part of the browser.Page interface;
+	// using WaitForFunction to detect URL change or success toast instead.
 	if err := page.WaitForFunction(`() => !window.location.href.includes('/publish/publish') || document.querySelector('.d-message--success') !== null`, 10*time.Second); err != nil {
 		logrus.Warnf("等待发布完成: %v", err)
 	}

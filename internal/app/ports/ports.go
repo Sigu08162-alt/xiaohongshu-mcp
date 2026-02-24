@@ -57,8 +57,8 @@ type UserGateway interface {
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 type AnalyticsGateway interface {
-	GetContentAnalytics(ctx context.Context, limit int, sortBy, sortOrder string) (any, error)
-	GetFanAnalytics(ctx context.Context, period string) (any, error)
+	GetContentAnalytics(ctx context.Context, limit int, sortBy, sortOrder string) (*xiaohongshu.ContentAnalytics, error)
+	GetFanAnalytics(ctx context.Context, period string) (*xiaohongshu.FanAnalytics, error)
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
