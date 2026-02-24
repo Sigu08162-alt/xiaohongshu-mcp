@@ -8,21 +8,21 @@ import (
 )
 
 type Usecase struct {
-	gateway ports.UserGateway
-}
-
-func New(gateway ports.UserGateway) *Usecase {
-	return &Usecase{gateway: gateway}
-}
-
-func (u *Usecase) FollowUser(ctx context.Context, userID, xsecToken string, unfollow bool) error {
-	return u.gateway.FollowUser(ctx, userID, xsecToken, unfollow)
+	Gateway ports.UserGateway
 }
 
 func (u *Usecase) GetUserProfile(ctx context.Context, userID, xsecToken string) (*xiaohongshu.UserProfileResponse, error) {
-	return u.gateway.GetUserProfile(ctx, userID, xsecToken)
+	return u.Gateway.GetUserProfile(ctx, userID, xsecToken)
+}
+
+func (u *Usecase) FollowUser(ctx context.Context, userID, xsecToken string) error {
+	return u.Gateway.FollowUser(ctx, userID, xsecToken, false)
+}
+
+func (u *Usecase) UnfollowUser(ctx context.Context, userID, xsecToken string) error {
+	return u.Gateway.FollowUser(ctx, userID, xsecToken, true)
 }
 
 func (u *Usecase) GetMyStats(ctx context.Context) (map[string]any, error) {
-	return u.gateway.GetMyStats(ctx)
+	return u.Gateway.GetMyStats(ctx)
 }
