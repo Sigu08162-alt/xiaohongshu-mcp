@@ -647,7 +647,7 @@ func inputTags(page browser.Page, contentElem browser.Element, tags []string) {
 	// 按下箭头键移动到底部
 	for i := 0; i < 20; i++ {
 		contentElem.Press("ArrowDown")
-		// TODO: replace with WaitForTimeout when page interface supports it; short UI delay between key presses
+		// short UI delay between key presses (no WaitForTimeout on Page interface)
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -666,16 +666,16 @@ func inputTags(page browser.Page, contentElem browser.Element, tags []string) {
 
 func inputTag(page browser.Page, contentElem browser.Element, tag string) {
 	contentElem.Input("#")
-	// TODO: replace with WaitForTimeout when page interface supports it; short UI delay after # trigger
-	time.Sleep(200 * time.Millisecond)
+	// 等待标签联想容器出现
+	_ = page.WaitForSelector("#creator-editor-topic-container", 2*time.Second)
 
 	for _, char := range tag {
 		contentElem.Input(string(char))
-		// TODO: replace with WaitForTimeout when page interface supports it; short character typing delay
+		// short character typing delay (no WaitForTimeout on Page interface)
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// 等待标签联想容器出现
+	// 等待标签联想容器出现（输入完成后再次确认）
 	_ = page.WaitForSelector("#creator-editor-topic-container", 2*time.Second)
 
 	topicContainer, err := page.Element("#creator-editor-topic-container")
@@ -684,8 +684,7 @@ func inputTag(page browser.Page, contentElem browser.Element, tag string) {
 		if err == nil && firstItem != nil {
 			firstItem.Click()
 			slog.Info("成功点击标签联想选项", "tag", tag)
-			// TODO: replace with WaitForTimeout when page interface supports it; short UI settle delay
-			time.Sleep(200 * time.Millisecond)
+			_ = page.WaitIdle()
 		} else {
 			slog.Warn("未找到标签联想选项，直接输入空格", "tag", tag)
 			// 如果没有找到联想选项，输入空格结束
@@ -957,8 +956,8 @@ func setLocation(page browser.Page, location string) error {
 	if err := locationInput.Click(); err != nil {
 		return errors.Wrap(err, "点击地点输入框失败")
 	}
-	// TODO: replace with WaitForTimeout when page interface supports it; short focus settle delay
-	time.Sleep(300 * time.Millisecond)
+	// 等待输入框获得焦点并就绪
+	_ = page.WaitIdle()
 
 	if err := locationInput.Fill(location); err != nil {
 		return errors.Wrap(err, "输入地点关键词失败")
@@ -1045,7 +1044,8 @@ func setCollection(page browser.Page, collection string) error {
 		if err := selectEl.Click(); err != nil {
 			return errors.Wrap(err, "点击合集选择器失败")
 		}
-		time.Sleep(500 * time.Millisecond)
+		// 等待合集下拉列表出现
+		_ = page.WaitVisible(".collection-drop-down")
 
 		// 在下拉列表中查找并点击合集
 		dropdown, err := page.Element(".collection-drop-down")
@@ -1068,7 +1068,8 @@ func setCollection(page browser.Page, collection string) error {
 				if err := option.Click(); err != nil {
 					return errors.Wrap(err, "点击合集选项失败")
 				}
-				time.Sleep(300 * time.Millisecond)
+				// 等待下拉列表关闭
+				_ = page.WaitHidden(".collection-drop-down")
 				return nil
 			}
 		}
@@ -1105,7 +1106,8 @@ func setGroupChat(page browser.Page, groupChat string) error {
 		if err := selectEl.Click(); err != nil {
 			return errors.Wrap(err, "点击群聊选择器失败")
 		}
-		time.Sleep(500 * time.Millisecond)
+		// 等待群聊下拉列表出现
+		_ = page.WaitVisible(".d-dropdown")
 
 		// 在下拉列表中查找并点击群聊
 		dropdowns, err := page.Elements(".d-dropdown")
@@ -1133,7 +1135,8 @@ func setGroupChat(page browser.Page, groupChat string) error {
 					if err := option.Click(); err != nil {
 						return errors.Wrap(err, "点击群聊选项失败")
 					}
-					time.Sleep(300 * time.Millisecond)
+					// 等待页面响应
+					_ = page.WaitIdle()
 					return nil
 				}
 			}
@@ -1163,7 +1166,7 @@ func setOriginalClaim(page browser.Page) error {
 				return errors.Wrap(err, "点击去声明按钮失败")
 			}
 			slog.Info("已点击去声明按钮")
-			time.Sleep(1 * time.Second)
+			_ = page.WaitIdle()
 
 			// 可能会弹出确认对话框，需要点击确认
 			// 这里简单等待，实际使用中可能需要处理弹窗
@@ -1200,7 +1203,8 @@ func setContentType(page browser.Page, contentType string) error {
 		if err := selectEl.Click(); err != nil {
 			return errors.Wrap(err, "点击内容类型选择器失败")
 		}
-		time.Sleep(500 * time.Millisecond)
+		// 等待内容类型下拉列表出现
+		_ = page.WaitVisible(".d-dropdown")
 
 		// 在下拉列表中查找并点击选项
 		dropdowns, err := page.Elements(".d-dropdown")
@@ -1228,7 +1232,7 @@ func setContentType(page browser.Page, contentType string) error {
 					if err := option.Click(); err != nil {
 						return errors.Wrap(err, "点击内容类型选项失败")
 					}
-					time.Sleep(300 * time.Millisecond)
+					_ = page.WaitIdle()
 					return nil
 				}
 			}
@@ -1266,7 +1270,8 @@ func setVisibleScope(page browser.Page, scope string) error {
 		if err := selectEl.Click(); err != nil {
 			return errors.Wrap(err, "点击可见范围选择器失败")
 		}
-		time.Sleep(500 * time.Millisecond)
+		// 等待可见范围下拉列表出现
+		_ = page.WaitVisible(".d-dropdown")
 
 		// 在下拉列表中查找并点击选项
 		dropdowns, err := page.Elements(".d-dropdown")
@@ -1294,7 +1299,7 @@ func setVisibleScope(page browser.Page, scope string) error {
 					if err := option.Click(); err != nil {
 						return errors.Wrap(err, "点击可见范围选项失败")
 					}
-					time.Sleep(300 * time.Millisecond)
+					_ = page.WaitIdle()
 					return nil
 				}
 			}
@@ -1346,7 +1351,7 @@ func setCheckbox(page browser.Page, labelText string, checked bool) error {
 				return errors.Wrapf(err, "点击 %s checkbox失败", labelText)
 			}
 			slog.Info("已切换checkbox状态", "label", labelText, "checked", checked)
-			time.Sleep(200 * time.Millisecond)
+			_ = page.WaitIdle()
 		}
 
 		return nil
@@ -1389,7 +1394,7 @@ func setMarkerTags(page browser.Page, markers []string) error {
 	if err := markerButton.Click(); err != nil {
 		return errors.Wrap(err, "点击标记按钮失败")
 	}
-	time.Sleep(800 * time.Millisecond)
+	// 等待对话框出现（WaitForFunction already waits; no extra sleep needed）
 
 	// 等待对话框出现
 	if err := page.WaitForFunction(`() => document.querySelector('div[role="dialog"]') !== null`, 5*time.Second); err != nil {
@@ -1431,7 +1436,7 @@ func setMarkerTags(page browser.Page, markers []string) error {
 	if err := confirmButton.Click(); err != nil {
 		return errors.Wrap(err, "点击确定按钮失败")
 	}
-	time.Sleep(500 * time.Millisecond)
+	_ = page.WaitIdle()
 
 	return nil
 }
