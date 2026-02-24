@@ -19,6 +19,7 @@ import (
 	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/ratelimit"
 	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
 )
 
@@ -44,6 +45,7 @@ type XiaohongshuService struct {
 	analyticsUsecase *appanalytics.Usecase
 	loginManager     loginProvider
 	polling          PollingModules
+	limiter          *ratelimit.Limiter
 }
 
 // NewXiaohongshuServiceWithModules 使用已加载的轮询配置创建服务
@@ -67,6 +69,7 @@ func NewXiaohongshuServiceWithModules(
 		analyticsUsecase: analyticsUsecase,
 		loginManager:     NewLoginManager(newPlaywrightLoginSession, loginTTL),
 		polling:          modules,
+		limiter:          ratelimit.DefaultLimiter(),
 	}, nil
 }
 
@@ -263,6 +266,9 @@ func (s *XiaohongshuService) getLoginQrcodeLegacy(ctx context.Context) (*LoginQr
 
 // PublishContent 发布内容
 func (s *XiaohongshuService) PublishContent(ctx context.Context, req *PublishRequest) (*PublishResponse, error) {
+	if err := s.limiter.Wait(ctx, "publish"); err != nil {
+		return nil, err
+	}
 	// 验证标题长度
 	// 小红书限制：最大40个单位长度
 	// 中文/日文/韩文占2个单位，英文/数字占1个单位
@@ -352,6 +358,9 @@ func (s *XiaohongshuService) publishContent(ctx context.Context, content xiaohon
 
 // PublishVideo 发布视频（本地文件）
 func (s *XiaohongshuService) PublishVideo(ctx context.Context, req *PublishVideoRequest) (*PublishVideoResponse, error) {
+	if err := s.limiter.Wait(ctx, "publish"); err != nil {
+		return nil, err
+	}
 	// 标题长度校验
 	if titleWidth := runewidth.StringWidth(req.Title); titleWidth > 40 {
 		return nil, fmt.Errorf("标题长度超过限制")
@@ -438,6 +447,9 @@ func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse,
 }
 
 func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, filters ...xiaohongshu.FilterOption) (*FeedsListResponse, error) {
+	if err := s.limiter.Wait(ctx, "search"); err != nil {
+		return nil, err
+	}
 	var filter xiaohongshu.FilterOption
 	if len(filters) > 0 {
 		filter = filters[0]
@@ -488,6 +500,9 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken 
 
 // PostCommentToFeed 发表评论到Feed
 func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsecToken, content string) (*PostCommentResponse, error) {
+	if err := s.limiter.Wait(ctx, "comment"); err != nil {
+		return nil, err
+	}
 	if err := s.interactUsecase.PostComment(ctx, feedID, xsecToken, content); err != nil {
 		return nil, err
 	}
@@ -496,6 +511,9 @@ func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsec
 
 // LikeFeed 点赞笔记
 func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
+	if err := s.limiter.Wait(ctx, "like"); err != nil {
+		return nil, err
+	}
 	if err := s.interactUsecase.LikeFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
@@ -504,6 +522,9 @@ func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken str
 
 // UnlikeFeed 取消点赞笔记
 func (s *XiaohongshuService) UnlikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
+	if err := s.limiter.Wait(ctx, "like"); err != nil {
+		return nil, err
+	}
 	if err := s.interactUsecase.UnlikeFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
@@ -530,6 +551,9 @@ func (s *XiaohongshuService) UnfavoriteFeed(ctx context.Context, feedID, xsecTok
 
 // ReplyCommentToFeed 回复指定评论
 func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xsecToken, commentID, userID, content string) (*ReplyCommentResponse, error) {
+	if err := s.limiter.Wait(ctx, "comment"); err != nil {
+		return nil, err
+	}
 	if err := s.interactUsecase.ReplyComment(ctx, feedID, xsecToken, commentID, userID, content); err != nil {
 		return nil, err
 	}
@@ -563,6 +587,9 @@ func (s *XiaohongshuService) GetMyProfile(ctx context.Context) (*UserProfileResp
 
 // FollowUser 关注用户
 func (s *XiaohongshuService) FollowUser(ctx context.Context, userID, xsecToken string) (*ActionResult, error) {
+	if err := s.limiter.Wait(ctx, "follow"); err != nil {
+		return nil, err
+	}
 	if err := s.userUsecase.FollowUser(ctx, userID, xsecToken); err != nil {
 		return nil, err
 	}
