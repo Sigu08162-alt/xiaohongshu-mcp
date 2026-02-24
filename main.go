@@ -71,7 +71,7 @@ func main() {
 	configs.SetBinPath(binPath)
 
 	// 初始化服务
-	publishUsecase := initPublishUsecase(headless)
+	publishUsecase := wiring.InitPublishUsecase(headless)
 
 	// 加载轮询配置
 	modules, err := loadPollingModules()
