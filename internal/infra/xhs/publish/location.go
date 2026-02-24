@@ -43,7 +43,6 @@ func setLocation(page browser.Page, location string) error {
 		logrus.Warnf("  ⚠️  滚动失败: %v (继续)", err)
 	} else {
 		logrus.Info("  ✅ 滚动完成")
-		time.Sleep(300 * time.Millisecond)
 	}
 
 	// 直接使用强制点击，避免等待可点击状态超时
@@ -57,7 +56,6 @@ func setLocation(page browser.Page, location string) error {
 		return fmt.Errorf("点击地点输入框失败: %w", err)
 	}
 	logrus.Info("  ✅ 点击成功")
-	time.Sleep(300 * time.Millisecond)
 
 	// 3. 输入地点关键词
 	logrus.Infof("  [3/4] 输入地点关键词: '%s'...", location)
@@ -67,9 +65,10 @@ func setLocation(page browser.Page, location string) error {
 	}
 	logrus.Info("  ✅ 关键词已输入")
 
-	// 等待下拉列表出现
 	logrus.Info("  ⏱️  等待下拉列表出现...")
-	time.Sleep(1500 * time.Millisecond)
+	if err := page.WaitVisible(".d-dropdown-wrapper"); err != nil {
+		logrus.Warnf("  ⚠️  等待下拉列表超时: %v", err)
+	}
 
 	// 4. 查找并点击下拉选项
 	logrus.Info("  [4/4] 查找地点下拉列表...")
@@ -96,8 +95,9 @@ func setLocation(page browser.Page, location string) error {
 		return fmt.Errorf("点击地点选项失败: %w", err)
 	}
 	logrus.Info("  ✅ 地点选项已点击")
-
-	time.Sleep(500 * time.Millisecond)
+	if err := page.WaitIdle(); err != nil {
+		logrus.Warnf("  ⚠️  等待页面稳定超时: %v", err)
+	}
 	logrus.Infof("✅ 地点设置完成: %s", location)
 	return nil
 }
@@ -315,7 +315,9 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 		return false, fmt.Errorf("点击 %s 选项卡失败: %w", tabName, err)
 	}
 	logrus.Info("      ✅ 选项卡已点击")
-	time.Sleep(300 * time.Millisecond)
+	if err := page.WaitDOMStable(2*time.Second, 0.1); err != nil {
+		logrus.Warnf("      ⚠️  等待DOM稳定超时: %v", err)
+	}
 
 	// 3. 查找搜索框
 	logrus.Info("      [3/5] 查找搜索框...")
@@ -331,7 +333,6 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 		return false, fmt.Errorf("点击搜索框失败: %w", err)
 	}
 	logrus.Info("      ✅ 搜索框已点击")
-	time.Sleep(100 * time.Millisecond)
 
 	// 4. 输入关键词
 	logrus.Infof("      [4/5] 输入关键词: '%s'...", keyword)
@@ -341,7 +342,9 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 	}
 	logrus.Info("      ✅ 关键词已输入")
 	logrus.Info("      ⏱️  等待搜索结果出现...")
-	time.Sleep(1500 * time.Millisecond)
+	if err := page.WaitDOMStable(3*time.Second, 0.1); err != nil {
+		logrus.Warnf("      ⚠️  等待搜索结果超时: %v", err)
+	}
 
 	// 5. 查找并点击搜索结果
 	logrus.Info("      [5/5] 查找搜索结果...")
@@ -385,6 +388,8 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 
 	resultText, _ := result.(string)
 	logrus.Infof("      ✅ 找到并点击了匹配项: %s", resultText)
-	time.Sleep(500 * time.Millisecond)
+	if err := page.WaitIdle(); err != nil {
+		logrus.Warnf("      ⚠️  等待页面稳定超时: %v", err)
+	}
 	return true, nil
 }

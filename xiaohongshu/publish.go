@@ -1469,7 +1469,7 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 	if err := targetTab.Click(); err != nil {
 		return false, errors.Wrapf(err, "点击 %s 选项卡失败", tabName)
 	}
-	time.Sleep(300 * time.Millisecond)
+	_ = page.WaitDOMStable(2*time.Second, 0.1)
 
 	// 查找搜索框并输入关键词
 	searchInput, err := page.Element("div[role=\"dialog\"] input[type=\"text\"]")
@@ -1481,12 +1481,12 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 	if err := searchInput.Click(); err != nil {
 		return false, errors.Wrap(err, "点击搜索框失败")
 	}
-	time.Sleep(100 * time.Millisecond)
 
 	if err := searchInput.Fill(keyword); err != nil {
 		return false, errors.Wrap(err, "输入关键词失败")
 	}
-	time.Sleep(1500 * time.Millisecond) // 等待搜索结果加载
+	// 等待搜索结果加载
+	_ = page.WaitDOMStable(3*time.Second, 0.1)
 
 	// 查找搜索结果列表
 	// 检查是否有"没有找到"提示
@@ -1531,6 +1531,6 @@ func searchAndSelectInTab(page browser.Page, tabName, keyword string) (bool, err
 	}
 
 	slog.Info("已选择搜索结果", "keyword", keyword, "selected", result)
-	time.Sleep(500 * time.Millisecond)
+	_ = page.WaitIdle()
 	return true, nil
 }
