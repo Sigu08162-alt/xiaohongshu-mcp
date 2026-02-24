@@ -1,1133 +1,345 @@
 # xiaohongshu-mcp
 
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-21-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
+> 🚀 **小红书 MCP 服务** — 通过 [Model Context Protocol](https://modelcontextprotocol.io/) 让 AI 助手（Claude、Cursor、Windsurf 等）直接操作小红书：发帖、搜索、互动、数据分析，一切尽在掌握。
 
-[![善款已捐](https://img.shields.io/badge/善款已捐-CNY%201100.00-brightgreen?style=flat-square)](./DONATIONS.md)
-[![爱心汇聚](https://img.shields.io/badge/爱心汇聚-CNY%20969.95-blue?style=flat-square)](./DONATIONS.md)
+---
 
-MCP for 小红书/xiaohongshu.com。
+## ✨ 功能总览
 
-- 我的博客文章：[haha.ai/xiaohongshu-mcp](https://www.haha.ai/xiaohongshu-mcp)
+| 模块 | 功能 |
+|------|------|
+| 🔐 **登录认证** | 二维码扫码登录、Cookie 导入/导出、登录状态检查 |
+| 📝 **内容发布** | 发布图文笔记、发布视频笔记、保存草稿（图文/视频）、定时发布 |
+| 🔍 **内容发现** | 首页 Feed 流、关键词搜索（含筛选）、笔记详情（含评论） |
+| 👤 **用户信息** | 查看用户主页、获取自己的资料和笔记列表 |
+| 💬 **内容互动** | 点赞/取消点赞、收藏/取消收藏、发表评论、回复评论、关注/取关、分享 |
+| 📊 **数据分析** | 粉丝概览与画像、内容多维指标（曝光/点赞/评论/涨粉等） |
 
-**遇到任何问题，务必要先看本仓库文档中的常见问题说明**。
+---
 
-上面的 **疑难杂症** 列表后，还是解决不了你的部署问题，那么强烈推荐使用我写的另外一个工具：[xpzouying/x-mcp](https://github.com/xpzouying/x-mcp)，这个工具不需要你进行部署，只需要通过浏览器插件就能驱动你的 MCP，对于非技术同学来说更加友好。
+## 🏗️ 架构设计
 
-## Star History
-
-
-## 赞赏支持
-
-本项目所有的赞赏都会用于慈善捐赠。所有的慈善捐赠记录，请参考 [DONATIONS.md](./DONATIONS.md)。
-
-**捐赠时，请备注 MCP 以及名字。**
-如需更正/撤回署名，请开 Issue 或通过邮箱联系。
-
-**支付宝（不展示二维码）：**
-
-通过支付宝向 **xpzouying@gmail.com** 赞赏。
-
-**微信：**
-
-<img src="donate/wechat@2x.png" alt="WeChat Pay QR" width="260" />
-
-## 项目简介
-
-**主要功能**
-
-> 💡 **提示：** 点击下方功能标题可展开查看视频演示
-
-<details>
-<summary><b>1. 登录和检查登录状态</b></summary>
-
-第一步必须，小红书需要进行登录。可以检查当前登录状态。
-
-**登录演示：**
-
-https://github.com/user-attachments/assets/8b05eb42-d437-41b7-9235-e2143f19e8b7
-
-**检查登录状态演示：**
-
-https://github.com/user-attachments/assets/bd9a9a4a-58cb-4421-b8f3-015f703ce1f9
-
-</details>
-
-<details>
-<summary><b>2. 发布图文内容</b></summary>
-
-支持发布图文内容到小红书，包括标题、内容描述和图片。
-
-**图片支持方式：**
-
-支持两种图片输入方式：
-
-1. **HTTP/HTTPS 图片链接**
-
-   ```
-   ["https://example.com/image1.jpg", "https://example.com/image2.png"]
-   ```
-
-2. **本地图片绝对路径**（推荐）
-   ```
-   ["/Users/username/Pictures/image1.jpg", "/home/user/images/image2.png"]
-   ```
-
-**为什么推荐使用本地路径：**
-
-- ✅ 稳定性更好，不依赖网络
-- ✅ 上传速度更快
-- ✅ 避免图片链接失效问题
-- ✅ 支持更多图片格式
-
-**发布图文帖子演示：**
-
-https://github.com/user-attachments/assets/8aee0814-eb96-40af-b871-e66e6bbb6b06
-
-</details>
-
-<details>
-<summary><b>3. 发布视频内容</b></summary>
-
-支持发布视频内容到小红书，包括标题、内容描述和本地视频文件。
-
-**视频支持方式：**
-
-仅支持本地视频文件绝对路径：
+本项目基于 **Go 1.24** 构建，同时提供两套接口：
 
 ```
-"/Users/username/Videos/video.mp4"
+┌─────────────────────────────────────────────────┐
+│                 xiaohongshu-mcp                 │
+│                                                 │
+│  ┌──────────────┐      ┌──────────────────────┐ │
+│  │  MCP Server  │      │   REST API Server    │ │
+│  │  /mcp        │      │   /api/v1/*          │ │
+│  │  (go-sdk)    │      │   (Gin Framework)    │ │
+│  └──────┬───────┘      └──────────┬───────────┘ │
+│         └──────────┬──────────────┘             │
+│              ┌─────▼──────┐                     │
+│              │  Service   │                     │
+│              │   Layer    │                     │
+│              └─────┬──────┘                     │
+│              ┌─────▼──────┐                     │
+│              │ Playwright │  (无头浏览器自动化)   │
+│              │  Browser   │                     │
+│              └────────────┘                     │
+└─────────────────────────────────────────────────┘
 ```
 
-**功能特点：**
+- **MCP 协议层**：使用 `modelcontextprotocol/go-sdk`，支持 Streamable HTTP，兼容所有主流 MCP 客户端
+- **REST API 层**：基于 Gin，提供完整 REST 接口，支持 Swagger 文档（`/api/v1/*`）
+- **浏览器自动化**：基于 `playwright-go`，模拟真实用户操作，支持无头模式
 
-- ✅ 支持本地视频文件上传
-- ✅ 自动处理视频格式转换
-- ✅ 支持标题、内容描述和标签
-- ✅ 等待视频处理完成后自动发布
+---
 
-**注意事项：**
+## 🚀 快速开始
 
-- 仅支持本地视频文件，不支持 HTTP 链接
-- 视频处理时间较长，请耐心等待
-- 建议视频文件大小不超过 1GB
-
-</details>
-
-<details>
-<summary><b>4. 搜索内容</b></summary>
-
-根据关键词搜索小红书内容。
-
-**搜索帖子演示：**
-
-https://github.com/user-attachments/assets/03c5077d-6160-4b18-b629-2e40933a1fd3
-
-</details>
-
-<details>
-<summary><b>5. 获取推荐列表</b></summary>
-
-获取小红书首页推荐内容列表。
-
-**获取推荐列表演示：**
-
-https://github.com/user-attachments/assets/110fc15d-46f2-4cca-bdad-9de5b5b8cc28
-
-</details>
-
-<details>
-<summary><b>6. 获取帖子详情（包括互动数据和评论）</b></summary>
-
-获取小红书帖子的完整详情，包括：
-
-- 帖子内容（标题、描述、图片等）
-- 用户信息
-- 互动数据（点赞、收藏、分享、评论数）
-- 评论列表及子评论
-
-**⚠️ 重要提示：**
-
-- 需要提供帖子 ID 和 xsec_token（两个参数缺一不可）
-- 这两个参数可以从 Feed 列表或搜索结果中获取
-- 必须先登录才能使用此功能
-
-**获取帖子详情演示：**
-
-https://github.com/user-attachments/assets/76a26130-a216-4371-a6b3-937b8fda092a
-
-</details>
-
-<details>
-<summary><b>7. 发表评论到帖子</b></summary>
-
-支持自动发表评论到小红书帖子。
-
-**功能说明：**
-
-- 自动定位评论输入框
-- 输入评论内容并发布
-- 支持 HTTP API 和 MCP 工具调用
-
-**⚠️ 重要提示：**
-
-- 需要先登录才能使用此功能
-- 需要提供帖子 ID、xsec_token 和评论内容
-- 这些参数可以从 Feed 列表或搜索结果中获取
-
-**发表评论演示：**
-
-https://github.com/user-attachments/assets/cc385b6c-422c-489b-a5fc-63e92c695b80
-
-</details>
-
-<details>
-<summary><b>8. 获取用户个人主页</b></summary>
-
-获取小红书用户的个人主页信息，包括用户基本信息和笔记内容。
-
-**功能说明：**
-
-- 获取用户基本信息（昵称、简介、头像等）
-- 获取关注数、粉丝数、获赞量统计
-- 获取用户发布的笔记内容列表
-- 支持 HTTP API 和 MCP 工具调用
-
-**⚠️ 重要提示：**
-
-- 需要先登录才能使用此功能
-- 需要提供用户 ID 和 xsec_token
-- 这些参数可以从 Feed 列表或搜索结果中获取
-
-**返回信息包括：**
-
-- 用户基本信息：昵称、简介、头像、认证状态
-- 统计数据：关注数、粉丝数、获赞量、笔记数
-- 笔记列表：用户发布的所有公开笔记
-
-</details>
-
-**小红书基础运营知识**
-
-- **标题：（非常重要）小红书要求标题不超过 20 个字**
-- **正文：（非常重要）：正文不能超过 1000 个字**
-- 当前支持图文发送以及视频发送：从推荐的角度看，图文的流量会比视频以及纯文字的更好。
-- （低优先级）可以考虑纯文字的支持。1. 个人感觉纯文字会大大增加运营的复杂度；2. 纯文字在我的使用场景的价值较低。
-- Tags：现已支持。添加合适的 Tags 能带来更多的流量。
-- 根据本人实操，小红书每天的发帖量应该是 **50 篇**。
-- **（非常重要）小红书的同一个账号不允许在多个网页端登录**，如果你登录了当前 xiaohongshu-mcp 后，就不要再在其他的网页端登录该账号，否则就会把当前 MCP 的账号“踢出登录”。你可以使用移动 App 端进行查看当前账号信息。
-
-**风险说明**
-
-1. 该项目是在自己的另外一个项目的基础上开源出来的，原来的项目稳定运行一年多，没有出现过封号的情况，只有出现过 Cookies 过期需要重新登录。
-2. 我是使用 Claude Code 接入，稳定自动化运营数周后，验证没有问题后开源。
-
-该项目是基于学习的目的，禁止一切违法行为。
-
-**实操结果**
-
-第一天点赞/收藏数达到了 999+，
-
-<img width="386" height="278" alt="CleanShot 2025-09-05 at 01 31 55@2x" src="https://github.com/user-attachments/assets/4b5a283b-bd38-45b8-b608-8f818997366c" />
-
-<img width="350" height="280" alt="CleanShot 2025-09-05 at 01 32 49@2x" src="https://github.com/user-attachments/assets/4481e1e7-3ef6-4bbd-8483-dcee8f77a8f2" />
-
-一周左右的成果
-
-<img width="1840" height="582" alt="CleanShot 2025-09-05 at 01 33 13@2x" src="https://github.com/user-attachments/assets/fb367944-dc48-4bbd-8ece-934caa86323e" />
-
-## 1. 使用教程
-
-### 1.1. 快速开始（推荐）
-
-**方式一：下载预编译二进制文件**
-
-直接从本仓库的 Releases 下载对应平台的二进制文件：
-
-**主程序（MCP 服务）：**
-
-- **macOS Apple Silicon**: `xiaohongshu-mcp-darwin-arm64`
-- **macOS Intel**: `xiaohongshu-mcp-darwin-amd64`
-- **Windows x64**: `xiaohongshu-mcp-windows-amd64.exe`
-- **Linux x64**: `xiaohongshu-mcp-linux-amd64`
-
-**登录工具：**
-
-- **macOS Apple Silicon**: `xiaohongshu-login-darwin-arm64`
-- **macOS Intel**: `xiaohongshu-login-darwin-amd64`
-- **Windows x64**: `xiaohongshu-login-windows-amd64.exe`
-- **Linux x64**: `xiaohongshu-login-linux-amd64`
-
-使用步骤：
+### 方式一：Docker 部署（推荐）
 
 ```bash
-# 1. 首先运行登录工具
-chmod +x xiaohongshu-login-darwin-arm64
-./xiaohongshu-login-darwin-arm64
+# 1. 克隆项目
+git clone https://github.com/vmxmy/xiaohongshu-mcp.git
+cd xiaohongshu-mcp/docker
 
-# 2. 然后启动 MCP 服务
-chmod +x xiaohongshu-mcp-darwin-arm64
-./xiaohongshu-mcp-darwin-arm64
+# 2. 启动服务
+docker compose up -d
+
+# 3. 服务启动后访问
+# MCP 端点：http://localhost:18060/mcp
+# REST API：http://localhost:18060/api/v1/
+# 健康检查：http://localhost:18060/health
 ```
 
-**⚠️ 重要提示**：首次运行时会自动下载无头浏览器（约 150MB），请确保网络连接正常。后续运行无需重复下载。
+**docker-compose.yml 配置：**
 
-**方式二：源码编译**
+```yaml
+services:
+  xiaohongshu-mcp:
+    image: ghcr.io/vmxmy/xiaohongshu-mcp:latest
+    container_name: xiaohongshu-mcp
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data      # Cookie 持久化
+      - ./images:/app/images  # 图片缓存
+    environment:
+      - COOKIES_PATH=/app/data/cookies.json
+    ports:
+      - "18060:18060"
+```
 
-<details>
-<summary>源码编译安装详情</summary>
+### 方式二：二进制直接运行
 
-依赖 Golang 环境，安装方法请参考 [Golang 官方文档](https://go.dev/doc/install)。
-
-设置 Go 国内源的代理，
+从 [Releases](https://github.com/vmxmy/xiaohongshu-mcp/releases) 下载对应平台的二进制文件：
 
 ```bash
-# 配置 GOPROXY 环境变量，以下三选一
+# Linux/macOS
+chmod +x xiaohongshu-mcp-linux-amd64
+./xiaohongshu-mcp-linux-amd64
 
-# 1. 七牛 CDN
-go env -w  GOPROXY=https://goproxy.cn,direct
-
-# 2. 阿里云
-go env -w GOPROXY=https://mirrors.aliyun.com/goproxy/,direct
-
-# 3. 官方
-go env -w  GOPROXY=https://goproxy.io,direct
+# 可选参数
+./app --headless=true --port=18060
 ```
 
-</details>
-
-**方式三：使用 Docker 容器（最简单）**
-
-<details>
-<summary>Docker 部署详情</summary>
-
-使用 Docker 部署是最简单的方式，无需安装任何开发环境。
-
-**1. 使用 Docker Compose 启动（推荐）**
-
-先用 `gh` 下载最新 Release 产物到本地，再构建并启动：
+### 方式三：从源码编译
 
 ```bash
-# 下载最新 release 并准备 bin/app
-./build_release.sh
-
-# 已经克隆项目后，进入 docker 目录
-cd docker
-
-# 构建并启动服务
-docker compose up -d --build
-
-# 查看日志
-docker compose logs -f
-
-# 停止服务
-docker compose stop
+git clone https://github.com/vmxmy/xiaohongshu-mcp.git
+cd xiaohongshu-mcp
+go build -o xiaohongshu-mcp .
+./xiaohongshu-mcp
 ```
 
-**2. 自己构建镜像（可选）**
+---
 
-```bash
-# 先下载 release 二进制
-./build_release.sh
+## 🔌 MCP 客户端接入
 
-# 再构建镜像
-docker build -t xiaohongshu-mcp .
-```
+### Claude Desktop / Cursor / Windsurf
 
-**3. 配置说明**
-
-Docker 版本会自动：
-
-- 配置 Chrome 浏览器和中文字体
-- 挂载 `./data` 用于存储 cookies
-- 挂载 `./images` 用于存储发布的图片
-- 暴露 18060 端口供 MCP 连接
-
-详细使用说明请参考：[Docker 部署指南](./docker/README.md)
-
-</details>
-
-Windows 遇到问题首先看这里：[Windows 安装指南](./docs/windows_guide.md)
-
-### 1.2. 登录
-
-第一次需要手动登录，需要保存小红书的登录状态。
-
-**使用二进制文件**：
-
-```bash
-# 运行对应平台的登录工具
-./xiaohongshu-login-darwin-arm64
-```
-
-**使用源码**：
-
-```bash
-go run cmd/login/main.go
-```
-
-### 1.3. 启动 MCP 服务
-
-启动 xiaohongshu-mcp 服务。
-
-**使用二进制文件**：
-
-```bash
-# 默认：无头模式，没有浏览器界面
-./xiaohongshu-mcp-darwin-arm64
-
-# 非无头模式，有浏览器界面
-./xiaohongshu-mcp-darwin-arm64 -headless=false
-```
-
-**使用源码**：
-
-```bash
-# 默认：无头模式，没有浏览器界面
-go run .
-
-# 非无头模式，有浏览器界面
-go run . -headless=false
-```
-
-## 1.4. 验证 MCP
-
-```bash
-npx @modelcontextprotocol/inspector
-```
-
-![运行 Inspector](./assets/run_inspect.png)
-
-运行后，打开红色标记的链接，配置 MCP inspector，输入 `http://localhost:18060/mcp` ，点击 `Connect` 按钮。
-
-![配置 MCP inspector](./assets/inspect_mcp.png)
-
-按照上面配置 MCP inspector 后，点击 `List Tools` 按钮，查看所有的 Tools。
-
-## 1.5. 使用 MCP 发布
-
-### 检查登录状态
-
-![检查登录状态](./assets/check_login.mp4)
-
-### 发布图文
-
-示例中是从 https://unsplash.com/ 中随机找了个图片做测试。
-
-![发布图文](./assets/inspect_mcp_publish.mp4)
-
-### 搜索内容
-
-使用搜索功能，根据关键词搜索小红书内容：
-
-![搜索内容](./assets/search_result.png)
-
-## 2. MCP 客户端接入
-
-本服务支持标准的 Model Context Protocol (MCP)，可以接入各种支持 MCP 的 AI 客户端。
-
-### 2.1. 快速开始
-
-#### 启动 MCP 服务
-
-```bash
-# 启动服务（默认无头模式）
-go run .
-
-# 或者有界面模式
-go run . -headless=false
-```
-
-服务将运行在：`http://localhost:18060/mcp`
-
-#### 验证服务状态
-
-```bash
-# 测试 MCP 连接
-curl -X POST http://localhost:18060/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}'
-```
-
-#### Claude Code CLI 接入
-
-```bash
-# 添加 HTTP MCP 服务器
-claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
-
-# 检查 MCP 是否添加成功（确保 MCP 已经启动的前提下，运行下面命令）
-claude mcp list
-```
-
-### 2.2. 支持的客户端
-
-<details>
-<summary><b>Claude Code CLI</b></summary>
-
-官方命令行工具，已在上面快速开始部分展示：
-
-```bash
-# 添加 HTTP MCP 服务器
-claude mcp add --transport http xiaohongshu-mcp http://localhost:18060/mcp
-
-# 检查 MCP 是否添加成功（确保 MCP 已经启动的前提下，运行下面命令）
-claude mcp list
-```
-
-</details>
-
-<details>
-<summary><b>Cursor</b></summary>
-
-#### 配置文件的方式
-
-创建或编辑 MCP 配置文件：
-
-**项目级配置**（推荐）：
-在项目根目录创建 `.cursor/mcp.json`：
+在 MCP 配置文件中添加：
 
 ```json
 {
   "mcpServers": {
-    "xiaohongshu-mcp": {
-      "url": "http://localhost:18060/mcp",
-      "description": "小红书内容发布服务 - MCP Streamable HTTP"
+    "xiaohongshu": {
+      "url": "http://localhost:18060/mcp"
     }
   }
 }
 ```
 
-**全局配置**：
-在用户目录创建 `~/.cursor/mcp.json` (同样内容)。
-
-#### 使用步骤
-
-1. 确保小红书 MCP 服务正在运行
-2. 保存配置文件后，重启 Cursor
-3. 在 Cursor 聊天中，工具应该自动可用
-4. 可以通过聊天界面的 "Available Tools" 查看已连接的 MCP 工具
-
-**Demo**
-
-插件 MCP 接入：
-
-![cursor_mcp_settings](./assets/cursor_mcp_settings.png)
-
-调用 MCP 工具：（以检查登录状态为例）
-
-![cursor_mcp_check_login](./assets/cursor_mcp_check_login.png)
-
-</details>
-
-<details>
-<summary><b>VSCode</b></summary>
-
-#### 方法一：使用命令面板配置
-
-1. 按 `Ctrl/Cmd + Shift + P` 打开命令面板
-2. 运行 `MCP: Add Server` 命令
-3. 选择 `HTTP` 方式。
-4. 输入地址： `http://localhost:18060/mcp`，或者修改成对应的 Server 地址。
-5. 输入 MCP 名字： `xiaohongshu-mcp`。
-
-#### 方法二：直接编辑配置文件
-
-**工作区配置**（推荐）：
-在项目根目录创建 `.vscode/mcp.json`：
+### nanobot
 
 ```json
 {
   "servers": {
-    "xiaohongshu-mcp": {
-      "url": "http://localhost:18060/mcp",
-      "type": "http"
-    }
-  },
-  "inputs": []
-}
-```
-
-**查看配置**：
-
-![vscode_config](./assets/vscode_mcp_config.png)
-
-1. 确认运行状态。
-2. 查看 `tools` 是否正确检测。
-
-**Demo**
-
-以搜索帖子内容为例：
-
-![vscode_mcp_search](./assets/vscode_search_demo.png)
-
-</details>
-
-<details>
-<summary><b>Google Gemini CLI</b></summary>
-
-在 `~/.gemini/settings.json` 或项目目录 `.gemini/settings.json` 中配置：
-
-```json
-{
-  "mcpServers": {
-    "xiaohongshu": {
-      "httpUrl": "http://localhost:18060/mcp",
-      "timeout": 30000
+    "xhs": {
+      "url": "http://localhost:18060/mcp"
     }
   }
 }
 ```
 
-更多信息请参考 [Gemini CLI MCP 文档](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
-
-</details>
-
-<details>
-<summary><b>MCP Inspector</b></summary>
-
-调试工具，用于测试 MCP 连接：
-
-```bash
-# 启动 MCP Inspector
-npx @modelcontextprotocol/inspector
-
-# 在浏览器中连接到：http://localhost:18060/mcp
-```
-
-使用步骤：
-
-- 使用 MCP Inspector 测试连接
-- 测试 Ping Server 功能验证连接
-- 检查 List Tools 是否返回 6 个工具
-
-</details>
-
-<details>
-<summary><b>Cline</b></summary>
-
-Cline 是一个强大的 AI 编程助手，支持 MCP 协议集成。
-
-#### 配置方法
-
-在 Cline 的 MCP 设置中添加以下配置：
-
-```json
-{
-  "xiaohongshu-mcp": {
-    "url": "http://localhost:18060/mcp",
-    "type": "streamableHttp",
-    "autoApprove": [],
-    "disabled": false
-  }
-}
-```
-
-#### 使用步骤
-
-1. 确保小红书 MCP 服务正在运行（`http://localhost:18060/mcp`）
-2. 在 Cline 中打开 MCP 设置
-3. 添加上述配置到 MCP 服务器列表
-4. 保存配置并重启 Cline
-5. 在对话中可以直接使用小红书相关功能
-
-#### 配置说明
-
-- `url`: MCP 服务地址
-- `type`: 使用 `streamableHttp` 类型以获得更好的性能
-- `autoApprove`: 可配置自动批准的工具列表（留空表示手动批准）
-- `disabled`: 设置为 `false` 启用此 MCP 服务
-
-#### 使用示例
-
-配置完成后，可以在 Cline 中直接使用自然语言操作小红书：
-
-```
-帮我检查小红书登录状态
-```
-
-```
-帮我发布一篇关于春天的图文到小红书，使用这张图片：/path/to/spring.jpg
-```
-
-```
-搜索小红书上关于"美食"的内容
-```
-
-</details>
-
-<details>
-<summary><b>其他支持 HTTP MCP 的客户端</b></summary>
-
-任何支持 HTTP MCP 协议的客户端都可以连接到：`http://localhost:18060/mcp`
-
-基本配置模板：
-
-```json
-{
-  "name": "xiaohongshu-mcp",
-  "url": "http://localhost:18060/mcp",
-  "type": "http"
-}
-```
-
-</details>
-
-### 2.3. 可用 MCP 工具
-
-连接成功后，可使用以下 MCP 工具：
-
-- `check_login_status` - 检查小红书登录状态（无参数）
-- `publish_content` - 发布图文内容到小红书（必需：title, content, images）
-  - `images`: 支持 HTTP 链接或本地绝对路径，推荐使用本地路径
-- `publish_with_video` - 发布视频内容到小红书（必需：title, content, video）
-  - `video`: 仅支持本地视频文件绝对路径
-- `list_feeds` - 获取小红书首页推荐列表（无参数）
-- `search_feeds` - 搜索小红书内容（需要：keyword）
-- `get_feed_detail` - 获取帖子详情（需要：feed_id, xsec_token）
-- `post_comment_to_feed` - 发表评论到小红书帖子（需要：feed_id, xsec_token, content）
-- `user_profile` - 获取用户个人主页信息（需要：user_id, xsec_token）
-
-### 2.4. 使用示例
-
-使用 Claude Code 发布内容到小红书：
-
-**示例 1：使用 HTTP 图片链接**
-
-```
-帮我写一篇帖子发布到小红书上，
-配图为：https://cn.bing.com/th?id=OHR.MaoriRock_EN-US6499689741_UHD.jpg&w=3840
-图片是："纽西兰陶波湖的Ngātoroirangi矿湾毛利岩雕（© Joppi/Getty Images）"
-
-使用 xiaohongshu-mcp 进行发布。
-```
-
-**示例 2：使用本地图片路径（推荐）**
-
-```
-帮我写一篇关于春天的帖子发布到小红书上，
-使用这些本地图片：
-- /Users/username/Pictures/spring_flowers.jpg
-- /Users/username/Pictures/cherry_blossom.jpg
-
-使用 xiaohongshu-mcp 进行发布。
-```
-
-**示例 3：发布视频内容**
-
-```
-帮我写一篇关于美食制作的视频发布到小红书上，
-使用这个本地视频文件：
-- /Users/username/Videos/cooking_tutorial.mp4
-
-使用 xiaohongshu-mcp 的视频发布功能。
-```
-
-![claude-cli 进行发布](./assets/claude_push.mp4)
-
-**发布结果：**
-
-<img src="./assets/publish_result.jpeg" alt="xiaohongshu-mcp 发布结果" width="300">
-
-### 2.5. 💬 MCP 使用常见问题解答
-
 ---
 
-**Q:** 为什么检查登录用户名显示 `xiaghgngshu-mcp`？  
-**A:** 用户名是写死的。
+## 🔐 登录认证
 
----
+服务启动后，首次使用需要登录：
 
-**Q:** 显示发布成功后，但实际上没有显示？  
-**A:** 排查步骤如下：  
-1. 使用 **非无头模式** 重新发布一次。  
-2. 更换 **不同的内容** 重新发布。  
-3. 登录网页版小红书，查看账号是否被 **风控限制网页版发布**。  
-4. 检查 **图片大小** 是否过大。  
-5. 确认 **图片路径中没有中文字符**。  
-6. 若使用网络图片地址，请确认 **图片链接可正常访问**。
+### 方式一：二维码扫码（MCP 工具）
 
----
+通过 MCP 客户端调用 `get_login_qrcode` 工具，用小红书 App 扫码即可。
 
-**Q:** 在设备上运行 MCP 程序出现闪退如何解决？  
-**A:**  
-1. 建议 **从源码安装**。  
-2. 或使用 **Docker 安装本项目**，教程参考本仓库 `docker/README.md`。  
+### 方式二：上传 Cookie（推荐长期使用）
 
----
-
-**Q:** 使用 `http://localhost:18060/mcp` 进行 MCP 验证时提示无法连接？  
-**A:**  
-- 在 **Docker 环境** 下，请使用  
-  👉 [http://host.docker.internal:18060/mcp](http://host.docker.internal:18060/mcp)  
-- 在 **非 Docker 环境** 下，请使用 **本机 IPv4 地址** 访问。
-
----
-
-## 3. 小红书 MCP 互助群
-
-**重要：在群里问问题之前，请一定要先仔细看完 README 文档以及查看 Issues。**
-
-<!-- 两列排布：飞书二群 | 微信群 -->
-
-| 【飞书 3 群】：扫码进入                                                                                                   | 【微信群 12 群】：扫码进入                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| <img src="https://github.com/user-attachments/assets/9a0ec41a-cb65-4f4e-a0f7-31658a49512d" alt="qrcode_2qun" width="300"> | <img src="https://github.com/user-attachments/assets/af615910-e316-4db9-a454-9efb7b7e0c3a" alt="WechatIMG119" width="300"> |
-
-
-
-## 🚀 编译和使用指南
-
-### 项目结构
-
-本项目包含**两个独立的程序**：
-
-1. **登录工具** (`bin/xiaohongshu-login`) - 带界面的登录程序
-2. **MCP服务** (`bin/xiaohongshu-mcp`) - 无头模式的MCP工具服务器
-
-### 快速开始
-
-#### 1. 编译程序
+1. 在浏览器中登录小红书，导出 Cookie（推荐使用 EditThisCookie 等插件）
+2. 调用 `sync_cookies` 工具或 REST API 上传：
 
 ```bash
-# 使用构建脚本一键编译
-./build.sh
-
-# 编译完成后，可执行文件在 bin/ 目录下
-ls -lh bin/
+curl -X POST http://localhost:18060/api/v1/login/sync_cookies \
+  -H "Content-Type: application/json" \
+  -d '{"cookies_json": "[{\"name\":\"...\",\"value\":\"...\"}]"}'
 ```
 
-#### 2. 首次登录
+### 检查登录状态
 
 ```bash
-# 运行登录工具（会打开浏览器窗口）
-./bin/xiaohongshu-login
-```
-
-使用小红书App扫码登录，登录成功后cookies会自动保存。
-
-#### 3. 启动MCP服务
-
-```bash
-# 启动MCP服务（无界面，后台运行）
-./bin/xiaohongshu-mcp
-```
-
-#### 4. 配置MCP客户端
-
-在你的MCP客户端配置文件中添加:
-
-```json
-{
-  "mcpServers": {
-    "xiaohongshu": {
-      "command": "/path/to/xiaohongshu-mcp/bin/xiaohongshu-mcp"
-    }
-  }
-}
-```
-
-### 📚 REST API 文档 (Swagger)
-
-xiaohongshu-mcp 提供了完整的 Swagger/OpenAPI 文档,可以像 FastAPI 一样交互式地测试 API。
-
-**访问文档**: 本仓库默认未启用 Swagger UI，如需使用请参考 `docs/SWAGGER_SETUP.md` 手动开启。
-
-**功能特性**:
-- ✅ 交互式 API 测试 - 在线测试所有接口
-- ✅ 完整的参数说明 - 表单式参数填写
-- ✅ 实时响应查看 - 查看请求和响应数据
-- ✅ OpenAPI 规范 - 可导入 Postman/Insomnia
-
-**可用 API**:
-- 登录认证 (3个): 状态检查、二维码登录、Cookie管理
-- 内容发布 (2个): 图文笔记、视频笔记
-- 内容发现 (4个): Feed列表、搜索、详情、用户主页
-- 内容互动 (2个): 评论、回复
-
-详细文档请查看: [docs/SWAGGER.md](./docs/SWAGGER.md)
-
-**curl 调用示例**:
-
-```bash
-# 检查登录状态
 curl http://localhost:18060/api/v1/login/status
-
-# 搜索笔记
-curl -X POST http://localhost:18060/api/v1/feeds/search \
-  -H "Content-Type: application/json" \
-  -d '{"keyword": "深圳美食", "filters": {"sort_by": "最新"}}'
 ```
-
-### 可用的MCP工具（22个）
-
-#### 基础功能
-- `check_login_status` - 检查登录状态
-- `get_login_qrcode` - 获取登录二维码
-- `delete_cookies` - 删除cookies重置登录
-- `publish_content` - 发布图文内容
-- `publish_with_video` - 发布视频内容
-
-说明：
-- `get_login_qrcode` 可能先返回登录二维码，扫码后再返回安全认证二维码，请重复调用直到提示已登录。
-- 无 GUI 环境可使用 `npx @modelcontextprotocol/inspector` 查看返回的二维码图片进行扫码。
-- `get_login_qrcode` 返回 `stage/status/session_id`，便于判断阶段与排查登录流程。
-
-#### 内容浏览
-- `list_feeds` - 获取首页Feeds列表
-- `search_feeds` - 搜索内容
-- `get_feed_detail` - 获取笔记详情
-- `user_profile` - 获取用户主页
-
-#### 互动功能
-- `post_comment_to_feed` - 发表评论
-- `reply_comment_in_feed` - 回复评论
-- `like_feed` - 点赞/取消点赞笔记
-- `favorite_feed` - 收藏/取消收藏笔记
-- `follow_user` - 关注/取关用户
-- `like_comment` - 点赞/取消点赞评论
-
-#### 内容管理
-- `share_feed` - 分享笔记获取链接
-- `delete_feed` - 删除自己的笔记
-- `delete_comment` - 删除自己的评论
-
-#### 数据获取
-- `get_fan_analytics` - 获取粉丝分析数据
-- `get_content_analytics` - 获取内容分析数据
-
-> **注意**: 以下工具已暂时禁用，待修复后重新启用
-> - `get_my_stats` - 获取个人统计数据（已禁用）
-> - `get_my_feeds` - 获取自己发布的笔记列表（已禁用）
-
-### ⚠️ 操作频率建议
-
-为避免账号被封，建议遵循以下频率：
-- **点赞**: 每小时≤60次，间隔≥30秒
-- **评论**: 每小时≤20次，间隔≥2分钟
-- **关注**: 每小时≤30次，间隔≥1分钟
-- **发布**: 每天≤5条，间隔≥2小时
-
-**建议**: 不要使用批量操作，让AI控制调用频率和间隔时间。
- 
-### 已知问题
-
-> 最后更新：2026-01-22
-
-**get_my_stats 工具禁用**
-- 状态：已禁用
-- 原因：数据提取功能暂时无法正确获取统计信息
-- 影响：无法通过 MCP 获取个人统计数据
-- 替代方案：可直接访问小红书创作者数据中心查看
-
-**get_my_feeds 工具禁用**
-- 状态：已禁用
-- 原因：数据提取功能暂时无法正确获取笔记列表
-- 影响：无法通过 MCP 获取自己发布的笔记列表
-- 替代方案：可通过 `user_profile` 工具访问个人主页查看笔记
 
 ---
 
-### 常见问题
+## 🛠️ MCP 工具列表
 
-**Q: 登录状态保存在哪里？**
-A: 保存在 `~/.xiaohongshu/cookies.json`
-
-**Q: 如何重新登录？**
-A: 删除cookies后重新运行登录工具：
-```bash
-rm ~/.xiaohongshu/cookies.json
-./bin/xiaohongshu-login
-```
-
-**Q: 为什么要分成两个程序？**
-A: 登录工具需要显示浏览器界面供用户扫码，MCP服务在后台无头运行，性能更好。
+| 工具名 | 描述 |
+|--------|------|
+| `check_login_status` | 检查当前登录状态 |
+| `get_login_qrcode` | 获取登录二维码（Base64 图片） |
+| `sync_cookies` | 上传 Cookie JSON 完成登录 |
+| `delete_cookies` | 删除 Cookie，重置登录状态 |
+| `publish_content` | 发布图文笔记 |
+| `publish_with_video` | 发布视频笔记 |
+| `save_draft` | 保存图文草稿 |
+| `save_video_draft` | 保存视频草稿 |
+| `list_feeds` | 获取首页 Feed 流 |
+| `search_feeds` | 搜索笔记 |
+| `get_feed_detail` | 获取笔记详情及评论 |
+| `user_profile` | 获取用户主页信息 |
+| `get_my_stats` | 获取自己的账号统计 |
+| `get_my_feeds` | 获取自己发布的笔记列表 |
+| `like_feed` | 点赞/取消点赞笔记 |
+| `favorite_feed` | 收藏/取消收藏笔记 |
+| `post_comment_to_feed` | 发表评论 |
+| `reply_comment_in_feed` | 回复评论 |
+| `like_comment` | 点赞评论 |
+| `delete_comment` | 删除自己的评论 |
+| `follow_user` | 关注/取关用户 |
+| `share_feed` | 获取笔记分享链接 |
+| `delete_feed` | 删除自己的笔记 |
+| `get_fan_analytics` | 获取粉丝分析数据 |
+| `get_content_analytics` | 获取内容数据分析 |
 
 ---
 
-## 🖥️ 服务器/VPS 部署指南（无 GUI 环境）
+## 📡 REST API 端点
 
-在没有图形界面的 Linux 服务器上部署时，由于无法显示浏览器窗口扫码登录，需要采用 **本地登录 + 远程同步** 的方式。
+| 方法 | 路径 | 描述 |
+|------|------|------|
+| GET | `/health` | 健康检查 |
+| GET | `/api/v1/login/status` | 检查登录状态 |
+| GET | `/api/v1/login/qrcode` | 获取登录二维码 |
+| POST | `/api/v1/login/sync_cookies` | 上传 Cookie |
+| DELETE | `/api/v1/login/cookies` | 删除 Cookie |
+| POST | `/api/v1/publish` | 发布图文笔记 |
+| POST | `/api/v1/publish_video` | 发布视频笔记 |
+| POST | `/api/v1/draft` | 保存图文草稿 |
+| POST | `/api/v1/draft_video` | 保存视频草稿 |
+| GET | `/api/v1/feeds/list` | 首页 Feed 流 |
+| GET/POST | `/api/v1/feeds/search` | 搜索笔记 |
+| POST | `/api/v1/feeds/detail` | 笔记详情 |
+| POST | `/api/v1/feeds/like` | 点赞/取消点赞 |
+| POST | `/api/v1/feeds/favorite` | 收藏/取消收藏 |
+| POST | `/api/v1/feeds/comment` | 发表评论 |
+| POST | `/api/v1/feeds/comment/reply` | 回复评论 |
+| POST | `/api/v1/feeds/comment/like` | 点赞评论 |
+| POST | `/api/v1/feeds/share` | 分享笔记 |
+| DELETE | `/api/v1/feeds/:feed_id` | 删除笔记 |
+| DELETE | `/api/v1/feeds/:feed_id/comments/:comment_id` | 删除评论 |
+| POST | `/api/v1/user/profile` | 用户主页 |
+| POST | `/api/v1/user/follow` | 关注/取关 |
+| GET | `/api/v1/user/me` | 我的资料 |
+| GET | `/api/v1/user/me/feeds` | 我的笔记列表 |
+| GET | `/api/v1/analytics/fans` | 粉丝分析 |
+| GET | `/api/v1/analytics/content` | 内容分析 |
 
-### 部署架构
+---
 
-```
-┌─────────────────┐     cookies.json      ┌─────────────────┐
-│   本地电脑       │  ─────────────────►  │   远程 VPS      │
-│  (有 GUI)       │        scp           │  (无 GUI)       │
-│                 │                      │                 │
-│ xiaohongshu-    │                      │ xiaohongshu-    │
-│ login           │                      │ mcp             │
-└─────────────────┘                      └─────────────────┘
-```
+## 📋 发布笔记示例
 
-### 步骤 1: 下载程序
+### 发布图文（MCP）
 
-在 VPS 上下载对应平台的二进制文件：
-
-```bash
-# 创建目录
-mkdir -p ~/app/xiaohongshu-mcp && cd ~/app/xiaohongshu-mcp
-
-# 下载 Linux AMD64 版本
-wget https://github.com/vmxmy/xiaohongshu-mcp/releases/latest/download/xiaohongshu-mcp-linux-amd64
-wget https://github.com/vmxmy/xiaohongshu-mcp/releases/latest/download/xiaohongshu-login-linux-amd64
-
-# 或 Linux ARM64 版本
-# wget https://github.com/vmxmy/xiaohongshu-mcp/releases/latest/download/xiaohongshu-mcp-linux-arm64
-# wget https://github.com/vmxmy/xiaohongshu-mcp/releases/latest/download/xiaohongshu-login-linux-arm64
-
-# 添加执行权限
-chmod +x xiaohongshu-*
-```
-
-### 步骤 2: 本地登录获取 cookies
-
-在你的**本地电脑**（有 GUI）上运行登录工具：
-
-```bash
-# macOS
-./xiaohongshu-login
-
-# Windows
-xiaohongshu-login.exe
-```
-
-扫码登录成功后，cookies 会保存在当前目录的 `cookies.json` 文件中。
-
-### 步骤 3: 上传 cookies 到 VPS
-
-```bash
-# 使用 scp 上传
-scp cookies.json user@your-vps-ip:~/app/xiaohongshu-mcp/
-
-# 或使用 rsync
-rsync -avz cookies.json user@your-vps-ip:~/app/xiaohongshu-mcp/
-```
-
-### 步骤 4: 安装浏览器依赖
-
-MCP 服务需要 Chromium 浏览器：
-
-```bash
-# Debian/Ubuntu
-sudo apt update && sudo apt install -y chromium-browser
-
-# CentOS/RHEL
-sudo yum install -y chromium
-
-# Alpine
-apk add chromium
-```
-
-### 步骤 5: 启动 MCP 服务
-
-**直接运行：**
-
-```bash
-./xiaohongshu-mcp-linux-amd64
-```
-
-**使用 PM2 管理（推荐）：**
-
-```bash
-# 安装 PM2
-npm install -g pm2
-
-# 创建配置文件
-cat > ecosystem.config.js << 'EOF'
-module.exports = {
-  apps: [{
-    name: 'xiaohongshu-mcp',
-    script: './xiaohongshu-mcp-linux-amd64',
-    cwd: '/home/user/app/xiaohongshu-mcp',
-    interpreter: 'none',
-    exec_mode: 'fork',
-    autorestart: true,
-    max_restarts: 10,
-    restart_delay: 5000
-  }]
+```json
+{
+  "title": "普吉岛隐藏宝藏🏖️",
+  "content": "今天发现了一个超小众的海滩，人少景美...",
+  "images": [
+    "https://your-cdn.com/image1.jpg",
+    "/local/path/to/image2.jpg"
+  ],
+  "tags": ["普吉岛", "泰国旅行", "小众海滩"],
+  "location": "Phuket, Thailand"
 }
-EOF
-
-# 启动服务
-pm2 start ecosystem.config.js
-
-# 设置开机自启
-pm2 save
-pm2 startup
 ```
 
-**PM2 常用命令：**
+> ⚠️ **注意**：`content` 正文中**不要**添加 `#标签`，所有话题标签统一通过 `tags` 参数传入（无需加 `#`），工具会自动处理。
 
-```bash
-pm2 status              # 查看状态
-pm2 logs xiaohongshu-mcp # 查看日志
-pm2 restart xiaohongshu-mcp # 重启服务
-pm2 stop xiaohongshu-mcp    # 停止服务
+### 定时发布
+
+```json
+{
+  "schedule_at": "2024-03-01T10:00:00+08:00"
+}
 ```
-
-### 步骤 6: 验证服务
-
-```bash
-# 检查健康状态
-curl http://localhost:18060/health
-
-# 测试 MCP 连接
-curl -X POST http://localhost:18060/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}'
-```
-
-### Cookies 刷新流程
-
-当 cookies 过期（通常几周到几个月）时，需要重新登录：
-
-```bash
-# 1. 本地重新扫码登录
-./xiaohongshu-login
-
-# 2. 上传新的 cookies 到 VPS
-scp cookies.json user@your-vps-ip:~/app/xiaohongshu-mcp/
-
-# 3. 重启 VPS 上的服务
-ssh user@your-vps-ip "pm2 restart xiaohongshu-mcp"
-```
-
-### 自动化脚本示例
-
-创建一个一键同步脚本 `sync-cookies.sh`：
-
-```bash
-#!/bin/bash
-VPS_HOST="user@your-vps-ip"
-VPS_PATH="~/app/xiaohongshu-mcp"
-
-echo "正在同步 cookies..."
-scp cookies.json ${VPS_HOST}:${VPS_PATH}/
-
-echo "正在重启服务..."
-ssh ${VPS_HOST} "pm2 restart xiaohongshu-mcp"
-
-echo "同步完成！"
-```
-
-### 注意事项
-
-1. **cookies.json 包含敏感信息**，请妥善保管，不要提交到代码仓库
-2. **同一账号不能多端登录**，VPS 服务运行时不要在其他网页端登录
-3. **定期检查登录状态**，可以通过 `check_login_status` 工具监控
-4. **确保 VPS 时区正确**，避免时间差导致的问题
 
 ---
 
-### 更新日志
+## 🔧 配置说明
 
-#### 2026-01-21
-- **修复**: 重写数据提取工具，使用JavaScript页面解析替代不可靠的DOM选择器
-- **优化**: 移除仅移动端可用的 `get_followers_list` 和 `get_following_list` 工具（网页版不支持）
-- **新增**: `get_fan_analytics` 粉丝分析数据工具
-- **新增**: `get_content_analytics` 内容分析数据工具
-- **新增**: 页面结构分析文档 `docs/PAGE_STRUCTURE_ANALYSIS.md`
+| 启动参数 | 默认值 | 说明 |
+|----------|--------|------|
+| `--headless` | `true` | 是否使用无头浏览器模式 |
+| `--bin` | 自动检测 | 自定义浏览器二进制路径 |
+| `--port` | `18060` | 服务监听端口 |
+
+| 环境变量 | 说明 |
+|----------|------|
+| `COOKIES_PATH` | Cookie 文件存储路径（默认 `./cookies/cookies.json`） |
 
 ---
+
+## 🐳 Docker 环境变量
+
+```yaml
+environment:
+  - COOKIES_PATH=/app/data/cookies.json  # Cookie 持久化路径
+```
+
+数据目录挂载：
+- `/app/data` — Cookie 等持久化数据
+- `/app/images` — 图片临时缓存
+
+---
+
+## 🔨 开发者指南
+
+### 技术栈
+
+| 组件 | 技术 |
+|------|------|
+| 语言 | Go 1.24 |
+| MCP SDK | `modelcontextprotocol/go-sdk` |
+| Web 框架 | Gin |
+| 浏览器自动化 | `playwright-go` |
+| 日志 | `sirupsen/logrus` |
+
+### 本地开发
+
+```bash
+# 安装依赖
+go mod download
+
+# 安装 Playwright 浏览器
+go run github.com/playwright-community/playwright-go/cmd/playwright install chromium
+
+# 以有头模式运行（方便调试）
+go run . --headless=false
+
+# 运行测试
+go test ./...
+```
+
+---
+
+## ❓ 常见问题
+
+**Q: 浏览器启动失败？**
+> 确保已安装 Playwright 所需的系统依赖。Docker 镜像已预装全部依赖，推荐使用 Docker 部署。
+
+**Q: 登录状态丢失？**
+> 将 `./data` 目录挂载为 Volume 以持久化 Cookie。Cookie 文件位于 `COOKIES_PATH` 配置路径。
+
+**Q: 图片上传失败？**
+> - 本地路径需为绝对路径（如 `/home/user/image.jpg`）
+> - 远程 MCP 服务无法访问客户端本地文件，请先上传至 CDN（如 Cloudflare R2）再使用公开 URL
+
+**Q: 遇到风控/验证码？**
+> 建议使用 Cookie 方式登录，并避免频繁操作。可尝试以有头模式启动并手动完成验证。
+
+---
+
+## 📄 License
+
+[MIT License](./LICENSE)
+
+---
+
+## 🌟 Star History
+
+如果这个项目对你有帮助，欢迎给个 Star ⭐
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vmxmy/xiaohongshu-mcp&type=Date)](https://star-history.com/#vmxmy/xiaohongshu-mcp&Date)
