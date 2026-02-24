@@ -37,13 +37,13 @@ type PollingModules struct {
 
 // XiaohongshuService 小红书业务服务
 type XiaohongshuService struct {
-	publishUsecase  *apppublish.Usecase
-	feedUsecase     *appfeed.Usecase
-	interactUsecase *appinteraction.Usecase
-	userUsecase     *appuser.Usecase
+	publishUsecase   *apppublish.Usecase
+	feedUsecase      *appfeed.Usecase
+	interactUsecase  *appinteraction.Usecase
+	userUsecase      *appuser.Usecase
 	analyticsUsecase *appanalytics.Usecase
-	loginManager    loginProvider
-	polling         PollingModules
+	loginManager     loginProvider
+	polling          PollingModules
 }
 
 // NewXiaohongshuService 创建小红书服务实例
@@ -580,19 +580,7 @@ func (s *XiaohongshuService) GetMyProfile(ctx context.Context) (*UserProfileResp
 
 // FollowUser 关注用户
 func (s *XiaohongshuService) FollowUser(ctx context.Context, userID, xsecToken string) (*ActionResult, error) {
-	var err error
-	if s.userUsecase != nil {
-		err = s.userUsecase.FollowUser(ctx, userID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewFollowAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.Follow(ctx, userID, xsecToken)
-		})
-	}
-	if err != nil {
+	if err := s.userUsecase.FollowUser(ctx, userID, xsecToken); err != nil {
 		return nil, err
 	}
 	return &ActionResult{FeedID: userID, Success: true, Message: "关注成功"}, nil
@@ -600,20 +588,7 @@ func (s *XiaohongshuService) FollowUser(ctx context.Context, userID, xsecToken s
 
 // UnfollowUser 取关用户
 func (s *XiaohongshuService) UnfollowUser(ctx context.Context, userID, xsecToken string) (*ActionResult, error) {
-	var err error
-	if s.userUsecase != nil {
-		err = s.userUsecase.UnfollowUser(ctx, userID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewFollowAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.Unfollow(ctx, userID, xsecToken)
-		})
-	}
-
-	if err != nil {
+	if err := s.userUsecase.UnfollowUser(ctx, userID, xsecToken); err != nil {
 		return nil, err
 	}
 
@@ -626,20 +601,7 @@ func (s *XiaohongshuService) UnfollowUser(ctx context.Context, userID, xsecToken
 
 // LikeComment 点赞评论
 func (s *XiaohongshuService) LikeComment(ctx context.Context, feedID, xsecToken, commentID, userID string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.LikeComment(ctx, feedID, xsecToken, commentID, userID)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewCommentLikeAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.LikeComment(ctx, feedID, xsecToken, commentID, userID)
-		})
-	}
-
-	if err != nil {
+	if err := s.interactUsecase.LikeComment(ctx, feedID, xsecToken, commentID, userID); err != nil {
 		return nil, err
 	}
 
@@ -652,20 +614,7 @@ func (s *XiaohongshuService) LikeComment(ctx context.Context, feedID, xsecToken,
 
 // UnlikeComment 取消点赞评论
 func (s *XiaohongshuService) UnlikeComment(ctx context.Context, feedID, xsecToken, commentID, userID string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.UnlikeComment(ctx, feedID, xsecToken, commentID, userID)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewCommentLikeAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.UnlikeComment(ctx, feedID, xsecToken, commentID, userID)
-		})
-	}
-
-	if err != nil {
+	if err := s.interactUsecase.UnlikeComment(ctx, feedID, xsecToken, commentID, userID); err != nil {
 		return nil, err
 	}
 
@@ -678,42 +627,12 @@ func (s *XiaohongshuService) UnlikeComment(ctx context.Context, feedID, xsecToke
 
 // ShareFeed 分享笔记，获取分享链接
 func (s *XiaohongshuService) ShareFeed(ctx context.Context, feedID, xsecToken string) (string, error) {
-	if s.feedUsecase != nil {
-		return s.feedUsecase.ShareFeed(ctx, feedID, xsecToken)
-	}
-
-	var shareLink string
-	err := withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewShareAction(page, s.polling.Interaction)
-		if err != nil {
-			return err
-		}
-		shareLink, err = action.ShareFeed(ctx, feedID, xsecToken)
-		return err
-	})
-	if err != nil {
-		return "", err
-	}
-	return shareLink, nil
+	return s.feedUsecase.ShareFeed(ctx, feedID, xsecToken)
 }
 
 // DeleteFeed 删除自己的笔记
 func (s *XiaohongshuService) DeleteFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
-	var err error
-
-	if s.feedUsecase != nil {
-		err = s.feedUsecase.DeleteFeed(ctx, feedID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewDeleteAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.DeleteFeed(ctx, feedID, xsecToken)
-		})
-	}
-
-	if err != nil {
+	if err := s.feedUsecase.DeleteFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
 
@@ -722,20 +641,7 @@ func (s *XiaohongshuService) DeleteFeed(ctx context.Context, feedID, xsecToken s
 
 // DeleteComment 删除自己的评论
 func (s *XiaohongshuService) DeleteComment(ctx context.Context, feedID, xsecToken, commentID, userID string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.DeleteComment(ctx, feedID, xsecToken, commentID, userID)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewDeleteAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.DeleteComment(ctx, feedID, xsecToken, commentID, userID)
-		})
-	}
-
-	if err != nil {
+	if err := s.interactUsecase.DeleteComment(ctx, feedID, xsecToken, commentID, userID); err != nil {
 		return nil, err
 	}
 
@@ -748,143 +654,67 @@ func (s *XiaohongshuService) DeleteComment(ctx context.Context, feedID, xsecToke
 
 // GetMyStats 获取当前用户的统计数据
 func (s *XiaohongshuService) GetMyStats(ctx context.Context) (*xiaohongshu.UserStats, error) {
-	if s.userUsecase != nil {
-		raw, err := s.userUsecase.GetMyStats(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if raw == nil {
-			return nil, nil
-		}
-		stats := &xiaohongshu.UserStats{}
-		if v, ok := raw["follower_count"]; ok {
-			if n, ok := v.(int); ok {
-				stats.FollowerCount = n
-			}
-		}
-		if v, ok := raw["follow_count"]; ok {
-			if n, ok := v.(int); ok {
-				stats.FollowCount = n
-			}
-		}
-		if v, ok := raw["note_count"]; ok {
-			if n, ok := v.(int); ok {
-				stats.NoteCount = n
-			}
-		}
-		if v, ok := raw["liked_count"]; ok {
-			if n, ok := v.(int); ok {
-				stats.LikedCount = n
-			}
-		}
-		if v, ok := raw["collect_count"]; ok {
-			if n, ok := v.(int); ok {
-				stats.CollectCount = n
-			}
-		}
-		return stats, nil
-	}
-
-	var stats *xiaohongshu.UserStats
-	err := withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
-		if err != nil {
-			return err
-		}
-		stats, err = action.GetMyStats(ctx)
-		return err
-	})
+	raw, err := s.userUsecase.GetMyStats(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
+	}
+	stats := &xiaohongshu.UserStats{}
+	if v, ok := raw["follower_count"]; ok {
+		if n, ok := v.(int); ok {
+			stats.FollowerCount = n
+		}
+	}
+	if v, ok := raw["follow_count"]; ok {
+		if n, ok := v.(int); ok {
+			stats.FollowCount = n
+		}
+	}
+	if v, ok := raw["note_count"]; ok {
+		if n, ok := v.(int); ok {
+			stats.NoteCount = n
+		}
+	}
+	if v, ok := raw["liked_count"]; ok {
+		if n, ok := v.(int); ok {
+			stats.LikedCount = n
+		}
+	}
+	if v, ok := raw["collect_count"]; ok {
+		if n, ok := v.(int); ok {
+			stats.CollectCount = n
+		}
 	}
 	return stats, nil
 }
 
 // GetMyFeeds 获取自己发布的笔记列表
 func (s *XiaohongshuService) GetMyFeeds(ctx context.Context, limit int, userID string) ([]xiaohongshu.Feed, error) {
-	var feeds []xiaohongshu.Feed
-	var err error
-
-	if s.feedUsecase != nil {
-		feeds, err = s.feedUsecase.GetMyFeeds(ctx, userID, limit)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
-			if err != nil {
-				return err
-			}
-			feeds, err = action.GetMyFeeds(ctx, limit, userID)
-			return err
-		})
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return feeds, nil
+	return s.feedUsecase.GetMyFeeds(ctx, userID, limit)
 }
 
 // GetFanAnalytics 获取粉丝分析数据
 func (s *XiaohongshuService) GetFanAnalytics(ctx context.Context, period string) (*xiaohongshu.FanAnalytics, error) {
-	if s.analyticsUsecase != nil {
-		raw, err := s.analyticsUsecase.GetFanAnalytics(ctx, period)
-		if err != nil {
-			return nil, err
-		}
-		if result, ok := raw.(*xiaohongshu.FanAnalytics); ok {
-			return result, nil
-		}
-		return nil, nil
-	}
-
-	var analytics *xiaohongshu.FanAnalytics
-	var err error
-
-	err = withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
-		if err != nil {
-			return err
-		}
-		analytics, err = action.GetFanAnalytics(ctx, period)
-		return err
-	})
-
+	raw, err := s.analyticsUsecase.GetFanAnalytics(ctx, period)
 	if err != nil {
 		return nil, err
 	}
-
-	return analytics, nil
+	if result, ok := raw.(*xiaohongshu.FanAnalytics); ok {
+		return result, nil
+	}
+	return nil, nil
 }
 
 // GetContentAnalytics 获取内容分析数据
 func (s *XiaohongshuService) GetContentAnalytics(ctx context.Context, limit int, sortBy xiaohongshu.SortField, sortOrder xiaohongshu.SortOrder) (*xiaohongshu.ContentAnalytics, error) {
-	if s.analyticsUsecase != nil {
-		raw, err := s.analyticsUsecase.GetContentAnalytics(ctx, limit, string(sortBy), string(sortOrder))
-		if err != nil {
-			return nil, err
-		}
-		if result, ok := raw.(*xiaohongshu.ContentAnalytics); ok {
-			return result, nil
-		}
-		return nil, nil
-	}
-
-	var analytics *xiaohongshu.ContentAnalytics
-	var err error
-
-	err = withBrowserPage(func(page browser.Page) error {
-		action, err := xiaohongshu.NewDataAction(page, s.polling.Analytics)
-		if err != nil {
-			return err
-		}
-		analytics, err = action.GetContentAnalytics(ctx, limit, sortBy, sortOrder)
-		return err
-	})
-
+	raw, err := s.analyticsUsecase.GetContentAnalytics(ctx, limit, string(sortBy), string(sortOrder))
 	if err != nil {
 		return nil, err
 	}
-
-	return analytics, nil
+	if result, ok := raw.(*xiaohongshu.ContentAnalytics); ok {
+		return result, nil
+	}
+	return nil, nil
 }
