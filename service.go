@@ -445,22 +445,7 @@ func (s *XiaohongshuService) publishVideo(ctx context.Context, content xiaohongs
 
 // ListFeeds 获取Feeds列表
 func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse, error) {
-	var feeds []xiaohongshu.Feed
-	var err error
-
-	if s.feedUsecase != nil {
-		feeds, err = s.feedUsecase.ListFeeds(ctx)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewFeedsListAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			feeds, err = action.GetFeedsList(ctx)
-			return err
-		})
-	}
-
+	feeds, err := s.feedUsecase.ListFeeds(ctx)
 	if err != nil {
 		logrus.Errorf("获取 Feeds 列表失败: %v", err)
 		return nil, err
@@ -470,26 +455,11 @@ func (s *XiaohongshuService) ListFeeds(ctx context.Context) (*FeedsListResponse,
 }
 
 func (s *XiaohongshuService) SearchFeeds(ctx context.Context, keyword string, filters ...xiaohongshu.FilterOption) (*FeedsListResponse, error) {
-	var feeds []xiaohongshu.Feed
-	var err error
-
-	if s.feedUsecase != nil {
-		var filter xiaohongshu.FilterOption
-		if len(filters) > 0 {
-			filter = filters[0]
-		}
-		feeds, err = s.feedUsecase.SearchFeeds(ctx, keyword, filter)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewSearchAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			feeds, err = action.Search(ctx, keyword, filters...)
-			return err
-		})
+	var filter xiaohongshu.FilterOption
+	if len(filters) > 0 {
+		filter = filters[0]
 	}
-
+	feeds, err := s.feedUsecase.SearchFeeds(ctx, keyword, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -509,22 +479,7 @@ func (s *XiaohongshuService) GetFeedDetail(ctx context.Context, feedID, xsecToke
 
 // GetFeedDetailWithConfig 使用配置获取Feed详情
 func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID, xsecToken string, loadAllComments bool, config xiaohongshu.CommentLoadConfig) (*FeedDetailResponse, error) {
-	var result *xiaohongshu.FeedDetailResponse
-	var err error
-
-	if s.feedUsecase != nil {
-		result, err = s.feedUsecase.GetFeedDetail(ctx, feedID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewFeedDetailAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			result, err = action.GetFeedDetailWithConfig(ctx, feedID, xsecToken, loadAllComments, config)
-			return err
-		})
-	}
-
+	result, err := s.feedUsecase.GetFeedDetail(ctx, feedID, xsecToken)
 	if err != nil {
 		return nil, err
 	}
@@ -534,22 +489,7 @@ func (s *XiaohongshuService) GetFeedDetailWithConfig(ctx context.Context, feedID
 
 // UserProfile 获取用户信息
 func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken string) (*UserProfileResponse, error) {
-	var result *xiaohongshu.UserProfileResponse
-	var err error
-
-	if s.userUsecase != nil {
-		result, err = s.userUsecase.GetUserProfile(ctx, userID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewUserProfileAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			result, err = action.UserProfile(ctx, userID, xsecToken)
-			return err
-		})
-	}
-
+	result, err := s.userUsecase.GetUserProfile(ctx, userID, xsecToken)
 	if err != nil {
 		return nil, err
 	}
@@ -565,19 +505,7 @@ func (s *XiaohongshuService) UserProfile(ctx context.Context, userID, xsecToken 
 
 // PostCommentToFeed 发表评论到Feed
 func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsecToken, content string) (*PostCommentResponse, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.PostComment(ctx, feedID, xsecToken, content)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewCommentFeedAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.PostComment(ctx, feedID, xsecToken, content)
-		})
-	}
-	if err != nil {
+	if err := s.interactUsecase.PostComment(ctx, feedID, xsecToken, content); err != nil {
 		return nil, err
 	}
 	return &PostCommentResponse{FeedID: feedID, Success: true, Message: "评论发表成功"}, nil
@@ -585,16 +513,7 @@ func (s *XiaohongshuService) PostCommentToFeed(ctx context.Context, feedID, xsec
 
 // LikeFeed 点赞笔记
 func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.LikeFeed(ctx, feedID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action := xiaohongshu.NewLikeAction(page, s.polling.Interaction)
-			return action.Like(ctx, feedID, xsecToken)
-		})
-	}
-	if err != nil {
+	if err := s.interactUsecase.LikeFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
 	return &ActionResult{FeedID: feedID, Success: true, Message: "点赞成功或已点赞"}, nil
@@ -602,17 +521,7 @@ func (s *XiaohongshuService) LikeFeed(ctx context.Context, feedID, xsecToken str
 
 // UnlikeFeed 取消点赞笔记
 func (s *XiaohongshuService) UnlikeFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.UnlikeFeed(ctx, feedID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action := xiaohongshu.NewLikeAction(page, s.polling.Interaction)
-			return action.Unlike(ctx, feedID, xsecToken)
-		})
-	}
-
-	if err != nil {
+	if err := s.interactUsecase.UnlikeFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
 
@@ -621,16 +530,7 @@ func (s *XiaohongshuService) UnlikeFeed(ctx context.Context, feedID, xsecToken s
 
 // FavoriteFeed 收藏笔记
 func (s *XiaohongshuService) FavoriteFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.FavoriteFeed(ctx, feedID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action := xiaohongshu.NewFavoriteAction(page, s.polling.Interaction)
-			return action.Favorite(ctx, feedID, xsecToken)
-		})
-	}
-	if err != nil {
+	if err := s.interactUsecase.FavoriteFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
 	return &ActionResult{FeedID: feedID, Success: true, Message: "收藏成功或已收藏"}, nil
@@ -638,17 +538,7 @@ func (s *XiaohongshuService) FavoriteFeed(ctx context.Context, feedID, xsecToken
 
 // UnfavoriteFeed 取消收藏笔记
 func (s *XiaohongshuService) UnfavoriteFeed(ctx context.Context, feedID, xsecToken string) (*ActionResult, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.UnfavoriteFeed(ctx, feedID, xsecToken)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action := xiaohongshu.NewFavoriteAction(page, s.polling.Interaction)
-			return action.Unfavorite(ctx, feedID, xsecToken)
-		})
-	}
-
-	if err != nil {
+	if err := s.interactUsecase.UnfavoriteFeed(ctx, feedID, xsecToken); err != nil {
 		return nil, err
 	}
 
@@ -657,20 +547,7 @@ func (s *XiaohongshuService) UnfavoriteFeed(ctx context.Context, feedID, xsecTok
 
 // ReplyCommentToFeed 回复指定评论
 func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xsecToken, commentID, userID, content string) (*ReplyCommentResponse, error) {
-	var err error
-	if s.interactUsecase != nil {
-		err = s.interactUsecase.ReplyComment(ctx, feedID, xsecToken, commentID, userID, content)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewCommentFeedAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			return action.ReplyToComment(ctx, feedID, xsecToken, commentID, userID, content)
-		})
-	}
-
-	if err != nil {
+	if err := s.interactUsecase.ReplyComment(ctx, feedID, xsecToken, commentID, userID, content); err != nil {
 		return nil, err
 	}
 
@@ -687,22 +564,7 @@ func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xse
 
 // GetMyProfile 获取当前登录用户的个人信息
 func (s *XiaohongshuService) GetMyProfile(ctx context.Context) (*UserProfileResponse, error) {
-	var result *xiaohongshu.UserProfileResponse
-	var err error
-
-	if s.userUsecase != nil {
-		result, err = s.userUsecase.GetMyProfile(ctx)
-	} else {
-		err = withBrowserPage(func(page browser.Page) error {
-			action, err := xiaohongshu.NewUserProfileAction(page, s.polling.Interaction)
-			if err != nil {
-				return err
-			}
-			result, err = action.GetMyProfileViaSidebar(ctx)
-			return err
-		})
-	}
-
+	result, err := s.userUsecase.GetMyProfile(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -895,19 +757,19 @@ func (s *XiaohongshuService) GetMyStats(ctx context.Context) (*xiaohongshu.UserS
 			return nil, nil
 		}
 		stats := &xiaohongshu.UserStats{}
-		if v, ok := raw["fans_count"]; ok {
+		if v, ok := raw["follower_count"]; ok {
 			if n, ok := v.(int); ok {
-				stats.FansCount = n
+				stats.FollowerCount = n
 			}
 		}
-		if v, ok := raw["follows_count"]; ok {
+		if v, ok := raw["follow_count"]; ok {
 			if n, ok := v.(int); ok {
-				stats.FollowsCount = n
+				stats.FollowCount = n
 			}
 		}
-		if v, ok := raw["notes_count"]; ok {
+		if v, ok := raw["note_count"]; ok {
 			if n, ok := v.(int); ok {
-				stats.NotesCount = n
+				stats.NoteCount = n
 			}
 		}
 		if v, ok := raw["liked_count"]; ok {
@@ -915,9 +777,9 @@ func (s *XiaohongshuService) GetMyStats(ctx context.Context) (*xiaohongshu.UserS
 				stats.LikedCount = n
 			}
 		}
-		if v, ok := raw["collected_count"]; ok {
+		if v, ok := raw["collect_count"]; ok {
 			if n, ok := v.(int); ok {
-				stats.CollectedCount = n
+				stats.CollectCount = n
 			}
 		}
 		return stats, nil

@@ -6,6 +6,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/configs"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"github.com/vmxmy/xiaohongshu-mcp/internal/interfaces/wiring"
 )
 
 // @title 小红书 MCP API
@@ -70,7 +72,31 @@ func main() {
 
 	// 初始化服务
 	publishUsecase := initPublishUsecase(headless)
-	xiaohongshuService, err := NewXiaohongshuServiceWithUsecase(publishUsecase)
+
+	// 加载轮询配置
+	modules, err := loadPollingModules()
+	if err != nil {
+		logrus.Fatalf("加载轮询配置失败: %v", err)
+	}
+
+	// 构建 engine factory（使用全局 headless 配置）
+	engineFactory := func() browser.Engine { return newBrowserEngine() }
+
+	// 使用 wiring 包构建所有用例
+	feedUsecase := wiring.BuildFeedUsecase(engineFactory, modules.Interaction)
+	interactUsecase := wiring.BuildInteractionUsecase(engineFactory, modules.Interaction)
+	userUsecase := wiring.BuildUserUsecase(engineFactory, modules.Interaction)
+	analyticsUsecase := wiring.BuildAnalyticsUsecase(engineFactory, modules.Analytics)
+
+	// 创建服务，注入所有用例
+	xiaohongshuService, err := NewXiaohongshuServiceWithModules(
+		publishUsecase,
+		feedUsecase,
+		interactUsecase,
+		userUsecase,
+		analyticsUsecase,
+		modules,
+	)
 	if err != nil {
 		logrus.Fatalf("初始化服务失败: %v", err)
 	}
