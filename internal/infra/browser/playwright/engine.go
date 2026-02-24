@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/playwright-community/playwright-go"
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 )
 
@@ -101,7 +102,7 @@ func (e *Engine) NewPage() (browser.Page, error) {
 			Height: viewportHeight,
 		},
 		// 设置 User-Agent，避免被检测为自动化
-		UserAgent: playwright.String("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"),
+		UserAgent: playwright.String(configs.RandomUserAgent()),
 	}
 
 	if e.cfg.CookiePath != "" {
