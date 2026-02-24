@@ -50,6 +50,7 @@ type InteractionGateway interface {
 type UserGateway interface {
 	FollowUser(ctx context.Context, userID, xsecToken string, unfollow bool) error
 	GetUserProfile(ctx context.Context, userID, xsecToken string) (*xiaohongshu.UserProfileResponse, error)
+	GetMyProfile(ctx context.Context) (*xiaohongshu.UserProfileResponse, error)
 	GetMyStats(ctx context.Context) (map[string]any, error)
 }
 

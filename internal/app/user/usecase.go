@@ -23,6 +23,10 @@ func (u *Usecase) UnfollowUser(ctx context.Context, userID, xsecToken string) er
 	return u.Gateway.FollowUser(ctx, userID, xsecToken, true)
 }
 
+func (u *Usecase) GetMyProfile(ctx context.Context) (*xiaohongshu.UserProfileResponse, error) {
+	return u.Gateway.GetMyProfile(ctx)
+}
+
 func (u *Usecase) GetMyStats(ctx context.Context) (map[string]any, error) {
 	return u.Gateway.GetMyStats(ctx)
 }

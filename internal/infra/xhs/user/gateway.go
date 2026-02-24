@@ -58,6 +58,20 @@ func (g *Gateway) GetUserProfile(ctx context.Context, userID, xsecToken string) 
 	return result, err
 }
 
+// GetMyProfile returns the current logged-in user's profile via sidebar.
+func (g *Gateway) GetMyProfile(ctx context.Context) (*xiaohongshu.UserProfileResponse, error) {
+	var result *xiaohongshu.UserProfileResponse
+	err := g.withPage(ctx, func(page browser.Page) error {
+		action, err := xiaohongshu.NewUserProfileAction(page, g.polling)
+		if err != nil {
+			return err
+		}
+		result, err = action.GetMyProfileViaSidebar(ctx)
+		return err
+	})
+	return result, err
+}
+
 // GetMyStats returns the current user's stats (fans, follows, likes, notes).
 func (g *Gateway) GetMyStats(ctx context.Context) (map[string]any, error) {
 	var result map[string]any
