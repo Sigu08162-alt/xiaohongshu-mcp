@@ -57,7 +57,26 @@ func newSuite(t *testing.T) *testSuite {
 		return browserplaywright.New(cfg)
 	}
 
-	noop := polling.Module{TimeoutMs: 60000, IntervalMs: 1000, MaxRetries: 3}
+	noop := polling.Module{
+		TimeoutMs:  60000,
+		IntervalMs: 1000,
+		MaxRetries: 3,
+		Delays: map[string]int{
+			"wait_100ms":    100,
+			"wait_200ms":    200,
+			"wait_300ms":    300,
+			"wait_500ms":    500,
+			"wait_800ms":    800,
+			"wait_1000ms":   1000,
+			"wait_2000ms":   2000,
+			"wait_3000ms":   3000,
+			"wait_5000ms":   5000,
+			"wait_10000ms":  10000,
+			"wait_60000ms":  60000,
+			"wait_300000ms": 300000,
+			"wait_600000ms": 600000,
+		},
+	}
 
 	return &testSuite{
 		feed:        wiring.BuildFeedUsecase(engineFactory, noop),
