@@ -1,5 +1,12 @@
 package configs
 
+import (
+	"os"
+	"path/filepath"
+)
+
+// ===== Browser =====
+
 var (
 	useHeadless = true
 
@@ -22,3 +29,19 @@ func SetBinPath(b string) {
 func GetBinPath() string {
 	return binPath
 }
+
+// ===== Image =====
+
+const (
+	ImagesDir = "xiaohongshu_images"
+)
+
+func GetImagesPath() string {
+	return filepath.Join(os.TempDir(), ImagesDir)
+}
+
+// ===== Username =====
+
+const (
+	Username = "xiaohongshu-mcp"
+)
