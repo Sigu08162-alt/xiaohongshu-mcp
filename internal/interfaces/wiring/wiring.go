@@ -14,6 +14,7 @@ import (
 	infraanalytics "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/analytics"
 	infrafeed "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/feed"
 	infrainteraction "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/interaction"
+	infralogin "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/login"
 	xhspublish "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/publish"
 	infrauser "github.com/vmxmy/xiaohongshu-mcp/internal/infra/xhs/user"
 	"github.com/vmxmy/xiaohongshu-mcp/pkg/downloader"
@@ -54,23 +55,14 @@ func BuildPublishUsecase(cfg *config.Config, selectors map[string]string, select
 			MinImages: cfg.Limits.MinImages,
 			MaxImages: cfg.Limits.MaxImages,
 		},
-		ImageProcessor: downloader.NewImageProcessor(), // 注入图片处理器
+		ImageProcessor: downloader.NewImageProcessor(),
 	}, nil
 }
 
-// defaultPolling returns a sensible default polling module for non-publish operations.
-func defaultPolling() polling.Module {
-	return polling.Module{
-		TimeoutMs:  30000,
-		IntervalMs: 500,
-		MaxRetries: 10,
-		Delays:     map[string]int{"short": 500, "medium": 1000, "long": 2000},
-	}
-}
-
-// pageFactory creates a factory function that opens a new browser page.
-func pageFactory(engine browser.Engine) func() (browser.Page, func(), error) {
+// pageFactoryFromEngine creates a page factory from an engine factory func.
+func pageFactoryFromEngine(engineFactory func() browser.Engine) func() (browser.Page, func(), error) {
 	return func() (browser.Page, func(), error) {
+		engine := engineFactory()
 		page, err := engine.NewPage()
 		if err != nil {
 			return nil, nil, err
@@ -80,25 +72,30 @@ func pageFactory(engine browser.Engine) func() (browser.Page, func(), error) {
 }
 
 // BuildFeedUsecase wires the feed infra gateway and app usecase.
-func BuildFeedUsecase(engine browser.Engine) *appfeed.Usecase {
-	gw := infrafeed.New(pageFactory(engine), defaultPolling())
+func BuildFeedUsecase(engineFactory func() browser.Engine, pollingModule polling.Module) *appfeed.Usecase {
+	gw := infrafeed.New(pageFactoryFromEngine(engineFactory), pollingModule)
 	return &appfeed.Usecase{Gateway: gw}
 }
 
 // BuildInteractionUsecase wires the interaction infra gateway and app usecase.
-func BuildInteractionUsecase(engine browser.Engine) *appinteraction.Usecase {
-	gw := infrainteraction.New(pageFactory(engine), defaultPolling())
+func BuildInteractionUsecase(engineFactory func() browser.Engine, pollingModule polling.Module) *appinteraction.Usecase {
+	gw := infrainteraction.New(pageFactoryFromEngine(engineFactory), pollingModule)
 	return &appinteraction.Usecase{Gateway: gw}
 }
 
 // BuildUserUsecase wires the user infra gateway and app usecase.
-func BuildUserUsecase(engine browser.Engine) *appuser.Usecase {
-	gw := infrauser.New(pageFactory(engine), defaultPolling())
+func BuildUserUsecase(engineFactory func() browser.Engine, pollingModule polling.Module) *appuser.Usecase {
+	gw := infrauser.New(pageFactoryFromEngine(engineFactory), pollingModule)
 	return &appuser.Usecase{Gateway: gw}
 }
 
 // BuildAnalyticsUsecase wires the analytics infra gateway and app usecase.
-func BuildAnalyticsUsecase(engine browser.Engine) *appanalytics.Usecase {
-	gw := infraanalytics.New(pageFactory(engine), defaultPolling())
+func BuildAnalyticsUsecase(engineFactory func() browser.Engine, pollingModule polling.Module) *appanalytics.Usecase {
+	gw := infraanalytics.New(pageFactoryFromEngine(engineFactory), pollingModule)
 	return &appanalytics.Usecase{Gateway: gw}
+}
+
+// BuildLoginUsecase wires the login infra gateway.
+func BuildLoginUsecase(engineFactory func() browser.Engine, pollingModule polling.Module) *infralogin.Gateway {
+	return infralogin.New(pageFactoryFromEngine(engineFactory), pollingModule)
 }

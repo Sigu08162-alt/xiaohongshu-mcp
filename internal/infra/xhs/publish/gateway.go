@@ -1,14 +1,9 @@
 package publish
 
 import (
-	"context"
 	"errors"
-	"fmt"
-	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/selector"
 )
