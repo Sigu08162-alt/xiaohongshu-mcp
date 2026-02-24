@@ -56,20 +56,26 @@ func NewPublishImageAction(page browser.Page) (*PublishAction, error) {
 	if err := pp.WaitLoad(); err != nil {
 		logrus.Warnf("等待页面加载出现问题: %v，继续尝试", err)
 	}
-	time.Sleep(2 * time.Second)
+
+	// 等待上传内容区域出现，替代固定等待
+	if err := pp.WaitForSelector("div.upload-content", 10*time.Second); err != nil {
+		logrus.Warnf("等待上传区域出现出现问题: %v，继续尝试", err)
+	}
 
 	// 等待页面稳定
 	if err := pp.WaitDOMStable(time.Second, 0.1); err != nil {
 		logrus.Warnf("等待 DOM 稳定出现问题: %v，继续尝试", err)
 	}
-	time.Sleep(1 * time.Second)
 
 	if err := mustClickPublishTab(pp, "上传图文"); err != nil {
 		logrus.Errorf("点击上传图文 TAB 失败: %v", err)
 		return nil, err
 	}
 
-	time.Sleep(1 * time.Second)
+	// 等待上传输入框就绪，替代固定等待
+	if err := pp.WaitForSelector(".upload-input", 5*time.Second); err != nil {
+		logrus.Warnf("等待上传输入框出现出现问题: %v，继续尝试", err)
+	}
 
 	return &PublishAction{
 		page: pp,
@@ -102,8 +108,12 @@ func (p *PublishAction) Publish(ctx context.Context, content PublishImageContent
 		return errors.Wrap(err, "小红书发布失败")
 	}
 
-	// 等待发布完成（使用UI检测）
-	time.Sleep(2 * time.Second)
+	// 等待发布完成（等待页面跳转或成功提示）
+	// TODO: replace with WaitForNavigation when page interface supports it
+	// 等待页面URL变化或成功提示出现
+	if err := page.WaitForFunction(`() => !window.location.href.includes('/publish/publish') || document.querySelector('.d-message--success') !== null`, 10*time.Second); err != nil {
+		logrus.Warnf("等待发布完成: %v", err)
+	}
 	return nil
 }
 
@@ -301,13 +311,15 @@ func submitPublish(page browser.Page, title, content string, tags []string, loca
 	}
 
 	// 检查一下 title 的长度
-	time.Sleep(500 * time.Millisecond) // 等待页面渲染长度提示
+	// 等待长度提示元素渲染（若存在则可见；等待内容区域出现作为页面就绪标志）
+	_ = page.WaitForSelector("div.ql-editor, div.edit-container", 3*time.Second) // 等内容区域就绪
 	if err := checkTitleMaxLength(page); err != nil {
 		return err
 	}
 	slog.Info("检查标题长度：通过")
 
-	time.Sleep(1 * time.Second)
+	// 等待内容输入框可用
+	_ = page.WaitForSelector("div.ql-editor, [role='textbox']", 3*time.Second)
 
 	if contentElem, ok := getContentElement(page); ok {
 		if err := contentElem.Fill(content); err != nil {
@@ -320,7 +332,8 @@ func submitPublish(page browser.Page, title, content string, tags []string, loca
 		return errors.New("没有找到内容输入框")
 	}
 
-	time.Sleep(1 * time.Second)
+	// 等待内容长度检查元素渲染
+	_ = page.WaitForSelector("div.edit-container", 2*time.Second)
 
 	// 正文的长度的判定：
 	if err := checkContentMaxLength(page); err != nil {
@@ -628,11 +641,13 @@ func inputTags(page browser.Page, contentElem browser.Element, tags []string) {
 		return
 	}
 
-	time.Sleep(1 * time.Second)
+	// 等待内容元素稳定后再操作
+	_ = contentElem.WaitStable(500 * time.Millisecond)
 
 	// 按下箭头键移动到底部
 	for i := 0; i < 20; i++ {
 		contentElem.Press("ArrowDown")
+		// TODO: replace with WaitForTimeout when page interface supports it; short UI delay between key presses
 		time.Sleep(10 * time.Millisecond)
 	}
 
@@ -640,7 +655,8 @@ func inputTags(page browser.Page, contentElem browser.Element, tags []string) {
 	contentElem.Press("Enter")
 	contentElem.Press("Enter")
 
-	time.Sleep(1 * time.Second)
+	// 等待光标就绪
+	_ = contentElem.WaitStable(500 * time.Millisecond)
 
 	for _, tag := range tags {
 		tag = strings.TrimLeft(tag, "#")
@@ -650,14 +666,17 @@ func inputTags(page browser.Page, contentElem browser.Element, tags []string) {
 
 func inputTag(page browser.Page, contentElem browser.Element, tag string) {
 	contentElem.Input("#")
+	// TODO: replace with WaitForTimeout when page interface supports it; short UI delay after # trigger
 	time.Sleep(200 * time.Millisecond)
 
 	for _, char := range tag {
 		contentElem.Input(string(char))
+		// TODO: replace with WaitForTimeout when page interface supports it; short character typing delay
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	time.Sleep(1 * time.Second)
+	// 等待标签联想容器出现
+	_ = page.WaitForSelector("#creator-editor-topic-container", 2*time.Second)
 
 	topicContainer, err := page.Element("#creator-editor-topic-container")
 	if err == nil && topicContainer != nil {
@@ -665,6 +684,7 @@ func inputTag(page browser.Page, contentElem browser.Element, tag string) {
 		if err == nil && firstItem != nil {
 			firstItem.Click()
 			slog.Info("成功点击标签联想选项", "tag", tag)
+			// TODO: replace with WaitForTimeout when page interface supports it; short UI settle delay
 			time.Sleep(200 * time.Millisecond)
 		} else {
 			slog.Warn("未找到标签联想选项，直接输入空格", "tag", tag)
@@ -677,7 +697,8 @@ func inputTag(page browser.Page, contentElem browser.Element, tag string) {
 		contentElem.Input(" ")
 	}
 
-	time.Sleep(500 * time.Millisecond) // 等待标签处理完成
+	// 等待标签处理完成（等待联想容器消失，表示标签已选定）
+	_ = page.WaitHidden("#creator-editor-topic-container")
 }
 
 func findTextboxByPlaceholder(page browser.Page) (browser.Element, error) {
@@ -779,25 +800,37 @@ func setSchedulePublish(page browser.Page, t time.Time) error {
 	if err := clickScheduleRadio(page); err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
+	// 等待时间选择器出现
+	if err := page.WaitForSelector("input.el-input__inner[placeholder='选择日期和时间']", 5*time.Second); err != nil {
+		logrus.Warnf("等待时间选择器出现: %v，继续尝试", err)
+	}
 
 	// 2. 点击时间选择器打开面板
 	if err := clickDateTimePicker(page); err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
+	// 等待日期输入框出现（面板已打开的标志）
+	if err := page.WaitForSelector("input.el-input__inner[placeholder='选择日期']", 5*time.Second); err != nil {
+		logrus.Warnf("等待日期输入框出现: %v，继续尝试", err)
+	}
 
 	// 3. 设置日期和时间
 	if err := setDateTime(page, t); err != nil {
 		return err
 	}
-	time.Sleep(300 * time.Millisecond)
+	// 等待时间输入处理完成（确定按钮可见）
+	if err := page.WaitForSelector("button.el-picker-panel__link-btn", 3*time.Second); err != nil {
+		logrus.Warnf("等待确定按钮: %v，继续尝试", err)
+	}
 
 	// 4. 点击确定按钮
 	if err := clickConfirmButton(page); err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
+	// 等待面板关闭（日期选择器消失）
+	if err := page.WaitHidden("input.el-input__inner[placeholder='选择日期']"); err != nil {
+		logrus.Warnf("等待日期面板关闭: %v，继续尝试", err)
+	}
 
 	return nil
 }
@@ -863,7 +896,10 @@ func setDateTime(page browser.Page, t time.Time) error {
 	}
 	slog.Info("已设置日期", "date", dateStr)
 
-	time.Sleep(300 * time.Millisecond)
+	// 等待时间输入框可用（日期确认后出现）
+	if err := page.WaitForSelector("input.el-input__inner[placeholder='选择时间']", 3*time.Second); err != nil {
+		logrus.Warnf("等待时间输入框: %v，继续尝试", err)
+	}
 
 	// 设置时间
 	timeInput, err := page.Element("input.el-input__inner[placeholder='选择时间']")
@@ -921,6 +957,7 @@ func setLocation(page browser.Page, location string) error {
 	if err := locationInput.Click(); err != nil {
 		return errors.Wrap(err, "点击地点输入框失败")
 	}
+	// TODO: replace with WaitForTimeout when page interface supports it; short focus settle delay
 	time.Sleep(300 * time.Millisecond)
 
 	if err := locationInput.Fill(location); err != nil {
@@ -929,7 +966,9 @@ func setLocation(page browser.Page, location string) error {
 	slog.Info("已输入地点关键词", "location", location)
 
 	// 3. 等待下拉列表出现
-	time.Sleep(1500 * time.Millisecond)
+	if err := page.WaitForSelector(".d-dropdown-wrapper", 5*time.Second); err != nil {
+		logrus.Warnf("等待地点下拉列表出现: %v，继续尝试", err)
+	}
 
 	// 4. 查找并点击第一个地点选项
 	dropdown, err := findVisibleLocationDropdown(page, location)
@@ -947,7 +986,10 @@ func setLocation(page browser.Page, location string) error {
 	}
 	slog.Info("已选择地点", "location", location)
 
-	time.Sleep(500 * time.Millisecond)
+	// 等待地点选择完成（下拉框消失）
+	if err := page.WaitHidden(".d-dropdown-wrapper"); err != nil {
+		logrus.Warnf("等待地点下拉框关闭: %v，继续尝试", err)
+	}
 	return nil
 }
 

@@ -38,13 +38,7 @@ func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 
 	status, err := s.xiaohongshuService.CheckLoginStatus(ctx)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "检查登录状态失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("检查登录状态失败: " + err.Error())
 	}
 
 	// 根据 IsLoggedIn 判断并返回友好的提示
@@ -56,10 +50,7 @@ func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: resultText,
-		}},
+		Content: []MCPContent{{Type: "text", Text: resultText}},
 	}
 }
 
@@ -70,10 +61,7 @@ func (s *AppServer) handleGetLoginQrcode(ctx context.Context) *MCPToolResult {
 
 	result, err := s.xiaohongshuService.GetLoginQrcode(ctx)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{Type: "text", Text: "获取登录扫码图片失败: " + err.Error()}},
-			IsError: true,
-		}
+		return errorResult("获取登录扫码图片失败: " + err.Error())
 	}
 
 	if result.IsLoggedIn {
@@ -144,24 +132,15 @@ func (s *AppServer) handleSyncCookies(ctx context.Context, args SyncCookiesArgs)
 
 	payload, err := parseSyncCookiesPayload(args)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{Type: "text", Text: "cookies 输入无效: " + err.Error()}},
-			IsError: true,
-		}
+		return errorResult("cookies 输入无效: " + err.Error())
 	}
 	if err := validateCookiesJSON(payload); err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{Type: "text", Text: "cookies JSON 校验失败: " + err.Error()}},
-			IsError: true,
-		}
+		return errorResult("cookies JSON 校验失败: " + err.Error())
 	}
 
 	path, size, err := s.xiaohongshuService.SyncCookies(ctx, payload)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{Type: "text", Text: "保存 cookies 失败: " + err.Error()}},
-			IsError: true,
-		}
+		return errorResult("保存 cookies 失败: " + err.Error())
 	}
 	logrus.WithFields(logrus.Fields{"path": path, "bytes": size}).Info("cookies 已写入")
 	return &MCPToolResult{
@@ -175,19 +154,13 @@ func (s *AppServer) handleDeleteCookies(ctx context.Context) *MCPToolResult {
 
 	err := s.xiaohongshuService.DeleteCookies(ctx)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{Type: "text", Text: "删除 cookies 失败: " + err.Error()}},
-			IsError: true,
-		}
+		return errorResult("删除 cookies 失败: " + err.Error())
 	}
 
 	cookiePath := cookies.GetCookiesFilePath()
 	resultText := fmt.Sprintf("Cookies 已成功删除，登录状态已重置。\n\n删除的文件路径: %s\n\n下次操作时，需要重新登录。", cookiePath)
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: resultText,
-		}},
+		Content: []MCPContent{{Type: "text", Text: resultText}},
 	}
 }
 
@@ -196,75 +169,37 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 	logrus.Info("MCP: 发布内容")
 	logrus.Debugf("MCP: 原始参数 - %+v", args)
 
-	// 解析参数
-	title, _ := args["title"].(string)
-	content, _ := args["content"].(string)
-	imagePathsInterface, _ := args["images"].([]interface{})
-	tagsInterface, _ := args["tags"].([]interface{})
-
-	// 验证必需参数
-	if title == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发布失败: 标题不能为空",
-			}},
-			IsError: true,
-		}
+	// 解析必需参数
+	title, err := getString(args, "title")
+	if err != nil {
+		return errorResult("发布失败: 标题不能为空")
 	}
 
-	if content == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发布失败: 内容不能为空",
-			}},
-			IsError: true,
-		}
+	content, err := getString(args, "content")
+	if err != nil {
+		return errorResult("发布失败: 内容不能为空")
 	}
 
 	// 解析图片路径
-	var imagePaths []string
-	for _, path := range imagePathsInterface {
-		if pathStr, ok := path.(string); ok {
-			imagePaths = append(imagePaths, pathStr)
-		}
-	}
+	imagePaths := getStringSlice(args, "images")
 
 	// 验证图片
 	if len(imagePaths) == 0 {
 		logrus.Errorf("MCP: 图片参数错误 - 原始类型: %T, 值: %v", args["images"], args["images"])
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发布失败: 至少需要1张图片。请确保 images 参数是字符串数组格式，如: [\"图片路径1\", \"图片路径2\"]",
-			}},
-			IsError: true,
-		}
+		return errorResult("发布失败: 至少需要1张图片。请确保 images 参数是字符串数组格式，如: [\"图片路径1\", \"图片路径2\"]")
 	}
 
 	// 解析标签
-	var tags []string
-	for _, tag := range tagsInterface {
-		if tagStr, ok := tag.(string); ok {
-			tags = append(tags, tagStr)
-		}
-	}
+	tags := getStringSlice(args, "tags")
 
 	// 解析地点
-	location, _ := args["location"].(string)
+	location := getStringOpt(args, "location")
 
 	// 解析标记标签
-	markerTagsInterface, _ := args["marker_tags"].([]interface{})
-	var markerTags []string
-	for _, marker := range markerTagsInterface {
-		if markerStr, ok := marker.(string); ok {
-			markerTags = append(markerTags, markerStr)
-		}
-	}
+	markerTags := getStringSlice(args, "marker_tags")
 
 	// 解析定时发布参数
-	scheduleAt, _ := args["schedule_at"].(string)
+	scheduleAt := getStringOpt(args, "schedule_at")
 
 	logrus.Infof("MCP: 发布内容 - 标题: %s, 图片数量: %d, 标签数量: %d, 地点: %s, 标记数量: %d, 定时: %s",
 		title, len(imagePaths), len(tags), location, len(markerTags), scheduleAt)
@@ -285,21 +220,12 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 	// 执行发布
 	result, err := s.xiaohongshuService.PublishContent(ctx, req)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发布失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("发布失败: " + err.Error())
 	}
 
 	resultText := fmt.Sprintf("内容发布成功: %+v", result)
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: resultText,
-		}},
+		Content: []MCPContent{{Type: "text", Text: resultText}},
 	}
 }
 
@@ -307,30 +233,17 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 func (s *AppServer) handlePublishVideo(ctx context.Context, args map[string]interface{}) *MCPToolResult {
 	logrus.Info("MCP: 发布视频内容（本地）")
 
-	title, _ := args["title"].(string)
-	content, _ := args["content"].(string)
-	videoPath, _ := args["video"].(string)
-	tagsInterface, _ := args["tags"].([]interface{})
-
-	var tags []string
-	for _, tag := range tagsInterface {
-		if tagStr, ok := tag.(string); ok {
-			tags = append(tags, tagStr)
-		}
-	}
+	title := getStringOpt(args, "title")
+	content := getStringOpt(args, "content")
+	videoPath := getStringOpt(args, "video")
+	tags := getStringSlice(args, "tags")
 
 	if videoPath == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发布失败: 缺少本地视频文件路径",
-			}},
-			IsError: true,
-		}
+		return errorResult("发布失败: 缺少本地视频文件路径")
 	}
 
 	// 解析定时发布参数
-	scheduleAt, _ := args["schedule_at"].(string)
+	scheduleAt := getStringOpt(args, "schedule_at")
 
 	logrus.Infof("MCP: 发布视频 - 标题: %s, 标签数量: %d, 定时: %s", title, len(tags), scheduleAt)
 
@@ -346,21 +259,12 @@ func (s *AppServer) handlePublishVideo(ctx context.Context, args map[string]inte
 	// 执行发布
 	result, err := s.xiaohongshuService.PublishVideo(ctx, req)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发布失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("发布失败: " + err.Error())
 	}
 
 	resultText := fmt.Sprintf("视频发布成功: %+v", result)
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: resultText,
-		}},
+		Content: []MCPContent{{Type: "text", Text: resultText}},
 	}
 }
 
@@ -369,36 +273,16 @@ func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interfa
 	logrus.Info("MCP: 保存草稿")
 
 	// 解析参数
-	title, _ := args["title"].(string)
-	content, _ := args["content"].(string)
-	imagePathsInterface, _ := args["images"].([]interface{})
-	tagsInterface, _ := args["tags"].([]interface{})
-
-	var imagePaths []string
-	for _, path := range imagePathsInterface {
-		if pathStr, ok := path.(string); ok {
-			imagePaths = append(imagePaths, pathStr)
-		}
-	}
-
-	var tags []string
-	for _, tag := range tagsInterface {
-		if tagStr, ok := tag.(string); ok {
-			tags = append(tags, tagStr)
-		}
-	}
+	title := getStringOpt(args, "title")
+	content := getStringOpt(args, "content")
+	imagePaths := getStringSlice(args, "images")
+	tags := getStringSlice(args, "tags")
 
 	logrus.Infof("MCP: 保存草稿 - 标题: %s, 图片数量: %d, 标签数量: %d", title, len(imagePaths), len(tags))
 
 	// 调用保存草稿服务
 	if s.publishUsecase == nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "保存草稿失败: 发布服务未初始化",
-			}},
-			IsError: true,
-		}
+		return errorResult("保存草稿失败: 发布服务未初始化")
 	}
 
 	publishContent := domainpublish.ImageContent{
@@ -409,20 +293,11 @@ func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interfa
 	}
 
 	if err := s.publishUsecase.SaveImageDraft(ctx, publishContent); err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "保存草稿失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("保存草稿失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: "草稿保存成功",
-		}},
+		Content: []MCPContent{{Type: "text", Text: "草稿保存成功"}},
 	}
 }
 
@@ -430,39 +305,20 @@ func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interfa
 func (s *AppServer) handleSaveVideoDraft(ctx context.Context, args map[string]interface{}) *MCPToolResult {
 	logrus.Info("MCP: 保存视频草稿")
 
-	title, _ := args["title"].(string)
-	content, _ := args["content"].(string)
-	videoPath, _ := args["video"].(string)
-	tagsInterface, _ := args["tags"].([]interface{})
-
-	var tags []string
-	for _, tag := range tagsInterface {
-		if tagStr, ok := tag.(string); ok {
-			tags = append(tags, tagStr)
-		}
-	}
+	title := getStringOpt(args, "title")
+	content := getStringOpt(args, "content")
+	videoPath := getStringOpt(args, "video")
+	tags := getStringSlice(args, "tags")
 
 	if videoPath == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "保存草稿失败: 缺少本地视频文件路径",
-			}},
-			IsError: true,
-		}
+		return errorResult("保存草稿失败: 缺少本地视频文件路径")
 	}
 
 	logrus.Infof("MCP: 保存视频草稿 - 标题: %s, 标签数量: %d", title, len(tags))
 
 	// 调用保存视频草稿服务
 	if s.publishUsecase == nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "保存草稿失败: 发布服务未初始化",
-			}},
-			IsError: true,
-		}
+		return errorResult("保存草稿失败: 发布服务未初始化")
 	}
 
 	publishContent := domainpublish.VideoContent{
@@ -473,20 +329,11 @@ func (s *AppServer) handleSaveVideoDraft(ctx context.Context, args map[string]in
 	}
 
 	if err := s.publishUsecase.SaveVideoDraft(ctx, publishContent); err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "保存视频草稿失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("保存视频草稿失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: "视频草稿保存成功",
-		}},
+		Content: []MCPContent{{Type: "text", Text: "视频草稿保存成功"}},
 	}
 }
 
@@ -496,33 +343,10 @@ func (s *AppServer) handleListFeeds(ctx context.Context) *MCPToolResult {
 
 	result, err := s.xiaohongshuService.ListFeeds(ctx)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取Feeds列表失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("获取Feeds列表失败: " + err.Error())
 	}
 
-	// 格式化输出，转换为JSON字符串
-	jsonData, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: fmt.Sprintf("获取Feeds列表成功，但序列化失败: %v", err),
-			}},
-			IsError: true,
-		}
-	}
-
-	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: string(jsonData),
-		}},
-	}
+	return successJSON(result)
 }
 
 // handleSearchFeeds 处理搜索Feeds
@@ -530,13 +354,7 @@ func (s *AppServer) handleSearchFeeds(ctx context.Context, args SearchFeedsArgs)
 	logrus.Info("MCP: 搜索Feeds")
 
 	if args.Keyword == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "搜索Feeds失败: 缺少关键词参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("搜索Feeds失败: 缺少关键词参数")
 	}
 
 	logrus.Infof("MCP: 搜索Feeds - 关键词: %s", args.Keyword)
@@ -552,33 +370,10 @@ func (s *AppServer) handleSearchFeeds(ctx context.Context, args SearchFeedsArgs)
 
 	result, err := s.xiaohongshuService.SearchFeeds(ctx, args.Keyword, filter)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "搜索Feeds失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("搜索Feeds失败: " + err.Error())
 	}
 
-	// 格式化输出，转换为JSON字符串
-	jsonData, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: fmt.Sprintf("搜索Feeds成功，但序列化失败: %v", err),
-			}},
-			IsError: true,
-		}
-	}
-
-	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: string(jsonData),
-		}},
-	}
+	return successJSON(result)
 }
 
 // handleGetFeedDetail 处理获取Feed详情
@@ -586,26 +381,14 @@ func (s *AppServer) handleGetFeedDetail(ctx context.Context, args map[string]any
 	logrus.Info("MCP: 获取Feed详情")
 
 	// 解析参数
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取Feed详情失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("获取Feed详情失败: 缺少feed_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取Feed详情失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("获取Feed详情失败: 缺少xsec_token参数")
 	}
 
 	loadAll := false
@@ -684,33 +467,10 @@ func (s *AppServer) handleGetFeedDetail(ctx context.Context, args map[string]any
 		}
 
 		// 其他错误正常返回
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取Feed详情失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("获取Feed详情失败: " + err.Error())
 	}
 
-	// 格式化输出，转换为JSON字符串
-	jsonData, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: fmt.Sprintf("获取Feed详情成功，但序列化失败: %v", err),
-			}},
-			IsError: true,
-		}
-	}
-
-	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: string(jsonData),
-		}},
-	}
+	return successJSON(result)
 }
 
 // handleUserProfile 获取用户主页
@@ -718,75 +478,39 @@ func (s *AppServer) handleUserProfile(ctx context.Context, args map[string]any) 
 	logrus.Info("MCP: 获取用户主页")
 
 	// 解析参数
-	userID, ok := args["user_id"].(string)
-	if !ok || userID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取用户主页失败: 缺少user_id参数",
-			}},
-			IsError: true,
-		}
+	userID, err := getString(args, "user_id")
+	if err != nil {
+		return errorResult("获取用户主页失败: 缺少user_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取用户主页失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("获取用户主页失败: 缺少xsec_token参数")
 	}
 
 	logrus.Infof("MCP: 获取用户主页 - User ID: %s", userID)
 
 	result, err := s.xiaohongshuService.UserProfile(ctx, userID, xsecToken)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取用户主页失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("获取用户主页失败: " + err.Error())
 	}
 
-	// 格式化输出，转换为JSON字符串
-	jsonData, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: fmt.Sprintf("获取用户主页，但序列化失败: %v", err),
-			}},
-			IsError: true,
-		}
-	}
-
-	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: string(jsonData),
-		}},
-	}
+	return successJSON(result)
 }
 
 // handleLikeFeed 处理点赞/取消点赞
 func (s *AppServer) handleLikeFeed(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少feed_id参数"}}, IsError: true}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("操作失败: 缺少feed_id参数")
 	}
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少xsec_token参数"}}, IsError: true}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 	unlike := parseBool(args["unlike"])
 
 	var res *ActionResult
-	var err error
 
 	if unlike {
 		res, err = s.xiaohongshuService.UnlikeFeed(ctx, feedID, xsecToken)
@@ -799,7 +523,7 @@ func (s *AppServer) handleLikeFeed(ctx context.Context, args map[string]interfac
 		if unlike {
 			action = "取消点赞"
 		}
-		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: action + "失败: " + err.Error()}}, IsError: true}
+		return errorResult(action + "失败: " + err.Error())
 	}
 
 	action := "点赞"
@@ -811,18 +535,17 @@ func (s *AppServer) handleLikeFeed(ctx context.Context, args map[string]interfac
 
 // handleFavoriteFeed 处理收藏/取消收藏
 func (s *AppServer) handleFavoriteFeed(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少feed_id参数"}}, IsError: true}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("操作失败: 缺少feed_id参数")
 	}
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: "操作失败: 缺少xsec_token参数"}}, IsError: true}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 	unfavorite := parseBool(args["unfavorite"])
 
 	var res *ActionResult
-	var err error
 
 	if unfavorite {
 		res, err = s.xiaohongshuService.UnfavoriteFeed(ctx, feedID, xsecToken)
@@ -835,7 +558,7 @@ func (s *AppServer) handleFavoriteFeed(ctx context.Context, args map[string]inte
 		if unfavorite {
 			action = "取消收藏"
 		}
-		return &MCPToolResult{Content: []MCPContent{{Type: "text", Text: action + "失败: " + err.Error()}}, IsError: true}
+		return errorResult(action + "失败: " + err.Error())
 	}
 
 	action := "收藏"
@@ -850,37 +573,19 @@ func (s *AppServer) handlePostComment(ctx context.Context, args map[string]inter
 	logrus.Info("MCP: 发表评论到Feed")
 
 	// 解析参数
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发表评论失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("发表评论失败: 缺少feed_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发表评论失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("发表评论失败: 缺少xsec_token参数")
 	}
 
-	content, ok := args["content"].(string)
-	if !ok || content == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发表评论失败: 缺少content参数",
-			}},
-			IsError: true,
-		}
+	content, err := getString(args, "content")
+	if err != nil {
+		return errorResult("发表评论失败: 缺少content参数")
 	}
 
 	logrus.Infof("MCP: 发表评论 - Feed ID: %s, 内容长度: %d", feedID, len(content))
@@ -888,22 +593,13 @@ func (s *AppServer) handlePostComment(ctx context.Context, args map[string]inter
 	// 发表评论
 	result, err := s.xiaohongshuService.PostCommentToFeed(ctx, feedID, xsecToken, content)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "发表评论失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("发表评论失败: " + err.Error())
 	}
 
 	// 返回成功结果，只包含feed_id
 	resultText := fmt.Sprintf("评论发表成功 - Feed ID: %s", result.FeedID)
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: resultText,
-		}},
+		Content: []MCPContent{{Type: "text", Text: resultText}},
 	}
 }
 
@@ -912,49 +608,25 @@ func (s *AppServer) handleReplyComment(ctx context.Context, args map[string]inte
 	logrus.Info("MCP: 回复评论")
 
 	// 解析参数
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "回复评论失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("回复评论失败: 缺少feed_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "回复评论失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("回复评论失败: 缺少xsec_token参数")
 	}
 
-	commentID, _ := args["comment_id"].(string)
-	userID, _ := args["user_id"].(string)
+	commentID := getStringOpt(args, "comment_id")
+	userID := getStringOpt(args, "user_id")
 	if commentID == "" && userID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "回复评论失败: 缺少comment_id或user_id参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("回复评论失败: 缺少comment_id或user_id参数")
 	}
 
-	content, ok := args["content"].(string)
-	if !ok || content == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "回复评论失败: 缺少content参数",
-			}},
-			IsError: true,
-		}
+	content, err := getString(args, "content")
+	if err != nil {
+		return errorResult("回复评论失败: 缺少content参数")
 	}
 
 	logrus.Infof("MCP: 回复评论 - Feed ID: %s, Comment ID: %s, User ID: %s, 内容长度: %d", feedID, commentID, userID, len(content))
@@ -962,22 +634,13 @@ func (s *AppServer) handleReplyComment(ctx context.Context, args map[string]inte
 	// 回复评论
 	result, err := s.xiaohongshuService.ReplyCommentToFeed(ctx, feedID, xsecToken, commentID, userID, content)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "回复评论失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("回复评论失败: " + err.Error())
 	}
 
 	// 返回成功结果
 	responseText := fmt.Sprintf("评论回复成功 - Feed ID: %s, Comment ID: %s, User ID: %s", result.FeedID, result.TargetCommentID, result.TargetUserID)
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: responseText,
-		}},
+		Content: []MCPContent{{Type: "text", Text: responseText}},
 	}
 }
 
@@ -986,32 +649,19 @@ func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interf
 	logrus.Info("MCP: 关注/取关用户")
 
 	// 解析参数
-	userID, ok := args["user_id"].(string)
-	if !ok || userID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少user_id参数",
-			}},
-			IsError: true,
-		}
+	userID, err := getString(args, "user_id")
+	if err != nil {
+		return errorResult("操作失败: 缺少user_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 
 	unfollow := parseBool(args["unfollow"])
 
 	var res *ActionResult
-	var err error
 
 	if unfollow {
 		res, err = s.xiaohongshuService.UnfollowUser(ctx, userID, xsecToken)
@@ -1024,13 +674,7 @@ func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interf
 		if unfollow {
 			action = "取关"
 		}
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: action + "失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult(action + "失败: " + err.Error())
 	}
 
 	action := "关注"
@@ -1038,10 +682,7 @@ func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interf
 		action = "取关"
 	}
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: fmt.Sprintf("%s成功 - User ID: %s", action, res.FeedID),
-		}},
+		Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("%s成功 - User ID: %s", action, res.FeedID)}},
 	}
 }
 
@@ -1050,44 +691,25 @@ func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]inter
 	logrus.Info("MCP: 评论点赞/取消点赞")
 
 	// 解析参数
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("操作失败: 缺少feed_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 
-	commentID, _ := args["comment_id"].(string)
-	userID, _ := args["user_id"].(string)
+	commentID := getStringOpt(args, "comment_id")
+	userID := getStringOpt(args, "user_id")
 	if commentID == "" && userID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少comment_id或user_id参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("操作失败: 缺少comment_id或user_id参数")
 	}
 
 	unlike := parseBool(args["unlike"])
 
 	var res *ActionResult
-	var err error
 
 	if unlike {
 		res, err = s.xiaohongshuService.UnlikeComment(ctx, feedID, xsecToken, commentID, userID)
@@ -1100,13 +722,7 @@ func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]inter
 		if unlike {
 			action = "取消点赞评论"
 		}
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: action + "失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult(action + "失败: " + err.Error())
 	}
 
 	action := "点赞评论"
@@ -1114,10 +730,7 @@ func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]inter
 		action = "取消点赞评论"
 	}
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: fmt.Sprintf("%s成功 - Feed ID: %s", action, res.FeedID),
-		}},
+		Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("%s成功 - Feed ID: %s", action, res.FeedID)}},
 	}
 }
 
@@ -1126,41 +739,20 @@ func (s *AppServer) handleShareFeed(ctx context.Context, feedID, xsecToken strin
 	logrus.Info("MCP: 分享笔记")
 
 	if feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("操作失败: 缺少feed_id参数")
 	}
 
 	if xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 
 	shareLink, err := s.xiaohongshuService.ShareFeed(ctx, feedID, xsecToken)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "分享失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("分享失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: fmt.Sprintf("分享成功 - 分享链接: %s", shareLink),
-		}},
+		Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("分享成功 - 分享链接: %s", shareLink)}},
 	}
 }
 
@@ -1169,41 +761,20 @@ func (s *AppServer) handleDeleteFeed(ctx context.Context, feedID, xsecToken stri
 	logrus.Info("MCP: 删除笔记")
 
 	if feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("操作失败: 缺少feed_id参数")
 	}
 
 	if xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 
 	res, err := s.xiaohongshuService.DeleteFeed(ctx, feedID, xsecToken)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "删除失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("删除失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: fmt.Sprintf("删除成功 - Feed ID: %s", res.FeedID),
-		}},
+		Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("删除成功 - Feed ID: %s", res.FeedID)}},
 	}
 }
 
@@ -1211,56 +782,29 @@ func (s *AppServer) handleDeleteFeed(ctx context.Context, feedID, xsecToken stri
 func (s *AppServer) handleDeleteComment(ctx context.Context, args map[string]interface{}) *MCPToolResult {
 	logrus.Info("MCP: 删除评论")
 
-	feedID, ok := args["feed_id"].(string)
-	if !ok || feedID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少feed_id参数",
-			}},
-			IsError: true,
-		}
+	feedID, err := getString(args, "feed_id")
+	if err != nil {
+		return errorResult("操作失败: 缺少feed_id参数")
 	}
 
-	xsecToken, ok := args["xsec_token"].(string)
-	if !ok || xsecToken == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少xsec_token参数",
-			}},
-			IsError: true,
-		}
+	xsecToken, err := getString(args, "xsec_token")
+	if err != nil {
+		return errorResult("操作失败: 缺少xsec_token参数")
 	}
 
-	commentID, _ := args["comment_id"].(string)
-	userID, _ := args["user_id"].(string)
+	commentID := getStringOpt(args, "comment_id")
+	userID := getStringOpt(args, "user_id")
 	if commentID == "" && userID == "" {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "操作失败: 缺少comment_id或user_id参数",
-			}},
-			IsError: true,
-		}
+		return errorResult("操作失败: 缺少comment_id或user_id参数")
 	}
 
 	res, err := s.xiaohongshuService.DeleteComment(ctx, feedID, xsecToken, commentID, userID)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "删除评论失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("删除评论失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: fmt.Sprintf("删除评论成功 - Feed ID: %s", res.FeedID),
-		}},
+		Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("删除评论成功 - Feed ID: %s", res.FeedID)}},
 	}
 }
 
@@ -1270,33 +814,10 @@ func (s *AppServer) handleGetMyStats(ctx context.Context) *MCPToolResult {
 
 	stats, err := s.xiaohongshuService.GetMyStats(ctx)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取统计数据失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("获取统计数据失败: " + err.Error())
 	}
 
-	// 格式化输出
-	jsonData, err := json.MarshalIndent(stats, "", "  ")
-	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: fmt.Sprintf("获取统计数据成功，但序列化失败: %v", err),
-			}},
-			IsError: true,
-		}
-	}
-
-	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: string(jsonData),
-		}},
-	}
+	return successJSON(stats)
 }
 
 // handleGetMyFeeds 处理获取自己的笔记列表
@@ -1309,57 +830,20 @@ func (s *AppServer) handleGetMyFeeds(ctx context.Context, limit int, userID stri
 
 	feeds, err := s.xiaohongshuService.GetMyFeeds(ctx, limit, userID)
 	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: "获取笔记列表失败: " + err.Error(),
-			}},
-			IsError: true,
-		}
+		return errorResult("获取笔记列表失败: " + err.Error())
 	}
 
-	// 格式化输出
-	jsonData, err := json.MarshalIndent(feeds, "", "  ")
-	if err != nil {
-		return &MCPToolResult{
-			Content: []MCPContent{{
-				Type: "text",
-				Text: fmt.Sprintf("获取笔记列表成功，但序列化失败: %v", err),
-			}},
-			IsError: true,
-		}
-	}
-
-	return &MCPToolResult{
-		Content: []MCPContent{{
-			Type: "text",
-			Text: string(jsonData),
-		}},
-	}
+	return successJSON(feeds)
 }
 
 // handleGetFanAnalytics 处理获取粉丝分析请求
 func (s *AppServer) handleGetFanAnalytics(ctx context.Context, period string) *MCPToolResult {
 	analytics, err := s.xiaohongshuService.GetFanAnalytics(ctx, period)
 	if err != nil {
-		return &MCPToolResult{
-			IsError: true,
-			Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("获取粉丝分析数据失败: %v", err)}},
-		}
+		return errorResult(fmt.Sprintf("获取粉丝分析数据失败: %v", err))
 	}
 
-	data, err := json.Marshal(analytics)
-	if err != nil {
-		return &MCPToolResult{
-			IsError: true,
-			Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("序列化数据失败: %v", err)}},
-		}
-	}
-
-	return &MCPToolResult{
-		IsError: false,
-		Content: []MCPContent{{Type: "text", Text: string(data)}},
-	}
+	return successJSON(analytics)
 }
 
 // handleGetContentAnalytics 处理获取内容分析请求
@@ -1379,22 +863,8 @@ func (s *AppServer) handleGetContentAnalytics(ctx context.Context, limit int, so
 
 	analytics, err := s.xiaohongshuService.GetContentAnalytics(ctx, limit, sortField, order)
 	if err != nil {
-		return &MCPToolResult{
-			IsError: true,
-			Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("获取内容分析数据失败: %v", err)}},
-		}
+		return errorResult(fmt.Sprintf("获取内容分析数据失败: %v", err))
 	}
 
-	data, err := json.Marshal(analytics)
-	if err != nil {
-		return &MCPToolResult{
-			IsError: true,
-			Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("序列化数据失败: %v", err)}},
-		}
-	}
-
-	return &MCPToolResult{
-		IsError: false,
-		Content: []MCPContent{{Type: "text", Text: string(data)}},
-	}
+	return successJSON(analytics)
 }
