@@ -430,39 +430,40 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	}
 
 	slog.Info("点击更多按钮...")
-	// 先尝试 JS 直接点击（绕过可见性遮挡问题）
-	// 优先查找 dragger 图标按钮（小红书详情弹窗内的操作按钮），再 fallback 到历史 selector
-	jsClicked := false
-	jsSelectors := []string{
-		"button.dragger.icon",
-		"button.dragger",
-		"[data-testid='more-options']",
-		"[data-testid='more']",
-		"[aria-label='更多']",
-		"[aria-label='更多选项']",
-		".menu-icon-btn",
-		".info-right-area-more-container",
+	// 优先用 Playwright native click（触发完整 mousedown→mouseup→click 事件链）
+	// 小红书菜单依赖完整事件链，JS click 只触发 click 事件，菜单不会弹出
+	nativeClicked := false
+	if err := moreBtn.ScrollIntoView(); err != nil {
+		slog.Warn("scroll into view failed", "err", err)
 	}
-	for _, sel := range jsSelectors {
-		result, jsErr := page.Eval(fmt.Sprintf(`() => { const el = document.querySelector(%q); if (el) { el.click(); return true; } return false; }`, sel))
-		if jsErr == nil && result == true {
-			slog.Info("JS click 成功", "selector", sel)
-			jsClicked = true
-			break
+	if err := moreBtn.Click(); err != nil {
+		slog.Warn("native click failed, trying ClickForce", "err", err)
+		if err2 := moreBtn.ClickForce(); err2 != nil {
+			slog.Warn("ClickForce also failed, falling back to JS click", "err", err2)
+		} else {
+			slog.Info("ClickForce 成功")
+			nativeClicked = true
 		}
-		slog.Debug("JS click 未命中", "selector", sel)
+	} else {
+		slog.Info("Playwright native click 成功")
+		nativeClicked = true
 	}
-	if !jsClicked {
-		// fallback: Playwright native click
-		if err := moreBtn.ScrollIntoView(); err != nil {
-			slog.Warn("scroll into view failed", "err", err)
+	if !nativeClicked {
+		// 最后兜底：JS click（可能菜单不弹出，但至少尝试）
+		jsSelectors := []string{
+			"button.dragger.icon",
+			"button.dragger",
+			"[aria-label='更多']",
+			"[aria-label='更多选项']",
+			".menu-icon-btn",
 		}
-		if err := moreBtn.ClickForce(); err != nil {
-			if err2 := moreBtn.Click(); err2 != nil {
-				return fmt.Errorf("点击更多按钮失败: %w", err2)
+		for _, sel := range jsSelectors {
+			result, jsErr := page.Eval(fmt.Sprintf(`() => { const el = document.querySelector(%q); if (el) { el.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true})); el.click(); return true; } return false; }`, sel))
+			if jsErr == nil && result == true {
+				slog.Info("JS dispatchEvent+click 成功", "selector", sel)
+				break
 			}
 		}
-		slog.Info("Playwright native click 成功")
 	}
 	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
 		return err
