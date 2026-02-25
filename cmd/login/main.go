@@ -8,7 +8,6 @@ import (
 
 	playwrightgo "github.com/playwright-community/playwright-go"
 	"log/slog"
-	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser/playwright"
@@ -89,9 +88,10 @@ func loadAuthPollingModule() (polling.Module, error) {
 }
 
 // newBrowserEngine 创建 Playwright 浏览器引擎
+// 登录工具必须使用有头模式（Headless=false），让用户能看到浏览器窗口和二维码
 func newBrowserEngine() browser.Engine {
 	cfg := playwright.DefaultConfig()
-	cfg.Headless = configs.IsHeadless()
+	cfg.Headless = false // 登录必须有头，忽略全局 configs.IsHeadless()
 	cfg.CookiePath = cookies.GetCookiesFilePath()
 	cfg.ActionTimeout = 30 * time.Second
 	cfg.NavigationTimeout = 60 * time.Second
