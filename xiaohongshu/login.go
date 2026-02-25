@@ -19,29 +19,62 @@ func NewLogin(page browser.Page, pollingModule polling.Module) *LoginAction {
 	return &LoginAction{page: page, polling: pollingModule}
 }
 
-func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
+// LoginStatusResult holds the result of a login status check.
+type LoginStatusResult struct {
+	LoggedIn bool
+	Nickname string
+}
+
+func (a *LoginAction) CheckLoginStatus(ctx context.Context) (*LoginStatusResult, error) {
 	pp := a.page.WithContext(ctx)
 	if err := pp.Goto("https://www.xiaohongshu.com/explore"); err != nil {
-		return false, errors.Wrap(err, "导航失败")
+		return nil, errors.Wrap(err, "导航失败")
 	}
 	if err := pp.WaitLoad(); err != nil {
-		return false, errors.Wrap(err, "等待页面加载失败")
+		return nil, errors.Wrap(err, "等待页面加载失败")
 	}
 
 	if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
-		return false, err
+		return nil, err
 	}
 
 	exists, err := pp.Has(`.main-container .user .link-wrapper .channel`)
 	if err != nil {
-		return false, errors.Wrap(err, "check login status failed")
+		return nil, errors.Wrap(err, "check login status failed")
 	}
-
 	if !exists {
-		return false, errors.Wrap(err, "login status element not found")
+		return &LoginStatusResult{LoggedIn: false}, nil
 	}
 
-	return true, nil
+	// 尝试从 __INITIAL_STATE__ 获取真实用户名
+	nickname := ""
+	raw, evalErr := pp.Eval(`() => {
+		try {
+			return window.__INITIAL_STATE__?.user?.userInfo?.basicInfo?.nickname || "";
+		} catch(e) { return ""; }
+	}`)
+	if evalErr == nil {
+		if s, ok := raw.(string); ok {
+			nickname = s
+		}
+	}
+
+	// fallback: 从侧边栏用户头像 title 属性读取昵称
+	if nickname == "" {
+		raw2, evalErr2 := pp.Eval(`() => {
+			try {
+				const el = document.querySelector('.user .avatar') || document.querySelector('.user-info .nickname');
+				return el ? (el.getAttribute('title') || el.textContent || "") : "";
+			} catch(e) { return ""; }
+		}`)
+		if evalErr2 == nil {
+			if s, ok := raw2.(string); ok {
+				nickname = s
+			}
+		}
+	}
+
+	return &LoginStatusResult{LoggedIn: true, Nickname: nickname}, nil
 }
 
 func (a *LoginAction) Login(ctx context.Context) error {

@@ -30,16 +30,19 @@ func (g *Gateway) withPage(ctx context.Context, fn func(browser.Page) error) err
 	return fn(page.WithContext(ctx))
 }
 
-// CheckLoginStatus returns whether the current session is logged in.
+// CheckLoginStatus returns whether the current session is logged in, plus the real nickname.
 func (g *Gateway) CheckLoginStatus(ctx context.Context) (map[string]any, error) {
 	var result map[string]any
 	err := g.withPage(ctx, func(page browser.Page) error {
 		action := xiaohongshu.NewLogin(page, g.polling)
-		loggedIn, err := action.CheckLoginStatus(ctx)
+		status, err := action.CheckLoginStatus(ctx)
 		if err != nil {
 			return err
 		}
-		result = map[string]any{"logged_in": loggedIn}
+		result = map[string]any{
+			"logged_in": status.LoggedIn,
+			"nickname":  status.Nickname,
+		}
 		return nil
 	})
 	return result, err

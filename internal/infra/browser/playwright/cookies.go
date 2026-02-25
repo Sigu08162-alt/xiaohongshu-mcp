@@ -55,13 +55,23 @@ func parseCookies(data []byte) ([]playwright.OptionalCookie, error) {
 }
 
 func convertRodCookies(in []rodCookie) []playwright.OptionalCookie {
-	out := make([]playwright.OptionalCookie, 0, len(in))
+	out := make([]playwright.OptionalCookie, 0, len(in)*2)
 	for _, c := range in {
 		oc, ok := toOptionalCookie(c)
 		if !ok {
 			continue
 		}
 		out = append(out, oc)
+		// 为 creator.xiaohongshu.com 额外注入一份 cookie
+		// .xiaohongshu.com 的 cookie 不会自动覆盖子域名 creator.xiaohongshu.com
+		if c.Domain == ".xiaohongshu.com" || c.Domain == "xiaohongshu.com" {
+			extra := c
+			extra.Domain = "creator.xiaohongshu.com"
+			extra.HTTPOnly = false // creator 域名不需要 httpOnly 限制
+			if eoc, ok := toOptionalCookie(extra); ok {
+				out = append(out, eoc)
+			}
+		}
 	}
 	return out
 }

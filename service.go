@@ -159,12 +159,12 @@ func (s *XiaohongshuService) SyncCookies(ctx context.Context, data []byte) (stri
 
 // CheckLoginStatus 检查登录状态
 func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatusResponse, error) {
-	var isLoggedIn bool
+	var status *xiaohongshu.LoginStatusResult
 	var err error
 
 	err = withBrowserPage(func(page browser.Page) error {
 		loginAction := xiaohongshu.NewLogin(page, s.polling.Auth)
-		isLoggedIn, err = loginAction.CheckLoginStatus(ctx)
+		status, err = loginAction.CheckLoginStatus(ctx)
 		return err
 	})
 
@@ -172,12 +172,15 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 		return nil, err
 	}
 
-	response := &LoginStatusResponse{
-		IsLoggedIn: isLoggedIn,
-		Username:   configs.Username,
+	username := status.Nickname
+	if username == "" {
+		username = configs.Username
 	}
 
-	return response, nil
+	return &LoginStatusResponse{
+		IsLoggedIn: status.LoggedIn,
+		Username:   username,
+	}, nil
 }
 
 // GetLoginQrcode 获取登录的扫码二维码
