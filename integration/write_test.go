@@ -11,6 +11,9 @@ import (
 // IntegrationTestLikeUnlike tests like + unlike on the first personal feed.
 // Requires explicit: go test ./integration/... -run Integration
 func TestIntegrationLikeUnlike(t *testing.T) {
+	// Wait before starting to avoid bot-detection patterns
+	testCooldown()
+
 	requireCookies(t)
 	s := newSuite(t)
 
@@ -24,6 +27,9 @@ func TestIntegrationLikeUnlike(t *testing.T) {
 	err = s.interaction.LikeFeed(ctx(t, 30*time.Second), feed.ID, feed.XsecToken)
 	require.NoError(t, err, "like should succeed")
 
+	// Simulate human pause between like and unlike
+	humanDelay()
+
 	err = s.interaction.UnlikeFeed(ctx(t, 30*time.Second), feed.ID, feed.XsecToken)
 	require.NoError(t, err, "unlike should succeed")
 
@@ -33,6 +39,9 @@ func TestIntegrationLikeUnlike(t *testing.T) {
 // IntegrationTestPostDeleteComment tests posting and deleting a comment.
 // Requires explicit: go test ./integration/... -run Integration
 func TestIntegrationPostDeleteComment(t *testing.T) {
+	// Wait before starting to avoid bot-detection patterns
+	testCooldown()
+
 	requireCookies(t)
 	s := newSuite(t)
 
@@ -46,6 +55,9 @@ func TestIntegrationPostDeleteComment(t *testing.T) {
 
 	err = s.interaction.PostComment(ctx(t, 45*time.Second), feed.ID, feed.XsecToken, testComment)
 	require.NoError(t, err, "post comment should succeed")
+
+	// Simulate human pause between posting and deleting the comment
+	humanDelay()
 
 	// Fetch detail to find the comment ID for deletion
 	detail, err := s.feed.GetFeedDetail(ctx(t, 45*time.Second), feed.ID, feed.XsecToken)

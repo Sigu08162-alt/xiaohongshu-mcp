@@ -11,6 +11,7 @@ import (
 
 // TestListFeeds verifies we can fetch the home feed.
 func TestListFeeds(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	feeds, err := s.feed.ListFeeds(ctx(t, 30*time.Second))
 	require.NoError(t, err)
@@ -20,6 +21,7 @@ func TestListFeeds(t *testing.T) {
 
 // TestGetMyFeeds verifies we can fetch our own published notes.
 func TestGetMyFeeds(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	feeds, err := s.feed.GetMyFeeds(ctx(t, 30*time.Second), "", 10)
 	require.NoError(t, err)
@@ -28,6 +30,7 @@ func TestGetMyFeeds(t *testing.T) {
 
 // TestSearchFeeds verifies keyword search returns results.
 func TestSearchFeeds(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	feeds, err := s.feed.SearchFeeds(ctx(t, 45*time.Second), "普吉岛", xiaohongshu.FilterOption{})
 	require.NoError(t, err)
@@ -38,6 +41,7 @@ func TestSearchFeeds(t *testing.T) {
 // TestGetFeedDetail verifies we can fetch a note's detail and comments.
 // Uses the first feed from GetMyFeeds as the target.
 func TestGetFeedDetail(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	feeds, err := s.feed.GetMyFeeds(ctx(t, 30*time.Second), "", 5)
 	require.NoError(t, err)

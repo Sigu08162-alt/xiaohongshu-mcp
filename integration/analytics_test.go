@@ -9,6 +9,7 @@ import (
 
 // TestGetContentAnalytics verifies content analytics data is accessible.
 func TestGetContentAnalytics(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	result, err := s.analytics.GetContentAnalytics(ctx(t, 45*time.Second), 10, "likes", "desc")
 	require.NoError(t, err)

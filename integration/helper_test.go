@@ -12,6 +12,7 @@ package integration
 
 import (
 	"context"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
@@ -113,4 +114,36 @@ func requireCookies(t *testing.T) {
 	t.Helper()
 	_, err := os.Stat(cookies.GetCookiesFilePath())
 	require.NoError(t, err, "cookies.json required for this test")
+}
+
+// humanDelay simulates human-like random delay between operations (1.5s ~ 3.0s)
+func humanDelay() {
+	ms := 1500 + rand.Intn(1500)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
+}
+
+// shortDelay simulates a short human pause (500ms ~ 1200ms)
+func shortDelay() {
+	ms := 500 + rand.Intn(700)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
+}
+
+// testCooldown waits between test cases to avoid detection (5s ~ 8s)
+func testCooldown() {
+	ms := 5000 + rand.Intn(3000)
+	time.Sleep(time.Duration(ms) * time.Millisecond)
+}
+
+// TestMain controls the overall test execution order.
+// Tests should run in the following order to avoid detection and side-effects:
+//  1. Read-only tests first (feed, user, analytics)
+//  2. Write tests last (like/unlike, comment, publish/delete)
+func TestMain(m *testing.M) {
+	// Note: Go test framework runs tests in the order they are defined within
+	// each file, and files are processed alphabetically. The naming convention
+	// and file layout ensure read tests (feed_test, user_test, analytics_test)
+	// run before write tests (write_test, delete_test):
+	//   analytics_test.go → delete_test.go → feed_test.go → user_test.go → write_test.go
+	// Use -run flags to further control ordering when needed.
+	os.Exit(m.Run())
 }

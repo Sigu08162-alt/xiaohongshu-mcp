@@ -10,6 +10,7 @@ import (
 
 // TestGetMyProfile verifies we can fetch our own profile.
 func TestGetMyProfile(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	profile, err := s.user.GetMyProfile(ctx(t, 30*time.Second))
 	require.NoError(t, err)
@@ -19,6 +20,7 @@ func TestGetMyProfile(t *testing.T) {
 
 // TestGetMyStats verifies we can fetch account stats.
 func TestGetMyStats(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 	stats, err := s.user.GetMyStats(ctx(t, 30*time.Second))
 	require.NoError(t, err)
@@ -29,6 +31,7 @@ func TestGetMyStats(t *testing.T) {
 // TestGetUserProfile verifies we can fetch another user's profile.
 // Uses the author of the first personal feed.
 func TestGetUserProfile(t *testing.T) {
+	shortDelay()
 	s := newSuite(t)
 
 	feeds, err := s.feed.GetMyFeeds(ctx(t, 30*time.Second), "", 3)

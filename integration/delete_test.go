@@ -15,6 +15,9 @@ import (
 //
 //	go test ./integration/... -run TestIntegrationDeleteFeed -v -timeout 120s
 func TestIntegrationDeleteFeed(t *testing.T) {
+	// Wait before starting to avoid bot-detection patterns
+	testCooldown()
+
 	requireCookies(t)
 	s := newSuite(t)
 
