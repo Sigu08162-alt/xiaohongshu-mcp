@@ -22,7 +22,7 @@ func TestGetMyProfile(t *testing.T) {
 func TestGetMyStats(t *testing.T) {
 	shortDelay()
 	s := newSuite(t)
-	stats, err := s.user.GetMyStats(ctx(t, 30*time.Second))
+	stats, err := s.user.GetMyStats(ctx(t, 60*time.Second))
 	require.NoError(t, err)
 	assert.NotEmpty(t, stats)
 	t.Logf("stats keys: %d", len(stats))

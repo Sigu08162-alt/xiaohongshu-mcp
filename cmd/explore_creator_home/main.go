@@ -34,7 +34,11 @@ func main() {
 
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
 		Headless: playwright.Bool(true),
-		Args:     []string{"--no-sandbox", "--disable-dev-shm-usage"},
+		Args: []string{
+			"--no-sandbox",
+			"--disable-dev-shm-usage",
+			"--disable-blink-features=AutomationControlled",
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -104,10 +108,10 @@ func main() {
 
 	fmt.Println("=== 导航到创作者中心首页 ===")
 	if _, err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official", playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateLoad,
-		Timeout:   playwright.Float(15000),
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(20000),
 	}); err != nil {
-		fmt.Println("导航失败:", err)
+		fmt.Println("导航失败(忽略):", err)
 	}
 	time.Sleep(3 * time.Second)
 
