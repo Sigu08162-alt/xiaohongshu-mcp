@@ -473,7 +473,55 @@ func applyStateNoteMaps(feeds []Feed, titleMap, coverMap map[string]string) []Fe
 	return feeds
 }
 
-// GetMyStats 获取当前用户的统计数据
+// injectAPIInterceptor 在页面中注入 XHR/fetch 拦截器，捕获创作者中心 API 响应
+const injectAPIInterceptor = `
+(function() {
+  if (window.__xhs_api_cache) return; // 已注入
+  window.__xhs_api_cache = {};
+  const TARGETS = [
+    '/api/galaxy/v2/creator/datacenter/account/base',
+    '/api/galaxy/creator/home/personal_info',
+    '/api/galaxy/creator/data/note_detail_new',
+  ];
+  function matchTarget(url) {
+    return TARGETS.find(t => url.includes(t));
+  }
+  // 拦截 fetch
+  const origFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+    const key = matchTarget(url);
+    const resp = await origFetch.apply(this, args);
+    if (key) {
+      try {
+        const clone = resp.clone();
+        clone.text().then(text => {
+          window.__xhs_api_cache[key] = { status: resp.status, body: text };
+        });
+      } catch(e) {}
+    }
+    return resp;
+  };
+  // 拦截 XHR
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this.__xhs_url = url;
+    return origOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function() {
+    const key = matchTarget(this.__xhs_url || '');
+    if (key) {
+      this.addEventListener('load', function() {
+        window.__xhs_api_cache[key] = { status: this.status, body: this.responseText };
+      });
+    }
+    return origSend.apply(this, arguments);
+  };
+})();
+`
+
+// GetMyStats 获取当前用户的统计数据（通过拦截页面自身请求，绕过签名验证）
 func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 	timeout, err := d.polling.Delay("wait_60000ms")
 	if err != nil {
@@ -481,11 +529,22 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 	}
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
-	// 导航到创作者中心页面（包含更详细的运营数据）
+	// 先注入拦截器，再导航，确保捕获页面加载时的 API 请求
+	slog.Info("注入 API 拦截器...")
+	if _, err := page.Eval(injectAPIInterceptor); err != nil {
+		slog.Warn("注入拦截器失败，将回退到直接请求", "error", err)
+	}
+
 	slog.Info("导航到创作者中心页面...")
 	if err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official"); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
 	}
+
+	// 重新注入（导航后页面刷新，需要再次注入）
+	if _, err := page.Eval(injectAPIInterceptor); err != nil {
+		slog.Warn("导航后重新注入拦截器失败", "error", err)
+	}
+
 	waitStable, err := d.polling.Delay("wait_1000ms")
 	if err != nil {
 		return nil, err
@@ -497,15 +556,15 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 		return nil, err
 	}
 
-	accountBase, err := d.fetchAccountBase(page)
+	accountBase, err := d.fetchCachedOrDirect(page, "/api/galaxy/v2/creator/datacenter/account/base")
 	if err != nil {
 		return nil, fmt.Errorf("获取账号数据失败: %w", err)
 	}
-	personalInfo, err := d.fetchPersonalInfo(page)
+	personalInfo, err := d.fetchCachedOrDirect(page, "/api/galaxy/creator/home/personal_info")
 	if err != nil {
 		return nil, fmt.Errorf("获取个人信息失败: %w", err)
 	}
-	noteDetail, err := d.fetchNoteDetail(page)
+	noteDetail, err := d.fetchCachedOrDirect(page, "/api/galaxy/creator/data/note_detail_new")
 	if err != nil {
 		return nil, fmt.Errorf("获取笔记详情失败: %w", err)
 	}
@@ -559,6 +618,42 @@ func (d *DataAction) fetchPersonalInfo(page browser.Page) (map[string]interface{
 
 func (d *DataAction) fetchNoteDetail(page browser.Page) (map[string]interface{}, error) {
 	return d.fetchJSONWithRetry(page, "/api/galaxy/creator/data/note_detail_new")
+}
+
+// fetchCachedOrDirect 先从拦截缓存读取，缓存未命中则回退到直接请求
+func (d *DataAction) fetchCachedOrDirect(page browser.Page, path string) (map[string]interface{}, error) {
+	// 轮询等待缓存命中（最多15秒）
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		result, err := page.Eval(`(path) => {
+			const cache = window.__xhs_api_cache;
+			if (!cache || !cache[path]) return null;
+			return JSON.stringify(cache[path]);
+		}`, path)
+		if err == nil && result != nil {
+			raw, ok := result.(string)
+			if ok && raw != "" && raw != "null" {
+				var entry struct {
+					Status int    `json:"status"`
+					Body   string `json:"body"`
+				}
+				if err := json.Unmarshal([]byte(raw), &entry); err == nil && entry.Status == 200 {
+					var payload map[string]interface{}
+					if err := json.Unmarshal([]byte(entry.Body), &payload); err == nil {
+						if data, ok := payload["data"].(map[string]interface{}); ok {
+							slog.Info("从拦截缓存读取成功", "path", path)
+							return data, nil
+						}
+						return payload, nil
+					}
+				}
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	// 缓存未命中，回退到直接请求
+	slog.Info("缓存未命中，回退到直接请求", "path", path)
+	return d.fetchJSONWithRetry(page, path)
 }
 
 func (d *DataAction) fetchJSONWithRetry(page browser.Page, path string) (map[string]interface{}, error) {
