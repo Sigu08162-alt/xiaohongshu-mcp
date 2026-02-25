@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"regexp"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	"time"
 
 	"github.com/avast/retry-go/v4"
-	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/errors"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
@@ -72,9 +72,8 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 	page := f.page.WithContext(ctx).WithTimeout(timeout)
 	url := makeFeedDetailURL(feedID, xsecToken)
 
-	logrus.Infof("打开 feed 详情页: %s", url)
-	logrus.Infof("配置: 点击更多=%v, 回复阈值=%d, 最大评论数=%d, 滚动速度=%s",
-		config.ClickMoreReplies, config.MaxRepliesThreshold, config.MaxCommentItems, config.ScrollSpeed)
+	slog.Info("打开 feed 详情页", "url", url)
+	slog.Info("配置", "clickMoreReplies", config.ClickMoreReplies, "maxRepliesThreshold", config.MaxRepliesThreshold, "maxCommentItems", config.MaxCommentItems, "scrollSpeed", config.ScrollSpeed)
 
 	// 使用retry-go处理页面导航
 	retryDelay, err := f.polling.Delay("wait_500ms")
@@ -99,11 +98,11 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("页面导航重试 #%d: %v", n, err)
+			slog.Debug("页面导航重试", "attempt", n, "error", err)
 		}),
 	)
 	if err != nil {
-		logrus.Errorf("页面导航失败: %v", err)
+		slog.Error("页面导航失败", "error", err)
 		return nil, err
 	}
 
@@ -142,7 +141,7 @@ func (f *FeedDetailAction) GetFeedDetailWithConfig(ctx context.Context, feedID, 
 
 	if loadAllComments {
 		if err := f.loadAllCommentsWithConfig(page, config); err != nil {
-			logrus.Warnf("加载全部评论失败: %v", err)
+			slog.Warn("加载全部评论失败", "error", err)
 		}
 	}
 
@@ -190,7 +189,7 @@ func (cl *commentLoader) load() error {
 		return err
 	}
 
-	logrus.Info("开始加载评论...")
+	slog.Info("开始加载评论...")
 	if err := scrollToCommentsArea(cl.page, cl.polling); err != nil {
 		return err
 	}
@@ -204,7 +203,7 @@ func (cl *commentLoader) load() error {
 	}
 
 	for cl.stats.attempts = 0; cl.stats.attempts < maxAttempts; cl.stats.attempts++ {
-		logrus.Debugf("=== 尝试 %d/%d ===", cl.stats.attempts+1, maxAttempts)
+		slog.Debug("=== 尝试 ===", "attempt", cl.stats.attempts+1, "maxAttempts", maxAttempts)
 
 		if cl.checkComplete() {
 			return nil
@@ -242,7 +241,7 @@ func (cl *commentLoader) calculateMaxAttempts() int {
 
 func (cl *commentLoader) checkNoComments() bool {
 	if checkNoCommentsArea(cl.page, cl.polling) {
-		logrus.Infof("✓ 检测到无评论区域（这是一片荒地），跳过加载")
+		slog.Info("✓ 检测到无评论区域（这是一片荒地），跳过加载")
 		return true
 	}
 	return false
@@ -251,12 +250,11 @@ func (cl *commentLoader) checkNoComments() bool {
 func (cl *commentLoader) checkComplete() bool {
 	if checkEndContainer(cl.page, cl.polling) {
 		currentCount := getCommentCount(cl.page, cl.polling)
-		logrus.Infof("✓ 检测到 'THE END' 元素，已滑动到底部")
+		slog.Info("✓ 检测到 'THE END' 元素，已滑动到底部")
 		if err := sleepRandom(cl.polling, "human_delay_min_ms", "human_delay_max_ms"); err != nil {
-			logrus.Warnf("随机等待失败: %v", err)
+			slog.Warn("随机等待失败", "error", err)
 		}
-		logrus.Infof("✓ 加载完成: %d 条评论, 尝试次数: %d, 点击: %d, 跳过: %d",
-			currentCount, cl.stats.attempts+1, cl.stats.totalClicked, cl.stats.totalSkipped)
+		slog.Info("✓ 加载完成", "commentCount", currentCount, "attempts", cl.stats.attempts+1, "clicked", cl.stats.totalClicked, "skipped", cl.stats.totalSkipped)
 		return true
 	}
 	return false
@@ -271,11 +269,10 @@ func (cl *commentLoader) clickButtonsWithRetry() {
 	if clicked > 0 || skipped > 0 {
 		cl.stats.totalClicked += clicked
 		cl.stats.totalSkipped += skipped
-		logrus.Infof("点击'更多': %d 个, 跳过: %d 个, 累计点击: %d, 累计跳过: %d",
-			clicked, skipped, cl.stats.totalClicked, cl.stats.totalSkipped)
+		slog.Info("点击'更多'", "clicked", clicked, "skipped", skipped, "totalClicked", cl.stats.totalClicked, "totalSkipped", cl.stats.totalSkipped)
 
 		if err := sleepRandom(cl.polling, "read_time_min_ms", "read_time_max_ms"); err != nil {
-			logrus.Warnf("随机等待失败: %v", err)
+			slog.Warn("随机等待失败", "error", err)
 		}
 
 		// 重试一轮
@@ -283,9 +280,9 @@ func (cl *commentLoader) clickButtonsWithRetry() {
 		if clicked2 > 0 || skipped2 > 0 {
 			cl.stats.totalClicked += clicked2
 			cl.stats.totalSkipped += skipped2
-			logrus.Infof("第 2 轮: 点击 %d, 跳过 %d", clicked2, skipped2)
+			slog.Info("第 2 轮", "clicked", clicked2, "skipped", skipped2)
 			if err := sleepRandom(cl.polling, "short_read_min_ms", "short_read_max_ms"); err != nil {
-				logrus.Warnf("随机等待失败: %v", err)
+				slog.Warn("随机等待失败", "error", err)
 			}
 		}
 	}
@@ -293,17 +290,16 @@ func (cl *commentLoader) clickButtonsWithRetry() {
 
 func (cl *commentLoader) updateState(currentCount int) {
 	totalCount := getTotalCommentCount(cl.page, cl.polling)
-	logrus.Debugf("当前评论: %d, 目标: %d", currentCount, totalCount)
+	slog.Debug("当前评论", "current", currentCount, "total", totalCount)
 
 	if currentCount != cl.state.lastCount {
-		logrus.Infof("✓ 评论增加: %d -> %d (+%d)",
-			cl.state.lastCount, currentCount, currentCount-cl.state.lastCount)
+		slog.Info("✓ 评论增加", "from", cl.state.lastCount, "to", currentCount, "delta", currentCount-cl.state.lastCount)
 		cl.state.lastCount = currentCount
 		cl.state.stagnantChecks = 0
 	} else {
 		cl.state.stagnantChecks++
 		if cl.state.stagnantChecks%5 == 0 {
-			logrus.Debugf("评论停滞 %d 次", cl.state.stagnantChecks)
+			slog.Debug("评论停滞", "stagnantChecks", cl.state.stagnantChecks)
 		}
 	}
 }
@@ -316,8 +312,7 @@ func (cl *commentLoader) shouldStopAtTarget(currentCount int) bool {
 
 	// 如果已达到或超过目标评论数，立即停止
 	if currentCount >= cl.config.MaxCommentItems {
-		logrus.Infof("✓ 已达到目标评论数: %d/%d, 停止加载",
-			currentCount, cl.config.MaxCommentItems)
+		slog.Info("✓ 已达到目标评论数，停止加载", "current", currentCount, "target", cl.config.MaxCommentItems)
 		return true
 	}
 
@@ -344,7 +339,7 @@ func (cl *commentLoader) performScroll() error {
 	if scrollDelta < minScrollDelta || currentScrollTop == cl.state.lastScrollTop {
 		cl.state.stagnantChecks++
 		if cl.state.stagnantChecks%5 == 0 {
-			logrus.Debugf("滚动停滞 %d 次", cl.state.stagnantChecks)
+			slog.Debug("滚动停滞", "stagnantChecks", cl.state.stagnantChecks)
 		}
 	} else {
 		cl.state.stagnantChecks = 0
@@ -355,25 +350,24 @@ func (cl *commentLoader) performScroll() error {
 
 func (cl *commentLoader) handleStagnation() {
 	if cl.state.stagnantChecks >= stagnantLimit {
-		logrus.Infof("停滞过多，尝试大冲刺...")
+		slog.Info("停滞过多，尝试大冲刺...")
 		humanScroll(cl.page, cl.polling, cl.config.ScrollSpeed, true, 10)
 		cl.state.stagnantChecks = 0
 
 		if checkEndContainer(cl.page, cl.polling) {
 			currentCount := getCommentCount(cl.page, cl.polling)
-			logrus.Infof("✓ 到达底部，评论数: %d", currentCount)
+			slog.Info("✓ 到达底部", "commentCount", currentCount)
 		}
 	}
 }
 
 func (cl *commentLoader) performFinalSprint() {
-	logrus.Infof("达到最大尝试次数，最后冲刺...")
+	slog.Info("达到最大尝试次数，最后冲刺...")
 	humanScroll(cl.page, cl.polling, cl.config.ScrollSpeed, true, finalSprintPushCount)
 
 	currentCount := getCommentCount(cl.page, cl.polling)
 	hasEnd := checkEndContainer(cl.page, cl.polling)
-	logrus.Infof("✓ 加载结束: %d 条评论, 点击: %d, 跳过: %d, 到达底部: %v",
-		currentCount, cl.stats.totalClicked, cl.stats.totalSkipped, hasEnd)
+	slog.Info("✓ 加载结束", "commentCount", currentCount, "clicked", cl.stats.totalClicked, "skipped", cl.stats.totalSkipped, "reachedBottom", hasEnd)
 }
 
 // ========== 工具函数 ==========
@@ -480,7 +474,7 @@ func shouldSkipButton(text string, threshold int, regex *regexp.Regexp) bool {
 	matches := regex.FindStringSubmatch(text)
 	if len(matches) > 1 {
 		if replyCount, err := strconv.Atoi(matches[1]); err == nil && replyCount > threshold {
-			logrus.Debugf("跳过'%s'（回复数 %d > 阈值 %d）", text, replyCount, threshold)
+			slog.Debug("跳过按钮（回复数超过阈值）", "text", text, "replyCount", replyCount, "threshold", threshold)
 			return true
 		}
 	}
@@ -492,12 +486,12 @@ func clickElementWithHumanBehavior(page browser.Page, pollingModule polling.Modu
 
 	retryDelay, err := pollingModule.Delay("wait_100ms")
 	if err != nil {
-		logrus.Warnf("获取重试延迟失败: %v", err)
+		slog.Warn("获取重试延迟失败", "error", err)
 		return false
 	}
 	retryJitter, err := pollingModule.Delay("wait_200ms")
 	if err != nil {
-		logrus.Warnf("获取重试抖动失败: %v", err)
+		slog.Warn("获取重试抖动失败", "error", err)
 		return false
 	}
 
@@ -518,7 +512,7 @@ func clickElementWithHumanBehavior(page browser.Page, pollingModule polling.Modu
 				x := box.X + box.Width/2
 				y := box.Y + box.Height/2
 				if err := page.Mouse().MoveTo(x, y); err != nil {
-					logrus.Debugf("鼠标移动失败: %v", err)
+					slog.Debug("鼠标移动失败", "error", err)
 				}
 				if err := sleepRandom(pollingModule, "hover_time_min_ms", "hover_time_max_ms"); err != nil {
 					return err
@@ -541,17 +535,17 @@ func clickElementWithHumanBehavior(page browser.Page, pollingModule polling.Modu
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("点击重试 #%d: %s, 错误: %v", n, text, err)
+			slog.Debug("点击重试", "attempt", n, "text", text, "error", err)
 		}),
 	)
 
 	if err != nil {
-		logrus.Debugf("点击失败 '%s': %v", text, err)
+		slog.Debug("点击失败", "text", text, "error", err)
 		return false
 	}
 
 	if clickSuccess {
-		logrus.Debugf("点击了'%s'", text)
+		slog.Debug("点击了按钮", "text", text)
 	}
 
 	return clickSuccess
@@ -576,7 +570,7 @@ func humanScroll(page browser.Page, pollingModule polling.Module, speed string, 
 		scrollDelta := calculateScrollDelta(viewportHeight, baseRatio)
 		_, err := page.Eval(`(delta) => { window.scrollBy(0, delta); }`, scrollDelta)
 		if err != nil {
-			logrus.Warnf("滚动失败: %v", err)
+			slog.Warn("滚动失败", "error", err)
 		}
 
 		if err := sleepRandom(pollingModule, "scroll_wait_min_ms", "scroll_wait_max_ms"); err != nil {
@@ -603,7 +597,7 @@ func humanScroll(page browser.Page, pollingModule polling.Module, speed string, 
 	if !scrolled && pushCount > 0 {
 		_, err := page.Eval(`() => window.scrollTo(0, document.body.scrollHeight)`)
 		if err != nil {
-			logrus.Warnf("滚动到底部失败: %v", err)
+			slog.Warn("滚动到底部失败", "error", err)
 		}
 		if err := sleepRandom(pollingModule, "post_scroll_min_ms", "post_scroll_max_ms"); err != nil {
 			return false, 0, 0
@@ -614,8 +608,7 @@ func humanScroll(page browser.Page, pollingModule polling.Module, speed string, 
 	}
 
 	if scrolled {
-		logrus.Debugf("滚动: %d -> %d (Δ%d, large=%v, push=%d)",
-			beforeTop-actualDelta, currentScrollTop, actualDelta, largeMode, pushCount)
+		slog.Debug("滚动", "from", beforeTop-actualDelta, "to", currentScrollTop, "delta", actualDelta, "largeMode", largeMode, "pushCount", pushCount)
 	}
 
 	return scrolled, actualDelta, currentScrollTop
@@ -641,7 +634,7 @@ func calculateScrollDelta(viewportHeight int, baseRatio float64) float64 {
 }
 
 func scrollToCommentsArea(page browser.Page, pollingModule polling.Module) error {
-	logrus.Info("滚动到评论区...")
+	slog.Info("滚动到评论区...")
 
 	// 先定位到评论区
 	timeout, err := pollingModule.Delay("wait_2000ms")
@@ -679,7 +672,7 @@ func smartScroll(page browser.Page, delta float64) {
 		targetElement.dispatchEvent(wheelEvent);
 	}`, delta)
 	if err != nil {
-		logrus.Warnf("智能滚动失败: %v", err)
+		slog.Warn("智能滚动失败", "error", err)
 	}
 }
 
@@ -696,7 +689,7 @@ func scrollToLastComment(page browser.Page, pollingModule polling.Module) error 
 	// 滚动到最后一个评论
 	lastComment := elements[len(elements)-1]
 	if err := lastComment.ScrollIntoView(); err != nil {
-		logrus.Debugf("滚动到最后评论失败: %v", err)
+		slog.Debug("滚动到最后评论失败", "error", err)
 	}
 	return nil
 }
@@ -715,12 +708,12 @@ func evalIntOrDefault(page browser.Page, pollingModule polling.Module, expressio
 
 	retryDelay, err := pollingModule.Delay("wait_100ms")
 	if err != nil {
-		logrus.Warnf("获取重试延迟失败: %v", err)
+		slog.Warn("获取重试延迟失败", "error", err)
 		return defaultVal
 	}
 	retryJitter, err := pollingModule.Delay("wait_200ms")
 	if err != nil {
-		logrus.Warnf("获取重试抖动失败: %v", err)
+		slog.Warn("获取重试抖动失败", "error", err)
 		return defaultVal
 	}
 
@@ -747,12 +740,12 @@ func evalIntOrDefault(page browser.Page, pollingModule polling.Module, expressio
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("Eval 重试 #%d: %v", n, err)
+			slog.Debug("Eval 重试", "attempt", n, "error", err)
 		}),
 	)
 
 	if err != nil {
-		logrus.Warnf("Eval 失败，使用默认值 %d: %v", defaultVal, err)
+		slog.Warn("Eval 失败，使用默认值", "defaultVal", defaultVal, "error", err)
 		return defaultVal
 	}
 
@@ -764,17 +757,17 @@ func getCommentCount(page browser.Page, pollingModule polling.Module) int {
 
 	retryDelay, err := pollingModule.Delay("wait_100ms")
 	if err != nil {
-		logrus.Warnf("获取重试延迟失败: %v", err)
+		slog.Warn("获取重试延迟失败", "error", err)
 		return 0
 	}
 	retryJitter, err := pollingModule.Delay("wait_200ms")
 	if err != nil {
-		logrus.Warnf("获取重试抖动失败: %v", err)
+		slog.Warn("获取重试抖动失败", "error", err)
 		return 0
 	}
 	timeout, err := pollingModule.Delay("wait_2000ms")
 	if err != nil {
-		logrus.Warnf("获取超时失败: %v", err)
+		slog.Warn("获取超时失败", "error", err)
 		return 0
 	}
 
@@ -793,12 +786,12 @@ func getCommentCount(page browser.Page, pollingModule polling.Module) int {
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("获取评论计数重试 #%d: %v", n, err)
+			slog.Debug("获取评论计数重试", "attempt", n, "error", err)
 		}),
 	)
 
 	if err != nil {
-		logrus.Warnf("获取评论计数失败: %v", err)
+		slog.Warn("获取评论计数失败", "error", err)
 		return 0 // 失败时返回0
 	}
 
@@ -810,17 +803,17 @@ func getTotalCommentCount(page browser.Page, pollingModule polling.Module) int {
 
 	retryDelay, err := pollingModule.Delay("wait_100ms")
 	if err != nil {
-		logrus.Warnf("获取重试延迟失败: %v", err)
+		slog.Warn("获取重试延迟失败", "error", err)
 		return 0
 	}
 	retryJitter, err := pollingModule.Delay("wait_200ms")
 	if err != nil {
-		logrus.Warnf("获取重试抖动失败: %v", err)
+		slog.Warn("获取重试抖动失败", "error", err)
 		return 0
 	}
 	timeout, err := pollingModule.Delay("wait_2000ms")
 	if err != nil {
-		logrus.Warnf("获取超时失败: %v", err)
+		slog.Warn("获取超时失败", "error", err)
 		return 0
 	}
 
@@ -858,12 +851,12 @@ func getTotalCommentCount(page browser.Page, pollingModule polling.Module) int {
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("获取总评论计数重试 #%d: %v", n, err)
+			slog.Debug("获取总评论计数重试", "attempt", n, "error", err)
 		}),
 	)
 
 	if err != nil {
-		logrus.Warnf("获取总评论计数失败: %v", err)
+		slog.Warn("获取总评论计数失败", "error", err)
 		return 0 // 失败时返回0
 	}
 
@@ -898,17 +891,17 @@ func checkEndContainer(page browser.Page, pollingModule polling.Module) bool {
 
 	retryDelay, err := pollingModule.Delay("wait_100ms")
 	if err != nil {
-		logrus.Warnf("获取重试延迟失败: %v", err)
+		slog.Warn("获取重试延迟失败", "error", err)
 		return false
 	}
 	retryJitter, err := pollingModule.Delay("wait_200ms")
 	if err != nil {
-		logrus.Warnf("获取重试抖动失败: %v", err)
+		slog.Warn("获取重试抖动失败", "error", err)
 		return false
 	}
 	timeout, err := pollingModule.Delay("wait_2000ms")
 	if err != nil {
-		logrus.Warnf("获取超时失败: %v", err)
+		slog.Warn("获取超时失败", "error", err)
 		return false
 	}
 
@@ -939,12 +932,12 @@ func checkEndContainer(page browser.Page, pollingModule polling.Module) bool {
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("检查结束容器重试 #%d: %v", n, err)
+			slog.Debug("检查结束容器重试", "attempt", n, "error", err)
 		}),
 	)
 
 	if err != nil {
-		logrus.Warnf("检查结束容器失败: %v", err)
+		slog.Warn("检查结束容器失败", "error", err)
 		return false // 失败时返回false
 	}
 
@@ -992,7 +985,7 @@ func checkPageAccessible(page browser.Page, pollingModule polling.Module) error 
 
 	for _, kw := range keywords {
 		if strings.Contains(text, kw) {
-			logrus.Warnf("笔记不可访问: %s", kw)
+			slog.Warn("笔记不可访问", "reason", kw)
 			return errors.NewErrFeedNotAccessible(kw)
 		}
 	}
@@ -1000,7 +993,7 @@ func checkPageAccessible(page browser.Page, pollingModule polling.Module) error 
 	// 如果有文本但不匹配关键词，返回未知错误
 	trimmedText := strings.TrimSpace(text)
 	if trimmedText != "" {
-		logrus.Warnf("笔记不可访问（未知原因）: %s", trimmedText)
+		slog.Warn("笔记不可访问（未知原因）", "text", trimmedText)
 		return errors.NewErrFeedNotAccessible(trimmedText)
 	}
 
@@ -1051,12 +1044,12 @@ func (f *FeedDetailAction) extractFeedDetail(page browser.Page, feedID string) (
 		retry.Delay(retryDelay),
 		retry.MaxJitter(retryJitter),
 		retry.OnRetry(func(n uint, err error) {
-			logrus.Debugf("提取Feed详情重试 #%d: %v", n, err)
+			slog.Debug("提取Feed详情重试", "attempt", n, "error", err)
 		}),
 	)
 
 	if err != nil {
-		logrus.Errorf("提取Feed详情失败: %v", err)
+		slog.Error("提取Feed详情失败", "error", err)
 		return nil, fmt.Errorf("提取Feed详情失败: %w", err)
 	}
 

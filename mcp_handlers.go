@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	apperrors "github.com/vmxmy/xiaohongshu-mcp/errors"
 	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
@@ -34,7 +34,7 @@ func parseBool(v interface{}) bool {
 
 // handleCheckLoginStatus 处理检查登录状态
 func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
-	logrus.Info("MCP: 检查登录状态")
+	slog.Info("MCP: 检查登录状态")
 
 	status, err := s.xiaohongshuService.CheckLoginStatus(ctx)
 	if err != nil {
@@ -57,7 +57,7 @@ func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 // handleGetLoginQrcode 处理获取登录二维码请求。
 // 返回二维码图片的 Base64 编码和超时时间，供前端展示扫码登录。
 func (s *AppServer) handleGetLoginQrcode(ctx context.Context) *MCPToolResult {
-	logrus.Info("MCP: 获取登录扫码图片")
+	slog.Info("MCP: 获取登录扫码图片")
 
 	result, err := s.xiaohongshuService.GetLoginQrcode(ctx)
 	if err != nil {
@@ -128,7 +128,7 @@ func validateCookiesJSON(data []byte) error {
 
 // handleSyncCookies 处理上传 cookies 请求。
 func (s *AppServer) handleSyncCookies(ctx context.Context, args SyncCookiesArgs) *MCPToolResult {
-	logrus.Info("MCP: 上传 cookies")
+	slog.Info("MCP: 上传 cookies")
 
 	payload, err := parseSyncCookiesPayload(args)
 	if err != nil {
@@ -142,7 +142,7 @@ func (s *AppServer) handleSyncCookies(ctx context.Context, args SyncCookiesArgs)
 	if err != nil {
 		return errorResult("保存 cookies 失败: " + err.Error())
 	}
-	logrus.WithFields(logrus.Fields{"path": path, "bytes": size}).Info("cookies 已写入")
+	slog.Info("cookies 已写入", "path", path, "bytes", size)
 	return &MCPToolResult{
 		Content: []MCPContent{{Type: "text", Text: fmt.Sprintf("cookies 已写入: %s (%d bytes)", path, size)}},
 	}
@@ -150,7 +150,7 @@ func (s *AppServer) handleSyncCookies(ctx context.Context, args SyncCookiesArgs)
 
 // handleDeleteCookies 处理删除 cookies 请求，用于登录重置
 func (s *AppServer) handleDeleteCookies(ctx context.Context) *MCPToolResult {
-	logrus.Info("MCP: 删除 cookies，重置登录状态")
+	slog.Info("MCP: 删除 cookies，重置登录状态")
 
 	err := s.xiaohongshuService.DeleteCookies(ctx)
 	if err != nil {
@@ -166,8 +166,8 @@ func (s *AppServer) handleDeleteCookies(ctx context.Context) *MCPToolResult {
 
 // handlePublishContent 处理发布内容
 func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 发布内容")
-	logrus.Debugf("MCP: 原始参数 - %+v", args)
+	slog.Info("MCP: 发布内容")
+	slog.Debug("MCP: 原始参数", "args", args)
 
 	// 解析必需参数
 	title, err := getString(args, "title")
@@ -185,7 +185,7 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 
 	// 验证图片
 	if len(imagePaths) == 0 {
-		logrus.Errorf("MCP: 图片参数错误 - 原始类型: %T, 值: %v", args["images"], args["images"])
+		slog.Error("MCP: 图片参数错误", "imagesType", fmt.Sprintf("%T", args["images"]), "imagesValue", args["images"])
 		return errorResult("发布失败: 至少需要1张图片。请确保 images 参数是字符串数组格式，如: [\"图片路径1\", \"图片路径2\"]")
 	}
 
@@ -201,10 +201,9 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 	// 解析定时发布参数
 	scheduleAt := getStringOpt(args, "schedule_at")
 
-	logrus.Infof("MCP: 发布内容 - 标题: %s, 图片数量: %d, 标签数量: %d, 地点: %s, 标记数量: %d, 定时: %s",
-		title, len(imagePaths), len(tags), location, len(markerTags), scheduleAt)
-	logrus.Debugf("MCP: 图片路径 - %v", imagePaths)
-	logrus.Debugf("MCP: 标记标签 - %v", markerTags)
+	slog.Info("MCP: 发布内容", "title", title, "imageCount", len(imagePaths), "tagCount", len(tags), "location", location, "markerCount", len(markerTags), "scheduleAt", scheduleAt)
+	slog.Debug("MCP: 图片路径", "imagePaths", imagePaths)
+	slog.Debug("MCP: 标记标签", "markerTags", markerTags)
 
 	// 构建发布请求
 	req := &PublishRequest{
@@ -231,7 +230,7 @@ func (s *AppServer) handlePublishContent(ctx context.Context, args map[string]in
 
 // handlePublishVideo 处理发布视频内容（仅本地单个视频文件）
 func (s *AppServer) handlePublishVideo(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 发布视频内容（本地）")
+	slog.Info("MCP: 发布视频内容（本地）")
 
 	title := getStringOpt(args, "title")
 	content := getStringOpt(args, "content")
@@ -245,7 +244,7 @@ func (s *AppServer) handlePublishVideo(ctx context.Context, args map[string]inte
 	// 解析定时发布参数
 	scheduleAt := getStringOpt(args, "schedule_at")
 
-	logrus.Infof("MCP: 发布视频 - 标题: %s, 标签数量: %d, 定时: %s", title, len(tags), scheduleAt)
+	slog.Info("MCP: 发布视频", "title", title, "tagCount", len(tags), "scheduleAt", scheduleAt)
 
 	// 构建发布请求
 	req := &PublishVideoRequest{
@@ -270,7 +269,7 @@ func (s *AppServer) handlePublishVideo(ctx context.Context, args map[string]inte
 
 // handleSaveDraft 处理保存草稿
 func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 保存草稿")
+	slog.Info("MCP: 保存草稿")
 
 	// 解析参数
 	title := getStringOpt(args, "title")
@@ -278,7 +277,7 @@ func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interfa
 	imagePaths := getStringSlice(args, "images")
 	tags := getStringSlice(args, "tags")
 
-	logrus.Infof("MCP: 保存草稿 - 标题: %s, 图片数量: %d, 标签数量: %d", title, len(imagePaths), len(tags))
+	slog.Info("MCP: 保存草稿", "title", title, "imageCount", len(imagePaths), "tagCount", len(tags))
 
 	// 调用保存草稿服务
 	if s.publishUsecase == nil {
@@ -303,7 +302,7 @@ func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interfa
 
 // handleSaveVideoDraft 处理保存视频草稿
 func (s *AppServer) handleSaveVideoDraft(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 保存视频草稿")
+	slog.Info("MCP: 保存视频草稿")
 
 	title := getStringOpt(args, "title")
 	content := getStringOpt(args, "content")
@@ -314,7 +313,7 @@ func (s *AppServer) handleSaveVideoDraft(ctx context.Context, args map[string]in
 		return errorResult("保存草稿失败: 缺少本地视频文件路径")
 	}
 
-	logrus.Infof("MCP: 保存视频草稿 - 标题: %s, 标签数量: %d", title, len(tags))
+	slog.Info("MCP: 保存视频草稿", "title", title, "tagCount", len(tags))
 
 	// 调用保存视频草稿服务
 	if s.publishUsecase == nil {
@@ -339,7 +338,7 @@ func (s *AppServer) handleSaveVideoDraft(ctx context.Context, args map[string]in
 
 // handleListFeeds 处理获取Feeds列表
 func (s *AppServer) handleListFeeds(ctx context.Context) *MCPToolResult {
-	logrus.Info("MCP: 获取Feeds列表")
+	slog.Info("MCP: 获取Feeds列表")
 
 	result, err := s.xiaohongshuService.ListFeeds(ctx)
 	if err != nil {
@@ -351,13 +350,13 @@ func (s *AppServer) handleListFeeds(ctx context.Context) *MCPToolResult {
 
 // handleSearchFeeds 处理搜索Feeds
 func (s *AppServer) handleSearchFeeds(ctx context.Context, args SearchFeedsArgs) *MCPToolResult {
-	logrus.Info("MCP: 搜索Feeds")
+	slog.Info("MCP: 搜索Feeds")
 
 	if args.Keyword == "" {
 		return errorResult("搜索Feeds失败: 缺少关键词参数")
 	}
 
-	logrus.Infof("MCP: 搜索Feeds - 关键词: %s", args.Keyword)
+	slog.Info("MCP: 搜索Feeds", "keyword", args.Keyword)
 
 	// 将 MCP 的 FilterOption 转换为 xiaohongshu.FilterOption
 	filter := xiaohongshu.FilterOption{
@@ -378,7 +377,7 @@ func (s *AppServer) handleSearchFeeds(ctx context.Context, args SearchFeedsArgs)
 
 // handleGetFeedDetail 处理获取Feed详情
 func (s *AppServer) handleGetFeedDetail(ctx context.Context, args map[string]any) *MCPToolResult {
-	logrus.Info("MCP: 获取Feed详情")
+	slog.Info("MCP: 获取Feed详情")
 
 	// 解析参数
 	feedID, err := getString(args, "feed_id")
@@ -449,7 +448,7 @@ func (s *AppServer) handleGetFeedDetail(ctx context.Context, args map[string]any
 		config.ScrollSpeed = raw
 	}
 
-	logrus.Infof("MCP: 获取Feed详情 - Feed ID: %s, loadAllComments=%v, config=%+v", feedID, loadAll, config)
+	slog.Info("MCP: 获取Feed详情", "feedID", feedID, "loadAllComments", loadAll, "config", config)
 
 	result, err := s.xiaohongshuService.GetFeedDetailWithConfig(ctx, feedID, xsecToken, loadAll, config)
 	if err != nil {
@@ -475,7 +474,7 @@ func (s *AppServer) handleGetFeedDetail(ctx context.Context, args map[string]any
 
 // handleUserProfile 获取用户主页
 func (s *AppServer) handleUserProfile(ctx context.Context, args map[string]any) *MCPToolResult {
-	logrus.Info("MCP: 获取用户主页")
+	slog.Info("MCP: 获取用户主页")
 
 	// 解析参数
 	userID, err := getString(args, "user_id")
@@ -488,7 +487,7 @@ func (s *AppServer) handleUserProfile(ctx context.Context, args map[string]any) 
 		return errorResult("获取用户主页失败: 缺少xsec_token参数")
 	}
 
-	logrus.Infof("MCP: 获取用户主页 - User ID: %s", userID)
+	slog.Info("MCP: 获取用户主页", "userID", userID)
 
 	result, err := s.xiaohongshuService.UserProfile(ctx, userID, xsecToken)
 	if err != nil {
@@ -570,7 +569,7 @@ func (s *AppServer) handleFavoriteFeed(ctx context.Context, args map[string]inte
 
 // handlePostComment 处理发表评论到Feed
 func (s *AppServer) handlePostComment(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 发表评论到Feed")
+	slog.Info("MCP: 发表评论到Feed")
 
 	// 解析参数
 	feedID, err := getString(args, "feed_id")
@@ -588,7 +587,7 @@ func (s *AppServer) handlePostComment(ctx context.Context, args map[string]inter
 		return errorResult("发表评论失败: 缺少content参数")
 	}
 
-	logrus.Infof("MCP: 发表评论 - Feed ID: %s, 内容长度: %d", feedID, len(content))
+	slog.Info("MCP: 发表评论", "feedID", feedID, "contentLength", len(content))
 
 	// 发表评论
 	result, err := s.xiaohongshuService.PostCommentToFeed(ctx, feedID, xsecToken, content)
@@ -605,7 +604,7 @@ func (s *AppServer) handlePostComment(ctx context.Context, args map[string]inter
 
 // handleReplyComment 处理回复评论
 func (s *AppServer) handleReplyComment(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 回复评论")
+	slog.Info("MCP: 回复评论")
 
 	// 解析参数
 	feedID, err := getString(args, "feed_id")
@@ -629,7 +628,7 @@ func (s *AppServer) handleReplyComment(ctx context.Context, args map[string]inte
 		return errorResult("回复评论失败: 缺少content参数")
 	}
 
-	logrus.Infof("MCP: 回复评论 - Feed ID: %s, Comment ID: %s, User ID: %s, 内容长度: %d", feedID, commentID, userID, len(content))
+	slog.Info("MCP: 回复评论", "feedID", feedID, "commentID", commentID, "userID", userID, "contentLength", len(content))
 
 	// 回复评论
 	result, err := s.xiaohongshuService.ReplyCommentToFeed(ctx, feedID, xsecToken, commentID, userID, content)
@@ -646,7 +645,7 @@ func (s *AppServer) handleReplyComment(ctx context.Context, args map[string]inte
 
 // handleFollowUser 处理关注/取关用户
 func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 关注/取关用户")
+	slog.Info("MCP: 关注/取关用户")
 
 	// 解析参数
 	userID, err := getString(args, "user_id")
@@ -688,7 +687,7 @@ func (s *AppServer) handleFollowUser(ctx context.Context, args map[string]interf
 
 // handleLikeComment 处理评论点赞/取消点赞
 func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 评论点赞/取消点赞")
+	slog.Info("MCP: 评论点赞/取消点赞")
 
 	// 解析参数
 	feedID, err := getString(args, "feed_id")
@@ -736,7 +735,7 @@ func (s *AppServer) handleLikeComment(ctx context.Context, args map[string]inter
 
 // handleShareFeed 处理分享笔记
 func (s *AppServer) handleShareFeed(ctx context.Context, feedID, xsecToken string) *MCPToolResult {
-	logrus.Info("MCP: 分享笔记")
+	slog.Info("MCP: 分享笔记")
 
 	if feedID == "" {
 		return errorResult("操作失败: 缺少feed_id参数")
@@ -758,7 +757,7 @@ func (s *AppServer) handleShareFeed(ctx context.Context, feedID, xsecToken strin
 
 // handleDeleteFeed 处理删除笔记
 func (s *AppServer) handleDeleteFeed(ctx context.Context, feedID, xsecToken string) *MCPToolResult {
-	logrus.Info("MCP: 删除笔记")
+	slog.Info("MCP: 删除笔记")
 
 	if feedID == "" {
 		return errorResult("操作失败: 缺少feed_id参数")
@@ -780,7 +779,7 @@ func (s *AppServer) handleDeleteFeed(ctx context.Context, feedID, xsecToken stri
 
 // handleDeleteComment 处理删除评论
 func (s *AppServer) handleDeleteComment(ctx context.Context, args map[string]interface{}) *MCPToolResult {
-	logrus.Info("MCP: 删除评论")
+	slog.Info("MCP: 删除评论")
 
 	feedID, err := getString(args, "feed_id")
 	if err != nil {
@@ -810,7 +809,7 @@ func (s *AppServer) handleDeleteComment(ctx context.Context, args map[string]int
 
 // handleGetMyStats 处理获取个人统计数据
 func (s *AppServer) handleGetMyStats(ctx context.Context) *MCPToolResult {
-	logrus.Info("MCP: 获取个人统计数据")
+	slog.Info("MCP: 获取个人统计数据")
 
 	stats, err := s.xiaohongshuService.GetMyStats(ctx)
 	if err != nil {
@@ -823,9 +822,9 @@ func (s *AppServer) handleGetMyStats(ctx context.Context) *MCPToolResult {
 // handleGetMyFeeds 处理获取自己的笔记列表
 func (s *AppServer) handleGetMyFeeds(ctx context.Context, limit int, userID string) *MCPToolResult {
 	if userID != "" {
-		logrus.Infof("MCP: 获取自己的笔记列表，限制: %d, 用户: %s", limit, userID)
+		slog.Info("MCP: 获取自己的笔记列表", "limit", limit, "userID", userID)
 	} else {
-		logrus.Infof("MCP: 获取自己的笔记列表，限制: %d", limit)
+		slog.Info("MCP: 获取自己的笔记列表", "limit", limit)
 	}
 
 	feeds, err := s.xiaohongshuService.GetMyFeeds(ctx, limit, userID)
