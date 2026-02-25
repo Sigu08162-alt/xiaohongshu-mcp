@@ -2,6 +2,7 @@ package xiaohongshu
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
@@ -65,11 +66,15 @@ func (a *LoginAction) Login(ctx context.Context) error {
 		return nil
 	}
 
-	// 等待扫码成功提示或者登录完成
-	// 这里我们等待登录成功的元素出现，这样更简单可靠
-	_, err := pp.Element(".main-container .user .link-wrapper .channel")
-	if err != nil {
-		return errors.Wrap(err, "等待登录元素失败")
+	// 提示用户扫描二维码（浏览器窗口已打开，二维码弹窗应自动出现）
+	slog.Info("请在浏览器窗口中扫描二维码登录（等待最多120秒）...")
+
+	// 使用 WaitForLogin 轮询等待用户扫码完成（最多120秒）
+	waitCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+
+	if !a.WaitForLogin(waitCtx) {
+		return errors.New("等待登录超时（120秒），请重试")
 	}
 
 	return nil
