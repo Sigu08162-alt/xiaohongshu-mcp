@@ -398,21 +398,61 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	}
 
 	slog.Info("点击更多按钮...")
-	if err := moreBtn.Click(); err != nil {
-		return fmt.Errorf("点击更多按钮失败: %w", err)
+	// 先尝试 JS 直接点击（绕过可见性遮挡问题）
+	jsClicked := false
+	for _, sel := range []string{".menu-icon-btn", "[data-testid='more-options']", "[aria-label='更多']", "[aria-label='更多选项']"} {
+		_, jsErr := page.Eval(fmt.Sprintf(`() => { const el = document.querySelector(%q); if (el) { el.click(); return true; } return false; }`, sel))
+		if jsErr == nil {
+			slog.Info("JS click 成功", "selector", sel)
+			jsClicked = true
+			break
+		}
+	}
+	if !jsClicked {
+		// fallback: Playwright native click
+		if err := moreBtn.ScrollIntoView(); err != nil {
+			slog.Warn("scroll into view failed", "err", err)
+		}
+		if err := moreBtn.ClickForce(); err != nil {
+			if err2 := moreBtn.Click(); err2 != nil {
+				return fmt.Errorf("点击更多按钮失败: %w", err2)
+			}
+		}
 	}
 	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
 		return err
 	}
 
 	deleteBtn, err := d.findDeleteButton(page)
+	deleteBtnJSFallback := false
 	if err != nil {
-		return fmt.Errorf("未找到删除按钮: %w", err)
+		// 截图调试：看菜单弹出后的 DOM
+		if sErr := page.Screenshot("/tmp/delete_menu_debug.png"); sErr == nil {
+			slog.Info("菜单截图已保存", "path", "/tmp/delete_menu_debug.png")
+		}
+		if texts, eErr := page.Eval(`() => [...document.querySelectorAll('div,li,span,button,a')].filter(e => e.innerText && e.innerText.trim() === '删除').map(e => e.tagName + ' class=' + e.className).join('\n')`); eErr == nil {
+			slog.Info("含'删除'文字的元素", "elements", texts)
+		}
+		// 尝试直接 JS 点击删除
+		result, jsErr := page.Eval(`() => { const els = [...document.querySelectorAll('div,li,span,button,a')].filter(e => e.innerText && e.innerText.trim() === '删除'); if (els.length > 0) { els[0].click(); return true; } return false; }`)
+		if jsErr == nil && result != false {
+			slog.Info("JS 直接点击删除成功")
+			deleteBtnJSFallback = true
+		} else {
+			return fmt.Errorf("未找到删除按钮: %w", err)
+		}
 	}
 
-	slog.Info("点击删除按钮...")
-	if err := deleteBtn.Click(); err != nil {
-		return fmt.Errorf("点击删除按钮失败: %w", err)
+	if !deleteBtnJSFallback {
+		slog.Info("点击删除按钮...")
+		if err := deleteBtn.Click(); err != nil {
+			// JS fallback
+			result, jsErr := page.Eval(`() => { const els = [...document.querySelectorAll('div,li,span,button,a')].filter(e => e.innerText && e.innerText.trim() === '删除'); if (els.length > 0) { els[0].click(); return true; } return false; }`)
+			if jsErr != nil || result == false {
+				return fmt.Errorf("点击删除按钮失败: %w", err)
+			}
+			slog.Info("JS fallback 点击删除成功")
+		}
 	}
 	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
 		return err
@@ -527,6 +567,12 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 // findMoreButton 查找更多按钮（三个点）
 func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error) {
 	selectors := []string{
+		".menu-icon-btn",                    // 实际页面 class（从调试截图发现）
+		"[data-testid='more-options']",
+		"[data-testid='more']",
+		"[aria-label='更多选项']",
+		"[aria-label='更多']",
+		"button:has-text('更多')",
 		".info-right-area-more-container",
 		".more-button",
 		".operate-button",
