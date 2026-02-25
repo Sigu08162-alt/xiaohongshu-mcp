@@ -50,7 +50,7 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (*LoginStatusResult,
 	nickname := ""
 	raw, evalErr := pp.Eval(`() => {
 		try {
-			return window.__INITIAL_STATE__?.user?.userInfo?.basicInfo?.nickname || "";
+			return window.__INITIAL_STATE__?.user?.userPageData?.value?.basicInfo?.nickname || "";
 		} catch(e) { return ""; }
 	}`)
 	if evalErr == nil {
