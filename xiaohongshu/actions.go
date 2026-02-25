@@ -422,6 +422,15 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	if btnInfo, evalErr := page.Eval(`() => [...document.querySelectorAll('button')].map(b => 'class=' + b.className + ' aria=' + (b.getAttribute('aria-label')||'') + ' text=' + b.innerText.trim().slice(0,20)).join('\n')`); evalErr == nil {
 		slog.Info("页面按钮列表（详情弹窗加载后）", "buttons", btnInfo)
 	}
+	// 诊断：打印 dragger 按钮的实际位置
+	if posInfo, evalErr := page.Eval(`() => {
+		const btn = document.querySelector('button.dragger');
+		if (!btn) return 'dragger not found';
+		const rect = btn.getBoundingClientRect();
+		return JSON.stringify({top:rect.top,left:rect.left,bottom:rect.bottom,right:rect.right,w:rect.width,h:rect.height,vw:window.innerWidth,vh:window.innerHeight});
+	}`); evalErr == nil {
+		slog.Info("dragger 按钮位置诊断", "pos", posInfo)
+	}
 
 	moreBtn, err := d.findMoreButton(page)
 	if err != nil {
@@ -438,20 +447,43 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	// 优先用 Playwright native click（触发完整 mousedown→mouseup→click 事件链）
 	// 小红书菜单依赖完整事件链，JS click 只触发 click 事件，菜单不会弹出
 	nativeClicked := false
-	if err := moreBtn.ScrollIntoView(); err != nil {
-		slog.Warn("scroll into view failed", "err", err)
+	// 获取 dragger 按钮的中心坐标，用 Mouse.Click 直接按坐标点击（绕过 viewport 限制）
+	// 返回 "x,y" 字符串避免 Playwright Eval 类型断言问题
+	posResult, posErr := page.Eval(`() => {
+		const btn = document.querySelector('button.dragger');
+		if (!btn) return '';
+		const rect = btn.getBoundingClientRect();
+		return (rect.left + rect.width/2) + ',' + (rect.top + rect.height/2);
+	}`)
+	if posErr == nil && posResult != nil {
+		if posStr, ok := posResult.(string); ok && posStr != "" {
+			var x, y float64
+			fmt.Sscanf(posStr, "%f,%f", &x, &y)
+			slog.Info("用坐标点击 dragger 按钮", "x", x, "y", y)
+			mouse := page.Mouse()
+			if moveErr := mouse.MoveTo(x, y); moveErr != nil {
+				slog.Warn("鼠标移动失败", "err", moveErr)
+			} else if clickErr := mouse.Click(browser.MouseButtonLeft); clickErr != nil {
+				slog.Warn("坐标点击失败", "err", clickErr)
+			} else {
+				slog.Info("坐标点击成功", "x", x, "y", y)
+				nativeClicked = true
+			}
+		}
 	}
-	if err := moreBtn.Click(); err != nil {
-		slog.Warn("native click failed, trying ClickForce", "err", err)
-		if err2 := moreBtn.ClickForce(); err2 != nil {
-			slog.Warn("ClickForce also failed, falling back to JS click", "err", err2)
+	if !nativeClicked {
+		if err := moreBtn.Click(); err != nil {
+			slog.Warn("native click failed, trying ClickForce", "err", err)
+			if err2 := moreBtn.ClickForce(); err2 != nil {
+				slog.Warn("ClickForce also failed", "err", err2)
+			} else {
+				slog.Info("ClickForce 成功")
+				nativeClicked = true
+			}
 		} else {
-			slog.Info("ClickForce 成功")
+			slog.Info("Playwright native click 成功")
 			nativeClicked = true
 		}
-	} else {
-		slog.Info("Playwright native click 成功")
-		nativeClicked = true
 	}
 	if !nativeClicked {
 		// 最后兜底：JS click（可能菜单不弹出，但至少尝试）

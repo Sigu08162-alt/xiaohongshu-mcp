@@ -23,8 +23,8 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	width := getEnvInt("XHS_VIEWPORT_WIDTH", 1920)
-	height := getEnvInt("XHS_VIEWPORT_HEIGHT", 1080)
+	width := getEnvInt("XHS_VIEWPORT_WIDTH", 1280)
+	height := getEnvInt("XHS_VIEWPORT_HEIGHT", 800)
 	return Config{
 		Headless:       true,
 		ViewportWidth:  width,
