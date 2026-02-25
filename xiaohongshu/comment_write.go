@@ -40,6 +40,7 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 		return fmt.Errorf("导航失败: %w", err)
 	}
 
+	// 等待评论输入框出现（最多15秒），比等待 __INITIAL_STATE__ 更可靠
 	maxWait, err := f.polling.Timeout()
 	if err != nil {
 		return err
@@ -49,14 +50,9 @@ func (f *CommentFeedAction) PostComment(ctx context.Context, feedID, xsecToken, 
 		return err
 	}
 	startTime := time.Now()
-
 	for time.Since(startTime) < maxWait {
-		hasNoteData, err := page.Eval(`() => {
-			return window.__INITIAL_STATE__ &&
-			       window.__INITIAL_STATE__.note &&
-			       window.__INITIAL_STATE__.note.noteDetailMap !== undefined;
-		}`)
-		if err == nil && hasNoteData == true {
+		has, err := page.Has("#content-textarea")
+		if err == nil && has {
 			break
 		}
 		time.Sleep(checkInterval)

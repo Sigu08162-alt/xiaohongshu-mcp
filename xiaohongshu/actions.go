@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	myerrors "github.com/vmxmy/xiaohongshu-mcp/errors"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
@@ -53,17 +53,17 @@ func (a *interactAction) preparePage(ctx context.Context, actionType interactAct
 	}
 	page := a.page.WithContext(ctx).WithTimeout(timeout)
 	url := makeFeedDetailURL(feedID, xsecToken)
-	logrus.Infof("Opening feed detail page for %s: %s", actionType, url)
+	slog.Info("Opening feed detail page", "actionType", actionType, "url", url)
 
 	if err := page.Goto(url); err != nil {
-		logrus.Warnf("failed to navigate to %s: %v", url, err)
+		slog.Warn("failed to navigate", "url", url, "error", err)
 	}
 	waitDOMStable, err := a.polling.Delay("wait_5000ms")
 	if err != nil {
 		return nil, err
 	}
 	if err := page.WaitDOMStable(waitDOMStable, 0.95); err != nil {
-		logrus.Warnf("WaitDOMStable failed: %v", err)
+		slog.Warn("WaitDOMStable failed", "error", err)
 	}
 	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (a *interactAction) waitForInitialState(page browser.Page) error {
 				Object.keys(window.__INITIAL_STATE__.note.noteDetailMap).length > 0);
 		}`)
 		if err != nil {
-			logrus.Warnf("Eval error when waiting for __INITIAL_STATE__: %v", err)
+			slog.Warn("Eval error when waiting for __INITIAL_STATE__", "error", err)
 			if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
 				return err
 			}
@@ -98,22 +98,22 @@ func (a *interactAction) waitForInitialState(page browser.Page) error {
 		}
 
 		if boolResult, ok := result.(bool); ok && boolResult {
-			logrus.Info("__INITIAL_STATE__ 数据就绪")
+			slog.Info("__INITIAL_STATE__ 数据就绪")
 			return nil
 		}
 
-		logrus.Infof("等待 __INITIAL_STATE__ 就绪... (%d/%d)", i+1, maxRetries)
+		slog.Info("等待 __INITIAL_STATE__ 就绪...", "attempt", i+1, "maxRetries", maxRetries)
 		if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
 			return err
 		}
 	}
-	logrus.Warn("__INITIAL_STATE__ 等待超时，继续尝试操作")
+	slog.Warn("__INITIAL_STATE__ 等待超时，继续尝试操作")
 	return nil
 }
 
 func (a *interactAction) performClick(page browser.Page, selector string) {
 	if err := page.Click(selector); err != nil {
-		logrus.Warnf("click selector %s failed: %v", selector, err)
+		slog.Warn("click selector failed", "selector", selector, "error", err)
 	}
 }
 
@@ -149,16 +149,16 @@ func (a *LikeAction) perform(ctx context.Context, feedID, xsecToken string, targ
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("failed to read interact state: %v (continue to try clicking)", err)
+		slog.Warn("failed to read interact state", "error", err)
 		return a.toggleLike(page, feedID, targetLiked, actionType)
 	}
 
 	if targetLiked && liked {
-		logrus.Infof("feed %s already liked, skip clicking", feedID)
+		slog.Info("feed already liked, skip clicking", "feedID", feedID)
 		return nil
 	}
 	if !targetLiked && !liked {
-		logrus.Infof("feed %s not liked yet, skip clicking", feedID)
+		slog.Info("feed not liked yet, skip clicking", "feedID", feedID)
 		return nil
 	}
 
@@ -173,15 +173,15 @@ func (a *LikeAction) toggleLike(page browser.Page, feedID string, targetLiked bo
 
 	liked, _, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("验证%s状态失败: %v", actionType, err)
+		slog.Warn("验证状态失败", "actionType", actionType, "error", err)
 		return nil
 	}
 	if liked == targetLiked {
-		logrus.Infof("feed %s %s成功", feedID, actionType)
+		slog.Info("feed 操作成功", "feedID", feedID, "actionType", actionType)
 		return nil
 	}
 
-	logrus.Warnf("feed %s %s可能未成功，状态未变化，尝试再次点击", feedID, actionType)
+	slog.Warn("feed 操作可能未成功，状态未变化，尝试再次点击", "feedID", feedID, "actionType", actionType)
 	a.performClick(page, SelectorLikeButton)
 	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
 		return err
@@ -189,11 +189,11 @@ func (a *LikeAction) toggleLike(page browser.Page, feedID string, targetLiked bo
 
 	liked, _, err = a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("第二次验证%s状态失败: %v", actionType, err)
+		slog.Warn("第二次验证状态失败", "actionType", actionType, "error", err)
 		return nil
 	}
 	if liked == targetLiked {
-		logrus.Infof("feed %s 第二次点击%s成功", feedID, actionType)
+		slog.Info("feed 第二次点击操作成功", "feedID", feedID, "actionType", actionType)
 		return nil
 	}
 
@@ -232,16 +232,16 @@ func (a *FavoriteAction) perform(ctx context.Context, feedID, xsecToken string, 
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("failed to read interact state: %v (continue to try clicking)", err)
+		slog.Warn("failed to read interact state", "error", err)
 		return a.toggleFavorite(page, feedID, targetCollected, actionType)
 	}
 
 	if targetCollected && collected {
-		logrus.Infof("feed %s already favorited, skip clicking", feedID)
+		slog.Info("feed already favorited, skip clicking", "feedID", feedID)
 		return nil
 	}
 	if !targetCollected && !collected {
-		logrus.Infof("feed %s not favorited yet, skip clicking", feedID)
+		slog.Info("feed not favorited yet, skip clicking", "feedID", feedID)
 		return nil
 	}
 
@@ -256,15 +256,15 @@ func (a *FavoriteAction) toggleFavorite(page browser.Page, feedID string, target
 
 	_, collected, err := a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("验证%s状态失败: %v", actionType, err)
+		slog.Warn("验证状态失败", "actionType", actionType, "error", err)
 		return nil
 	}
 	if collected == targetCollected {
-		logrus.Infof("feed %s %s成功", feedID, actionType)
+		slog.Info("feed 操作成功", "feedID", feedID, "actionType", actionType)
 		return nil
 	}
 
-	logrus.Warnf("feed %s %s可能未成功，状态未变化，尝试再次点击", feedID, actionType)
+	slog.Warn("feed 操作可能未成功，状态未变化，尝试再次点击", "feedID", feedID, "actionType", actionType)
 	a.performClick(page, SelectorCollectButton)
 	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
 		return err
@@ -272,11 +272,11 @@ func (a *FavoriteAction) toggleFavorite(page browser.Page, feedID string, target
 
 	_, collected, err = a.getInteractState(page, feedID)
 	if err != nil {
-		logrus.Warnf("第二次验证%s状态失败: %v", actionType, err)
+		slog.Warn("第二次验证状态失败", "actionType", actionType, "error", err)
 		return nil
 	}
 	if collected == targetCollected {
-		logrus.Infof("feed %s 第二次点击%s成功", feedID, actionType)
+		slog.Info("feed 第二次点击操作成功", "feedID", feedID, "actionType", actionType)
 		return nil
 	}
 
@@ -366,7 +366,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	url := makeFeedDetailURL(feedID, xsecToken)
-	logrus.Infof("打开 feed 详情页进行删除: %s", url)
+	slog.Info("打开 feed 详情页进行删除", "url", url)
 
 	if err := page.Goto(url); err != nil {
 		return fmt.Errorf("导航到详情页失败: %w", err)
@@ -376,7 +376,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return err
 	}
 	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		logrus.Warnf("等待DOM稳定超时，继续执行: %v", err)
+		slog.Warn("等待DOM稳定超时，继续执行", "error", err)
 	}
 	if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
 		return err
@@ -389,15 +389,15 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	moreBtn, err := d.findMoreButton(page)
 	if err != nil {
 		if sErr := page.Screenshot("/tmp/delete_debug.png"); sErr == nil {
-			logrus.Infof("调试截图已保存: /tmp/delete_debug.png")
+			slog.Info("调试截图已保存", "path", "/tmp/delete_debug.png")
 		}
 		if classes, eErr := page.Eval(`() => [...document.querySelectorAll('*')].filter(e => e.className && typeof e.className === 'string').map(e => e.className).filter(c => /more|operate|action|btn|button|ellipsis|dot/i.test(c)).slice(0, 30).join('\n')`); eErr == nil {
-			logrus.Infof("页面相关class名:\n%v", classes)
+			slog.Info("页面相关class名", "classes", classes)
 		}
 		return fmt.Errorf("未找到更多按钮: %w", err)
 	}
 
-	logrus.Info("点击更多按钮...")
+	slog.Info("点击更多按钮...")
 	if err := moreBtn.Click(); err != nil {
 		return fmt.Errorf("点击更多按钮失败: %w", err)
 	}
@@ -410,7 +410,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return fmt.Errorf("未找到删除按钮: %w", err)
 	}
 
-	logrus.Info("点击删除按钮...")
+	slog.Info("点击删除按钮...")
 	if err := deleteBtn.Click(); err != nil {
 		return fmt.Errorf("点击删除按钮失败: %w", err)
 	}
@@ -423,7 +423,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return fmt.Errorf("未找到确认按钮: %w", err)
 	}
 
-	logrus.Info("点击确认删除...")
+	slog.Info("点击确认删除...")
 	if err := confirmBtn.Click(); err != nil {
 		return fmt.Errorf("点击确认按钮失败: %w", err)
 	}
@@ -431,7 +431,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return err
 	}
 
-	logrus.Infof("笔记删除成功: %s", feedID)
+	slog.Info("笔记删除成功", "feedID", feedID)
 	return nil
 }
 
@@ -444,7 +444,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
 	url := makeFeedDetailURL(feedID, xsecToken)
-	logrus.Infof("打开 feed 详情页进行删除评论: %s", url)
+	slog.Info("打开 feed 详情页进行删除评论", "url", url)
 
 	if err := page.Goto(url); err != nil {
 		return fmt.Errorf("导航到详情页失败: %w", err)
@@ -454,7 +454,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 		return err
 	}
 	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		logrus.Warnf("等待DOM稳定超时，继续执行: %v", err)
+		slog.Warn("等待DOM稳定超时，继续执行", "error", err)
 	}
 	if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
 		return err
@@ -472,7 +472,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 		return fmt.Errorf("无法找到评论: %w", err)
 	}
 
-	logrus.Info("滚动到评论位置...")
+	slog.Info("滚动到评论位置...")
 	if err := commentEl.ScrollIntoView(); err != nil {
 		return fmt.Errorf("滚动到评论位置失败: %w", err)
 	}
@@ -485,7 +485,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 		return fmt.Errorf("未找到评论更多按钮: %w", err)
 	}
 
-	logrus.Info("点击评论更多按钮...")
+	slog.Info("点击评论更多按钮...")
 	if err := moreBtn.Click(); err != nil {
 		return fmt.Errorf("点击更多按钮失败: %w", err)
 	}
@@ -498,7 +498,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 		return fmt.Errorf("未找到删除按钮: %w", err)
 	}
 
-	logrus.Info("点击删除按钮...")
+	slog.Info("点击删除按钮...")
 	if err := deleteBtn.Click(); err != nil {
 		return fmt.Errorf("点击删除按钮失败: %w", err)
 	}
@@ -508,11 +508,11 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 
 	confirmBtn, err := d.findConfirmButton(page)
 	if err != nil {
-		logrus.Warnf("未找到确认按钮，可能已直接删除: %v", err)
+		slog.Warn("未找到确认按钮，可能已直接删除", "error", err)
 		return nil
 	}
 
-	logrus.Info("点击确认删除...")
+	slog.Info("点击确认删除...")
 	if err := confirmBtn.Click(); err != nil {
 		return fmt.Errorf("点击确认按钮失败: %w", err)
 	}
@@ -520,7 +520,7 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 		return err
 	}
 
-	logrus.Infof("评论删除成功")
+	slog.Info("评论删除成功")
 	return nil
 }
 
@@ -541,7 +541,7 @@ func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到更多按钮: %s", sel)
+			slog.Info("找到更多按钮", "selector", sel)
 			return elem, nil
 		}
 	}
@@ -558,7 +558,7 @@ func (d *DeleteAction) findCommentMoreButton(commentEl browser.Element) (browser
 	for _, sel := range selectors {
 		elem, err := commentEl.Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到评论更多按钮: %s", sel)
+			slog.Info("找到评论更多按钮", "selector", sel)
 			return elem, nil
 		}
 	}
@@ -578,7 +578,7 @@ func (d *DeleteAction) findDeleteButton(page browser.Page) (browser.Element, err
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到删除按钮: %s", sel)
+			slog.Info("找到删除按钮", "selector", sel)
 			return elem, nil
 		}
 	}
@@ -587,7 +587,7 @@ func (d *DeleteAction) findDeleteButton(page browser.Page) (browser.Element, err
 		for _, btn := range buttons {
 			text, _ := btn.Text()
 			if text == "删除" {
-				logrus.Info("通过文本找到删除按钮")
+				slog.Info("通过文本找到删除按钮")
 				return btn, nil
 			}
 		}
@@ -609,7 +609,7 @@ func (d *DeleteAction) findConfirmButton(page browser.Page) (browser.Element, er
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到确认按钮: %s", sel)
+			slog.Info("找到确认按钮", "selector", sel)
 			return elem, nil
 		}
 	}
@@ -618,7 +618,7 @@ func (d *DeleteAction) findConfirmButton(page browser.Page) (browser.Element, er
 		for _, btn := range buttons {
 			text, _ := btn.Text()
 			if text == "确认" || text == "确定" {
-				logrus.Info("通过文本找到确认按钮")
+				slog.Info("通过文本找到确认按钮")
 				return btn, nil
 			}
 		}
@@ -648,7 +648,7 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 	page := s.page.WithContext(ctx).WithTimeout(timeout)
 
 	url := makeFeedDetailURL(feedID, xsecToken)
-	logrus.Infof("打开 feed 详情页进行分享: %s", url)
+	slog.Info("打开 feed 详情页进行分享", "url", url)
 
 	if err := page.Goto(url); err != nil {
 		return "", fmt.Errorf("导航失败: %w", err)
@@ -673,17 +673,17 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 		return "", fmt.Errorf("未找到分享按钮: %w", err)
 	}
 
-	logrus.Info("滚动到分享按钮...")
+	slog.Info("滚动到分享按钮...")
 	if err := shareBtn.ScrollIntoView(); err != nil {
-		logrus.Warnf("滚动失败: %v", err)
+		slog.Warn("滚动失败", "error", err)
 	}
 	if err := polling.SleepDelay(s.polling, "wait_500ms"); err != nil {
 		return "", err
 	}
 
-	logrus.Info("点击分享按钮...")
+	slog.Info("点击分享按钮...")
 	if err := shareBtn.Click(); err != nil {
-		logrus.Warnf("点击失败: %v，尝试使用 JS 点击", err)
+		slog.Warn("点击失败，尝试使用 JS 点击", "error", err)
 		_, err = page.Eval(`() => {
 			const buttons = Array.from(document.querySelectorAll('button, [class*="share"]'));
 			const shareBtn = buttons.find(btn =>
@@ -706,13 +706,13 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 
 	copyLinkBtn, err := s.findCopyLinkButton(page)
 	if err != nil {
-		logrus.Warnf("未找到复制链接按钮: %v，尝试直接获取链接", err)
+		slog.Warn("未找到复制链接按钮，尝试直接获取链接", "error", err)
 		return page.URL(), nil
 	}
 
-	logrus.Info("点击复制链接按钮...")
+	slog.Info("点击复制链接按钮...")
 	if err := copyLinkBtn.Click(); err != nil {
-		logrus.Warnf("点击复制链接失败: %v", err)
+		slog.Warn("点击复制链接失败", "error", err)
 	}
 	if err := polling.SleepDelay(s.polling, "wait_1000ms"); err != nil {
 		return "", err
@@ -720,11 +720,11 @@ func (s *ShareAction) ShareFeed(ctx context.Context, feedID, xsecToken string) (
 
 	shareLink, err := s.getShareLinkFromClipboard(page)
 	if err != nil {
-		logrus.Warnf("从剪贴板获取链接失败: %v，使用当前URL", err)
+		slog.Warn("从剪贴板获取链接失败，使用当前URL", "error", err)
 		return page.URL(), nil
 	}
 
-	logrus.Infof("成功获取分享链接: %s", shareLink)
+	slog.Info("成功获取分享链接", "shareLink", shareLink)
 	return shareLink, nil
 }
 
@@ -743,7 +743,7 @@ func (s *ShareAction) findShareButton(page browser.Page) (browser.Element, error
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到分享按钮: %s", sel)
+			slog.Info("找到分享按钮", "selector", sel)
 			return elem, nil
 		}
 	}
@@ -752,7 +752,7 @@ func (s *ShareAction) findShareButton(page browser.Page) (browser.Element, error
 		for _, btn := range buttons {
 			text, _ := btn.Text()
 			if text == "分享" {
-				logrus.Info("通过文本找到分享按钮")
+				slog.Info("通过文本找到分享按钮")
 				return btn, nil
 			}
 		}
@@ -774,7 +774,7 @@ func (s *ShareAction) findCopyLinkButton(page browser.Page) (browser.Element, er
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			logrus.Infof("找到复制链接按钮: %s", sel)
+			slog.Info("找到复制链接按钮", "selector", sel)
 			return elem, nil
 		}
 	}
@@ -783,7 +783,7 @@ func (s *ShareAction) findCopyLinkButton(page browser.Page) (browser.Element, er
 		for _, btn := range buttons {
 			text, _ := btn.Text()
 			if text == "复制链接" || text == "复制" {
-				logrus.Info("通过文本找到复制链接按钮")
+				slog.Info("通过文本找到复制链接按钮")
 				return btn, nil
 			}
 		}

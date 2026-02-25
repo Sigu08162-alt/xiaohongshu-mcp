@@ -10,7 +10,7 @@ import (
 
 // IntegrationTestLikeUnlike tests like + unlike on the first personal feed.
 // Requires explicit: go test ./integration/... -run Integration
-func IntegrationTestLikeUnlike(t *testing.T) {
+func TestIntegrationLikeUnlike(t *testing.T) {
 	requireCookies(t)
 	s := newSuite(t)
 
@@ -32,7 +32,7 @@ func IntegrationTestLikeUnlike(t *testing.T) {
 
 // IntegrationTestPostDeleteComment tests posting and deleting a comment.
 // Requires explicit: go test ./integration/... -run Integration
-func IntegrationTestPostDeleteComment(t *testing.T) {
+func TestIntegrationPostDeleteComment(t *testing.T) {
 	requireCookies(t)
 	s := newSuite(t)
 

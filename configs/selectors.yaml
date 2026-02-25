@@ -1,4 +1,4 @@
-version: "2026-02-24"
+version: "2026-02-25"
 last_updated: "2026-01-21T04:00:00+08:00"
 updated_at: "2026-02-24T00:00:00Z"
 description: "小红书页面元素选择器配置"
@@ -284,3 +284,154 @@ publish_save_draft:
     must_be_visible: true
     must_be_clickable: true
     text_contains: ["暂存"]
+
+# ==========================================
+# 删除流程选择器（语义优先，class降级）
+# 优先级：data-testid > aria-label > role+text > 语义标签+text > 动态class（最脆弱）
+# ==========================================
+
+# 删除流程 - 更多选项按钮（三个点）
+delete_more_button:
+  name: "更多选项按钮"
+  description: "笔记详情页右上角的「更多」/「⋯」按钮，用于展开操作菜单"
+  primary:
+    # 最稳定：data-testid（不随样式变化）
+    - selector: "[data-testid='more-options']"
+      version: "semantic"
+      confidence: 0.99
+      description: "data-testid 属性，最稳定"
+    - selector: "[data-testid='more']"
+      version: "semantic"
+      confidence: 0.98
+      description: "data-testid 属性备选"
+    # 较稳定：aria-label
+    - selector: "[aria-label='更多选项']"
+      version: "semantic"
+      confidence: 0.95
+      description: "aria-label 精确匹配"
+    - selector: "[aria-label='更多']"
+      version: "semantic"
+      confidence: 0.92
+      description: "aria-label 模糊匹配"
+    - selector: "button[aria-label*='更多']"
+      version: "semantic"
+      confidence: 0.88
+      description: "button + aria-label 包含匹配"
+    # 中等稳定：语义标签 + 文本
+    - selector: "button:has-text('更多')"
+      version: "semantic"
+      confidence: 0.80
+      description: "按钮文本匹配"
+  fallback:
+    # 历史已知 class（较脆弱，class 随版本变化）
+    - selector: ".info-right-area-more-container"
+      version: "2024-12"
+      confidence: 0.70
+      description: "当前版本 class"
+    - selector: ".more-button"
+      version: "2024-06"
+      confidence: 0.60
+      description: "旧版 class"
+    - selector: ".operate-button"
+      version: "2024-06"
+      confidence: 0.55
+      description: "旧版操作按钮 class"
+    - selector: "[class*='more-container']"
+      version: "universal"
+      confidence: 0.50
+      description: "动态 class 模糊匹配"
+    - selector: "[class*='more']"
+      version: "universal"
+      confidence: 0.40
+      description: "最宽泛的动态 class（最后兜底）"
+  validation:
+    must_be_visible: true
+    must_be_clickable: true
+
+# 删除流程 - 删除按钮（菜单项）
+delete_button:
+  name: "删除按钮"
+  description: "更多操作菜单中的「删除」菜单项"
+  primary:
+    # 最稳定：data-testid
+    - selector: "[data-testid='delete']"
+      version: "semantic"
+      confidence: 0.99
+      description: "data-testid 属性，最稳定"
+    # 较稳定：aria-label
+    - selector: "[aria-label='删除']"
+      version: "semantic"
+      confidence: 0.95
+      description: "aria-label 精确匹配"
+    # 中等稳定：语义标签 + 文本（Playwright :has-text 伪类）
+    - selector: "button:has-text('删除')"
+      version: "semantic"
+      confidence: 0.85
+      description: "按钮文本精确匹配"
+  fallback:
+    # 历史已知 class（较脆弱）
+    - selector: "[class*='delete']"
+      version: "universal"
+      confidence: 0.50
+      description: "动态 class 模糊匹配（最后兜底）"
+  text_match:
+    - "删除"
+  validation:
+    must_be_visible: true
+    must_be_clickable: true
+    text_contains: ["删除"]
+
+# 删除流程 - 确认删除按钮（弹窗内）
+delete_confirm_button:
+  name: "确认删除按钮"
+  description: "删除确认弹窗中的「确认」/「确定」/「删除」按钮"
+  primary:
+    # 最稳定：data-testid
+    - selector: "[data-testid='confirm-delete']"
+      version: "semantic"
+      confidence: 0.99
+      description: "data-testid 精确匹配，最稳定"
+    - selector: "[data-testid='confirm']"
+      version: "semantic"
+      confidence: 0.98
+      description: "data-testid 通用确认"
+    # 较稳定：aria-label
+    - selector: "[aria-label='确认删除']"
+      version: "semantic"
+      confidence: 0.95
+      description: "aria-label 精确匹配"
+    - selector: "[aria-label='确认']"
+      version: "semantic"
+      confidence: 0.92
+      description: "aria-label 通用匹配"
+    # 中等稳定：语义标签 + 文本
+    - selector: "button:has-text('确认')"
+      version: "semantic"
+      confidence: 0.85
+      description: "确认文本匹配"
+    - selector: "button:has-text('确定')"
+      version: "semantic"
+      confidence: 0.85
+      description: "确定文本匹配"
+    - selector: "button:has-text('删除')"
+      version: "semantic"
+      confidence: 0.80
+      description: "弹窗中的删除文本匹配"
+  fallback:
+    # 历史已知 class（较脆弱）
+    - selector: ".confirm-btn"
+      version: "2024-12"
+      confidence: 0.65
+      description: "历史 class"
+    - selector: "[class*='confirm']"
+      version: "universal"
+      confidence: 0.50
+      description: "动态 class 模糊匹配（最后兜底）"
+  text_match:
+    - "确认"
+    - "确定"
+    - "删除"
+  validation:
+    must_be_visible: true
+    must_be_clickable: true
+    text_contains: ["确认", "确定", "删除"]
