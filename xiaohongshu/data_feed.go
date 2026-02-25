@@ -521,68 +521,60 @@ const injectAPIInterceptor = `
 })();
 `
 
-// GetMyStats 获取当前用户的统计数据（通过 AddInitScript 在导航前注入拦截器，绕过签名验证）
+// GetMyStats 获取当前用户的统计数据（复用 GetMyProfileViaSidebar，从 __INITIAL_STATE__ 提取，无需创作者中心 API）
 func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
-	timeout, err := d.polling.Delay("wait_60000ms")
+	profileAction, err := NewUserProfileAction(d.page, d.polling)
 	if err != nil {
-		return nil, err
-	}
-	page := d.page.WithContext(ctx).WithTimeout(timeout)
-
-	// 在导航前注册 InitScript，确保页面加载时拦截器已就绪
-	slog.Info("注册 API 拦截器（AddInitScript）...")
-	if err := page.AddInitScript(injectAPIInterceptor); err != nil {
-		slog.Warn("AddInitScript 失败，将回退到直接请求", "error", err)
+		return nil, fmt.Errorf("创建 UserProfileAction 失败: %w", err)
 	}
 
-	slog.Info("导航到创作者中心页面...")
-	if err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official"); err != nil {
-		return nil, fmt.Errorf("导航失败: %w", err)
-	}
-
-	accountBase, err := d.fetchCachedOrDirect(page, "/api/galaxy/v2/creator/datacenter/account/base")
+	slog.Info("通过个人主页获取统计数据...")
+	profile, err := profileAction.GetMyProfileViaSidebar(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("获取账号数据失败: %w", err)
-	}
-	personalInfo, err := d.fetchCachedOrDirect(page, "/api/galaxy/creator/home/personal_info")
-	if err != nil {
-		return nil, fmt.Errorf("获取个人信息失败: %w", err)
-	}
-	noteDetail, err := d.fetchCachedOrDirect(page, "/api/galaxy/creator/data/note_detail_new")
-	if err != nil {
-		return nil, fmt.Errorf("获取笔记详情失败: %w", err)
+		return nil, fmt.Errorf("获取个人主页失败: %w", err)
 	}
 
-	stats := UserStats{
-		FollowerCount:       getInt(personalInfo, "fans_count"),
-		FollowCount:         getInt(personalInfo, "follow_count"),
-		LikedCount:          getInt(personalInfo, "faved_count"),
-		NoteCount:           getInt(personalInfo, "note_count"),
-		CollectCount:        getInt(personalInfo, "collect_count"),
-		ExposureCount:       getNestedInt(accountBase, "thirty", "exposure_count"),
-		ViewCount:           getNestedInt(noteDetail, "seven", "view_count"),
-		CoverClickRate:      getNestedFloat(accountBase, "thirty", "cover_click_rate"),
-		VideoCompleteRate:   getNestedFloat(accountBase, "thirty", "video_complete_rate"),
-		LikeCount7d:         getNestedInt(noteDetail, "seven", "like_count"),
-		CommentCount7d:      getNestedInt(noteDetail, "seven", "comment_count"),
-		CollectCount7d:      getNestedInt(noteDetail, "seven", "collect_count"),
-		ShareCount7d:        getNestedInt(noteDetail, "seven", "share_count"),
-		NetFollowerGrowth:   getNestedInt(noteDetail, "seven", "rise_fans_count"),
-		NewFollowerCount:    getNestedInt(noteDetail, "seven", "new_fans_count"),
-		UnfollowCount:       getNestedInt(noteDetail, "seven", "leave_fans_count"),
-		ProfileVisitorCount: getNestedInt(noteDetail, "seven", "home_view_count"),
+	stats := &UserStats{}
+	for _, interaction := range profile.Interactions {
+		count := parseInteractionCount(interaction.Count)
+		switch interaction.Type {
+		case "fans":
+			stats.FollowerCount = count
+		case "follows":
+			stats.FollowCount = count
+		case "interaction":
+			stats.LikedCount = count
+		}
 	}
 
-	if stats.FollowerCount == 0 &&
-		stats.FollowCount == 0 &&
-		stats.LikedCount == 0 &&
-		stats.NoteCount == 0 &&
-		stats.CollectCount == 0 {
-		return nil, fmt.Errorf("获取统计数据为空，可能未登录或接口返回异常")
+	if stats.FollowerCount == 0 && stats.FollowCount == 0 && stats.LikedCount == 0 {
+		return nil, fmt.Errorf("获取统计数据为空，可能未登录或页面数据异常")
 	}
 
-	slog.Info("获取统计数据成功", "stats", stats)
-	return &stats, nil
+	slog.Info("获取统计数据成功", "follower", stats.FollowerCount, "follow", stats.FollowCount, "liked", stats.LikedCount)
+	return stats, nil
+}
+
+// parseInteractionCount 将 "1.2万" / "123" 等格式转为 int
+func parseInteractionCount(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	// 处理 "万" 单位
+	if strings.HasSuffix(s, "万") {
+		s = strings.TrimSuffix(s, "万")
+		var f float64
+		if _, err := fmt.Sscanf(s, "%f", &f); err == nil {
+			return int(f * 10000)
+		}
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(s, "%d", &n); err == nil {
+		return n
+	}
+	return 0
 }
 
 type apiFetchResult struct {
