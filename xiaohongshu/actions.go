@@ -357,7 +357,7 @@ func NewDeleteAction(page browser.Page, pollingModule polling.Module) (*DeleteAc
 	return &DeleteAction{page: page, polling: pollingModule}, nil
 }
 
-// DeleteFeed 删除自己的笔记
+// DeleteFeed 删除自己的笔记（通过创作者中心笔记管理页面）
 func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string) error {
 	timeout, err := d.polling.Delay("wait_60000ms")
 	if err != nil {
@@ -365,13 +365,14 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 	}
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
-	url := makeFeedDetailURL(feedID, xsecToken)
-	slog.Info("打开 feed 详情页进行删除", "url", url)
+	// 使用创作者中心笔记管理页面，DOM 结构稳定，无模态弹窗问题
+	creatorURL := "https://creator.xiaohongshu.com/new/note-manager"
+	slog.Info("打开创作者中心笔记管理页", "url", creatorURL)
 
-	if err := page.Goto(url); err != nil {
-		return fmt.Errorf("导航到详情页失败: %w", err)
+	if err := page.Goto(creatorURL); err != nil {
+		return fmt.Errorf("导航到创作者中心失败: %w", err)
 	}
-	waitStable, err := d.polling.Delay("wait_1000ms")
+	waitStable, err := d.polling.Delay("wait_2000ms")
 	if err != nil {
 		return err
 	}
@@ -386,161 +387,82 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return err
 	}
 
-	// 等待笔记详情弹窗容器加载完成，且 dragger 按钮必须在视口内可见
-	// 小红书详情页为异步渲染的模态弹窗，需等待弹窗真正渲染并进入视口
-	noteLoaded := false
-	for attempt := 0; attempt < 6; attempt++ {
-		// 检查 dragger 按钮是否在视口内可见
-		visible, evalErr := page.Eval(`() => {
-			const btn = document.querySelector('button.dragger');
-			if (!btn) return false;
-			const rect = btn.getBoundingClientRect();
-			return rect.width > 0 && rect.height > 0 &&
-				rect.top >= 0 && rect.left >= 0 &&
-				rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
-		}`)
-		if evalErr == nil && visible == true {
-			slog.Info("笔记详情弹窗已加载，dragger 按钮在视口内", "attempt", attempt+1)
-			noteLoaded = true
-			break
-		}
-		slog.Info("等待笔记详情弹窗渲染...", "attempt", attempt+1)
-		if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
-			return err
-		}
-	}
-	if !noteLoaded {
-		slog.Warn("笔记详情弹窗未在视口内渲染，尝试滚动页面触发加载")
-		// 尝试滚动到页面顶部，有时弹窗被遮挡
-		_, _ = page.Eval(`() => { window.scrollTo(0, 0); }`)
-		if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
-			return err
-		}
+	// 打印页面 HTML 结构，定位笔记卡片和操作按钮 selector
+	if html, evalErr := page.Eval(`() => document.body.innerHTML.slice(0, 3000)`); evalErr == nil {
+		slog.Info("创作者中心页面 HTML（前3000字符）", "html", html)
 	}
 
-	// DOM 探测：打印页面中所有按钮的 class 和 aria-label，辅助 selector 调试
-	if btnInfo, evalErr := page.Eval(`() => [...document.querySelectorAll('button')].map(b => 'class=' + b.className + ' aria=' + (b.getAttribute('aria-label')||'') + ' text=' + b.innerText.trim().slice(0,20)).join('\n')`); evalErr == nil {
-		slog.Info("页面按钮列表（详情弹窗加载后）", "buttons", btnInfo)
-	}
-	// 诊断：打印 dragger 按钮的实际位置
-	if posInfo, evalErr := page.Eval(`() => {
-		const btn = document.querySelector('button.dragger');
-		if (!btn) return 'dragger not found';
-		const rect = btn.getBoundingClientRect();
-		return JSON.stringify({top:rect.top,left:rect.left,bottom:rect.bottom,right:rect.right,w:rect.width,h:rect.height,vw:window.innerWidth,vh:window.innerHeight});
-	}`); evalErr == nil {
-		slog.Info("dragger 按钮位置诊断", "pos", posInfo)
-	}
-
-	moreBtn, err := d.findMoreButton(page)
+	// 查找包含 feedID 的笔记卡片，鼠标悬停触发操作按钮显示
+	// 先找到包含 feedID 的链接或元素，锁定目标笔记卡片
+	noteCard, err := d.findNoteCardByFeedID(page, feedID)
 	if err != nil {
-		if sErr := page.Screenshot("/tmp/delete_debug.png"); sErr == nil {
-			slog.Info("调试截图已保存", "path", "/tmp/delete_debug.png")
+		if sErr := page.Screenshot("/tmp/delete_creator_debug.png"); sErr == nil {
+			slog.Info("创作者中心截图已保存", "path", "/tmp/delete_creator_debug.png")
 		}
-		if classes, eErr := page.Eval(`() => [...document.querySelectorAll('*')].filter(e => e.className && typeof e.className === 'string').map(e => e.className).filter(c => /more|operate|action|btn|button|ellipsis|dot/i.test(c)).slice(0, 30).join('\n')`); eErr == nil {
-			slog.Info("页面相关class名", "classes", classes)
-		}
-		return fmt.Errorf("未找到更多按钮: %w", err)
+		return fmt.Errorf("未找到 feedID=%s 的笔记卡片: %w", feedID, err)
+	}
+	slog.Info("找到目标笔记卡片", "feedID", feedID)
+
+	// 鼠标悬停到卡片上，触发操作按钮（更多/删除）显示
+	if err := noteCard.Hover(); err != nil {
+		slog.Warn("hover 失败，继续尝试", "err", err)
+	}
+	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
+		return err
 	}
 
-	slog.Info("点击更多按钮...")
-	// 优先用 Playwright native click（触发完整 mousedown→mouseup→click 事件链）
-	// 小红书菜单依赖完整事件链，JS click 只触发 click 事件，菜单不会弹出
-	nativeClicked := false
-	// 获取 dragger 按钮的中心坐标，用 Mouse.Click 直接按坐标点击（绕过 viewport 限制）
-	// 返回 "x,y" 字符串避免 Playwright Eval 类型断言问题
-	posResult, posErr := page.Eval(`() => {
-		const btn = document.querySelector('button.dragger');
-		if (!btn) return '';
-		const rect = btn.getBoundingClientRect();
-		return (rect.left + rect.width/2) + ',' + (rect.top + rect.height/2);
-	}`)
-	if posErr == nil && posResult != nil {
-		if posStr, ok := posResult.(string); ok && posStr != "" {
-			var x, y float64
-			fmt.Sscanf(posStr, "%f,%f", &x, &y)
-			slog.Info("用坐标点击 dragger 按钮", "x", x, "y", y)
-			mouse := page.Mouse()
-			if moveErr := mouse.MoveTo(x, y); moveErr != nil {
-				slog.Warn("鼠标移动失败", "err", moveErr)
-			} else if clickErr := mouse.Click(browser.MouseButtonLeft); clickErr != nil {
-				slog.Warn("坐标点击失败", "err", clickErr)
-			} else {
-				slog.Info("坐标点击成功", "x", x, "y", y)
-				nativeClicked = true
-			}
-		}
+	// 打印悬停后页面按钮列表
+	if btnInfo, evalErr := page.Eval(`() => [...document.querySelectorAll('button,div[class*="more"],div[class*="operate"],div[class*="action"],div[class*="menu"]')].map(b => b.tagName + ' class=' + b.className + ' text=' + b.innerText.trim().slice(0,20)).join('\n')`); evalErr == nil {
+		slog.Info("悬停后操作按钮列表", "buttons", btnInfo)
 	}
-	if !nativeClicked {
-		if err := moreBtn.Click(); err != nil {
-			slog.Warn("native click failed, trying ClickForce", "err", err)
-			if err2 := moreBtn.ClickForce(); err2 != nil {
-				slog.Warn("ClickForce also failed", "err", err2)
-			} else {
-				slog.Info("ClickForce 成功")
-				nativeClicked = true
-			}
-		} else {
-			slog.Info("Playwright native click 成功")
-			nativeClicked = true
+
+	// 查找并点击目标笔记卡片上的更多操作按钮
+	moreBtn, err := d.findCreatorMoreButton(page, noteCard)
+	if err != nil {
+		if sErr := page.Screenshot("/tmp/delete_creator_more_debug.png"); sErr == nil {
+			slog.Info("更多按钮截图已保存", "path", "/tmp/delete_creator_more_debug.png")
 		}
+		return fmt.Errorf("未找到更多操作按钮: %w", err)
 	}
-	if !nativeClicked {
-		// 最后兜底：JS click（可能菜单不弹出，但至少尝试）
-		jsSelectors := []string{
-			"button.dragger.icon",
-			"button.dragger",
-			"[aria-label='更多']",
-			"[aria-label='更多选项']",
-			".menu-icon-btn",
-		}
-		for _, sel := range jsSelectors {
-			result, jsErr := page.Eval(fmt.Sprintf(`() => { const el = document.querySelector(%q); if (el) { el.dispatchEvent(new MouseEvent('mousedown', {bubbles:true})); el.dispatchEvent(new MouseEvent('mouseup', {bubbles:true})); el.click(); return true; } return false; }`, sel))
-			if jsErr == nil && result == true {
-				slog.Info("JS dispatchEvent+click 成功", "selector", sel)
-				break
-			}
+
+	slog.Info("点击更多操作按钮...")
+	if err := moreBtn.Click(); err != nil {
+		if err2 := moreBtn.ClickForce(); err2 != nil {
+			return fmt.Errorf("点击更多操作按钮失败: %w", err)
 		}
 	}
 	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
 		return err
 	}
 
+	// 打印弹出菜单内容
+	if menuInfo, evalErr := page.Eval(`() => [...document.querySelectorAll('div[class*="dropdown"],div[class*="menu"],div[class*="popup"],li,span')].filter(e => e.innerText && e.innerText.trim().length < 10).map(e => e.tagName + ' class=' + e.className + ' text=' + e.innerText.trim()).join('\n')`); evalErr == nil {
+		slog.Info("弹出菜单内容", "menu", menuInfo)
+	}
+
+	// 点击删除
 	deleteBtn, err := d.findDeleteButton(page)
-	deleteBtnJSFallback := false
 	if err != nil {
-		// 截图调试：看菜单弹出后的 DOM
 		if sErr := page.Screenshot("/tmp/delete_menu_debug.png"); sErr == nil {
 			slog.Info("菜单截图已保存", "path", "/tmp/delete_menu_debug.png")
 		}
-		if texts, eErr := page.Eval(`() => [...document.querySelectorAll('div,li,span,button,a')].filter(e => e.innerText && e.innerText.trim() === '删除').map(e => e.tagName + ' class=' + e.className).join('\n')`); eErr == nil {
-			slog.Info("含'删除'文字的元素", "elements", texts)
-		}
-		// 尝试直接 JS 点击删除
+		// JS 兜底
 		result, jsErr := page.Eval(`() => { const els = [...document.querySelectorAll('div,li,span,button,a')].filter(e => e.innerText && e.innerText.trim() === '删除'); if (els.length > 0) { els[0].click(); return true; } return false; }`)
-		if jsErr == nil && result != false {
-			slog.Info("JS 直接点击删除成功")
-			deleteBtnJSFallback = true
-		} else {
+		if jsErr != nil || result == false {
 			return fmt.Errorf("未找到删除按钮: %w", err)
 		}
-	}
-
-	if !deleteBtnJSFallback {
+		slog.Info("JS 直接点击删除成功")
+	} else {
 		slog.Info("点击删除按钮...")
 		if err := deleteBtn.Click(); err != nil {
-			// JS fallback
-			result, jsErr := page.Eval(`() => { const els = [...document.querySelectorAll('div,li,span,button,a')].filter(e => e.innerText && e.innerText.trim() === '删除'); if (els.length > 0) { els[0].click(); return true; } return false; }`)
-			if jsErr != nil || result == false {
-				return fmt.Errorf("点击删除按钮失败: %w", err)
-			}
-			slog.Info("JS fallback 点击删除成功")
+			return fmt.Errorf("点击删除按钮失败: %w", err)
 		}
 	}
 	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
 		return err
 	}
 
+	// 确认删除弹窗
 	confirmBtn, err := d.findConfirmButton(page)
 	if err != nil {
 		return fmt.Errorf("未找到确认按钮: %w", err)
@@ -647,26 +569,72 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 	return nil
 }
 
-// findMoreButton 查找更多按钮（三个点）
-// 小红书笔记详情页（模态弹窗）中，"更多"按钮为图标按钮，class 含 dragger/more/operate 等
-func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error) {
+// findNoteCardByFeedID 在创作者中心笔记管理页找到包含指定 feedID 的笔记卡片
+func (d *DeleteAction) findNoteCardByFeedID(page browser.Page, feedID string) (browser.Element, error) {
+	// 创作者中心笔记卡片通常包含指向笔记详情的链接，href 包含 feedID
 	selectors := []string{
-		// 笔记详情弹窗内的操作图标按钮（dragger 为小红书 PC 端图标按钮基础 class）
-		"button.dragger.icon",
-		"button.dragger",
-		// data-testid / aria-label（如果页面有）
-		"[data-testid='more-options']",
-		"[data-testid='more']",
-		"[aria-label='更多选项']",
-		"[aria-label='更多']",
-		"button[aria-label*='更多']",
-		// 历史 class
-		".menu-icon-btn",
-		".info-right-area-more-container",
-		".more-button",
-		".operate-button",
-		"[class*='more-container']",
+		fmt.Sprintf("a[href*='%s']", feedID),
+		fmt.Sprintf("[data-id='%s']", feedID),
+		fmt.Sprintf("[data-note-id='%s']", feedID),
 	}
+	for _, sel := range selectors {
+		timeout, err := d.polling.Delay("wait_3000ms")
+		if err != nil {
+			return nil, err
+		}
+		elem, err := page.WithTimeout(timeout).Element(sel)
+		if err == nil && elem != nil {
+			// 找到链接后，向上找父级卡片容器
+			parent, pErr := elem.Eval(`(el) => {
+				let cur = el;
+				for (let i = 0; i < 5; i++) {
+					cur = cur.parentElement;
+					if (!cur) break;
+					const cls = cur.className || '';
+					if (/note|card|item|cover/i.test(cls)) return true;
+				}
+				return false;
+			}`)
+			if pErr == nil && parent == true {
+				// 返回父级元素
+				parentEl, pElErr := elem.Eval(`(el) => {
+					let cur = el;
+					for (let i = 0; i < 5; i++) {
+						cur = cur.parentElement;
+						if (!cur) break;
+						const cls = cur.className || '';
+						if (/note|card|item|cover/i.test(cls)) return cur;
+					}
+					return el.parentElement;
+				}`)
+				_ = parentEl
+				_ = pElErr
+			}
+			slog.Info("找到笔记卡片链接", "selector", sel)
+			return elem, nil
+		}
+	}
+	// 兜底：打印页面所有链接，辅助调试
+	if links, evalErr := page.Eval(`() => [...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => h.includes('explore') || h.includes('note')).join('\n')`); evalErr == nil {
+		slog.Info("页面笔记相关链接", "links", links)
+	}
+	return nil, fmt.Errorf("未找到包含 feedID=%s 的笔记卡片元素", feedID)
+}
+
+// findCreatorMoreButton 在创作者中心笔记卡片上找到更多操作按钮
+func (d *DeleteAction) findCreatorMoreButton(page browser.Page, noteCard browser.Element) (browser.Element, error) {
+	// 创作者中心笔记卡片悬停后出现的操作按钮
+	selectors := []string{
+		"[class*='more-btn']",
+		"[class*='more-icon']",
+		"[class*='operate']",
+		"[class*='action-btn']",
+		"[aria-label='更多']",
+		"[aria-label='更多操作']",
+		"button[class*='more']",
+		"div[class*='more']",
+	}
+	// 先在整个页面范围内查找（悬停后按钮可能渲染在 body 顶层）
 	for _, sel := range selectors {
 		timeout, err := d.polling.Delay("wait_2000ms")
 		if err != nil {
@@ -674,12 +642,11 @@ func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error
 		}
 		elem, err := page.WithTimeout(timeout).Element(sel)
 		if err == nil && elem != nil {
-			slog.Info("找到更多按钮", "selector", sel)
+			slog.Info("找到创作者中心更多按钮", "selector", sel)
 			return elem, nil
 		}
-		slog.Debug("selector 未命中", "selector", sel)
 	}
-	return nil, fmt.Errorf("所有选择器都失败")
+	return nil, fmt.Errorf("所有 selector 都失败，未找到更多操作按钮")
 }
 
 // findCommentMoreButton 查找评论的更多按钮
