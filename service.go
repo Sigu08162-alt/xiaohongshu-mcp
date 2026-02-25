@@ -174,7 +174,7 @@ func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatus
 
 	username := status.Nickname
 	if username == "" {
-		username = configs.Username
+		username = configs.DefaultUsername
 	}
 
 	return &LoginStatusResponse{

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	apperrors "github.com/vmxmy/xiaohongshu-mcp/errors"
 	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
@@ -44,9 +45,9 @@ func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 	// 根据 IsLoggedIn 判断并返回友好的提示
 	var resultText string
 	if status.IsLoggedIn {
-		resultText = fmt.Sprintf("✅ 已登录\n用户名: %s\n\n你可以使用其他功能了。", status.Username)
+		resultText = fmt.Sprintf("✅ 已登录\n用户名: %s\n版本: %s\n\n你可以使用其他功能了。", status.Username, configs.Version)
 	} else {
-		resultText = fmt.Sprintf("❌ 未登录\n\n请使用 get_login_qrcode 工具获取二维码进行登录。")
+		resultText = fmt.Sprintf("❌ 未登录 (版本: %s)\n\n请使用 get_login_qrcode 工具获取二维码进行登录。", configs.Version)
 	}
 
 	return &MCPToolResult{
