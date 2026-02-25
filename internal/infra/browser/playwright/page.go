@@ -741,6 +741,10 @@ func (p *page) UnrouteAll() error {
 	return p.p.Unroute("**/*")
 }
 
+func (p *page) AddInitScript(script string) error {
+	return p.p.AddInitScript(playwright.Script{Content: playwright.String(script)})
+}
+
 // playwrightRoute 实现 browser.Route 接口
 type playwrightRoute struct {
 	route playwright.Route

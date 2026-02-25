@@ -521,7 +521,7 @@ const injectAPIInterceptor = `
 })();
 `
 
-// GetMyStats 获取当前用户的统计数据（通过拦截页面自身请求，绕过签名验证）
+// GetMyStats 获取当前用户的统计数据（通过 AddInitScript 在导航前注入拦截器，绕过签名验证）
 func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 	timeout, err := d.polling.Delay("wait_60000ms")
 	if err != nil {
@@ -529,31 +529,15 @@ func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
 	}
 	page := d.page.WithContext(ctx).WithTimeout(timeout)
 
-	// 先注入拦截器，再导航，确保捕获页面加载时的 API 请求
-	slog.Info("注入 API 拦截器...")
-	if _, err := page.Eval(injectAPIInterceptor); err != nil {
-		slog.Warn("注入拦截器失败，将回退到直接请求", "error", err)
+	// 在导航前注册 InitScript，确保页面加载时拦截器已就绪
+	slog.Info("注册 API 拦截器（AddInitScript）...")
+	if err := page.AddInitScript(injectAPIInterceptor); err != nil {
+		slog.Warn("AddInitScript 失败，将回退到直接请求", "error", err)
 	}
 
 	slog.Info("导航到创作者中心页面...")
 	if err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official"); err != nil {
 		return nil, fmt.Errorf("导航失败: %w", err)
-	}
-
-	// 重新注入（导航后页面刷新，需要再次注入）
-	if _, err := page.Eval(injectAPIInterceptor); err != nil {
-		slog.Warn("导航后重新注入拦截器失败", "error", err)
-	}
-
-	waitStable, err := d.polling.Delay("wait_1000ms")
-	if err != nil {
-		return nil, err
-	}
-	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		slog.Warn("等待 DOM 稳定出现问题", "error", err)
-	}
-	if err := polling.SleepDelay(d.polling, "wait_5000ms"); err != nil {
-		return nil, err
 	}
 
 	accountBase, err := d.fetchCachedOrDirect(page, "/api/galaxy/v2/creator/datacenter/account/base")

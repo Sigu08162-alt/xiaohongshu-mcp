@@ -60,6 +60,10 @@ type Page interface {
 	Route(urlPattern string, handler RouteHandler) error
 	UnrouteAll() error
 
+	// --- 页面初始化脚本 ---
+	// AddInitScript 在每次页面导航前自动注入脚本（包括 Goto 触发的导航）
+	AddInitScript(script string) error
+
 	// --- 上下文控制 ---
 	WithContext(ctx context.Context) Page
 	WithTimeout(timeout time.Duration) Page
