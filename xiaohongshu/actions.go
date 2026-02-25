@@ -386,28 +386,33 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return err
 	}
 
-	// 等待笔记详情弹窗容器加载完成（小红书详情页为异步渲染的模态弹窗）
-	noteDetailSelectors := []string{
-		"#noteContainer",
-		".note-container",
-		".note-detail",
-		".note-detail-mask",
-		"[class*='note-detail']",
-		".interaction-container",
-		"[class*='noteContainer']",
-	}
+	// 等待笔记详情弹窗容器加载完成，且 dragger 按钮必须在视口内可见
+	// 小红书详情页为异步渲染的模态弹窗，需等待弹窗真正渲染并进入视口
 	noteLoaded := false
-	for _, sel := range noteDetailSelectors {
-		waitT, _ := d.polling.Delay("wait_5000ms")
-		if elem, err2 := page.WithTimeout(waitT).Element(sel); err2 == nil && elem != nil {
-			slog.Info("笔记详情弹窗已加载", "selector", sel)
+	for attempt := 0; attempt < 6; attempt++ {
+		// 检查 dragger 按钮是否在视口内可见
+		visible, evalErr := page.Eval(`() => {
+			const btn = document.querySelector('button.dragger');
+			if (!btn) return false;
+			const rect = btn.getBoundingClientRect();
+			return rect.width > 0 && rect.height > 0 &&
+				rect.top >= 0 && rect.left >= 0 &&
+				rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
+		}`)
+		if evalErr == nil && visible == true {
+			slog.Info("笔记详情弹窗已加载，dragger 按钮在视口内", "attempt", attempt+1)
 			noteLoaded = true
 			break
 		}
+		slog.Info("等待笔记详情弹窗渲染...", "attempt", attempt+1)
+		if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
+			return err
+		}
 	}
 	if !noteLoaded {
-		slog.Warn("未检测到笔记详情弹窗容器，继续尝试（页面可能已加载）")
-		// 额外等待 2s 让异步内容渲染
+		slog.Warn("笔记详情弹窗未在视口内渲染，尝试滚动页面触发加载")
+		// 尝试滚动到页面顶部，有时弹窗被遮挡
+		_, _ = page.Eval(`() => { window.scrollTo(0, 0); }`)
 		if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
 			return err
 		}
