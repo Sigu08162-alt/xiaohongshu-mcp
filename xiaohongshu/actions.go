@@ -386,6 +386,38 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 		return err
 	}
 
+	// 等待笔记详情弹窗容器加载完成（小红书详情页为异步渲染的模态弹窗）
+	noteDetailSelectors := []string{
+		"#noteContainer",
+		".note-container",
+		".note-detail",
+		".note-detail-mask",
+		"[class*='note-detail']",
+		".interaction-container",
+		"[class*='noteContainer']",
+	}
+	noteLoaded := false
+	for _, sel := range noteDetailSelectors {
+		waitT, _ := d.polling.Delay("wait_5000ms")
+		if elem, err2 := page.WithTimeout(waitT).Element(sel); err2 == nil && elem != nil {
+			slog.Info("笔记详情弹窗已加载", "selector", sel)
+			noteLoaded = true
+			break
+		}
+	}
+	if !noteLoaded {
+		slog.Warn("未检测到笔记详情弹窗容器，继续尝试（页面可能已加载）")
+		// 额外等待 2s 让异步内容渲染
+		if err := polling.SleepDelay(d.polling, "wait_2000ms"); err != nil {
+			return err
+		}
+	}
+
+	// DOM 探测：打印页面中所有按钮的 class 和 aria-label，辅助 selector 调试
+	if btnInfo, evalErr := page.Eval(`() => [...document.querySelectorAll('button')].map(b => 'class=' + b.className + ' aria=' + (b.getAttribute('aria-label')||'') + ' text=' + b.innerText.trim().slice(0,20)).join('\n')`); evalErr == nil {
+		slog.Info("页面按钮列表（详情弹窗加载后）", "buttons", btnInfo)
+	}
+
 	moreBtn, err := d.findMoreButton(page)
 	if err != nil {
 		if sErr := page.Screenshot("/tmp/delete_debug.png"); sErr == nil {
@@ -399,14 +431,26 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 
 	slog.Info("点击更多按钮...")
 	// 先尝试 JS 直接点击（绕过可见性遮挡问题）
+	// 优先查找 dragger 图标按钮（小红书详情弹窗内的操作按钮），再 fallback 到历史 selector
 	jsClicked := false
-	for _, sel := range []string{".menu-icon-btn", "[data-testid='more-options']", "[aria-label='更多']", "[aria-label='更多选项']"} {
-		_, jsErr := page.Eval(fmt.Sprintf(`() => { const el = document.querySelector(%q); if (el) { el.click(); return true; } return false; }`, sel))
-		if jsErr == nil {
+	jsSelectors := []string{
+		"button.dragger.icon",
+		"button.dragger",
+		"[data-testid='more-options']",
+		"[data-testid='more']",
+		"[aria-label='更多']",
+		"[aria-label='更多选项']",
+		".menu-icon-btn",
+		".info-right-area-more-container",
+	}
+	for _, sel := range jsSelectors {
+		result, jsErr := page.Eval(fmt.Sprintf(`() => { const el = document.querySelector(%q); if (el) { el.click(); return true; } return false; }`, sel))
+		if jsErr == nil && result == true {
 			slog.Info("JS click 成功", "selector", sel)
 			jsClicked = true
 			break
 		}
+		slog.Debug("JS click 未命中", "selector", sel)
 	}
 	if !jsClicked {
 		// fallback: Playwright native click
@@ -418,6 +462,7 @@ func (d *DeleteAction) DeleteFeed(ctx context.Context, feedID, xsecToken string)
 				return fmt.Errorf("点击更多按钮失败: %w", err2)
 			}
 		}
+		slog.Info("Playwright native click 成功")
 	}
 	if err := polling.SleepDelay(d.polling, "wait_1000ms"); err != nil {
 		return err
@@ -565,23 +610,27 @@ func (d *DeleteAction) DeleteComment(ctx context.Context, feedID, xsecToken, com
 }
 
 // findMoreButton 查找更多按钮（三个点）
+// 小红书笔记详情页（模态弹窗）中，"更多"按钮为图标按钮，class 含 dragger/more/operate 等
 func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error) {
 	selectors := []string{
-		".menu-icon-btn",                    // 实际页面 class（从调试截图发现）
+		// 笔记详情弹窗内的操作图标按钮（dragger 为小红书 PC 端图标按钮基础 class）
+		"button.dragger.icon",
+		"button.dragger",
+		// data-testid / aria-label（如果页面有）
 		"[data-testid='more-options']",
 		"[data-testid='more']",
 		"[aria-label='更多选项']",
 		"[aria-label='更多']",
-		"button:has-text('更多')",
+		"button[aria-label*='更多']",
+		// 历史 class
+		".menu-icon-btn",
 		".info-right-area-more-container",
 		".more-button",
 		".operate-button",
-		"button[aria-label*='更多']",
 		"[class*='more-container']",
-		"[class*='more']",
 	}
 	for _, sel := range selectors {
-		timeout, err := d.polling.Delay("wait_3000ms")
+		timeout, err := d.polling.Delay("wait_2000ms")
 		if err != nil {
 			return nil, err
 		}
@@ -590,6 +639,7 @@ func (d *DeleteAction) findMoreButton(page browser.Page) (browser.Element, error
 			slog.Info("找到更多按钮", "selector", sel)
 			return elem, nil
 		}
+		slog.Debug("selector 未命中", "selector", sel)
 	}
 	return nil, fmt.Errorf("所有选择器都失败")
 }
