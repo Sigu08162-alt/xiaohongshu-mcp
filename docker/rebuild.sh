@@ -10,6 +10,8 @@ echo "=== Docker 镜像重建 ==="
 echo "[1/5] 下载最新 release..."
 mkdir -p release
 ASSET="xiaohongshu-mcp-linux-amd64.tar.gz"
+RELEASE_TAG=$(gh release view --repo vmxmy/xiaohongshu-mcp --latest --json tagName -q .tagName)
+echo "    版本: $RELEASE_TAG"
 gh release download --repo vmxmy/xiaohongshu-mcp --pattern "$ASSET" --dir release --clobber --latest
 tar -xzf "release/$ASSET" -C release
 rm -f "release/$ASSET"
@@ -22,8 +24,8 @@ docker compose down
 echo "[3/5] 清理旧镜像..."
 docker rmi xiaohongshu-mcp 2>/dev/null || true
 
-echo "[4/5] 构建镜像..."
-docker compose build --no-cache
+echo "[4/5] 构建镜像 ($RELEASE_TAG)..."
+docker compose build --no-cache --build-arg VERSION="$RELEASE_TAG"
 
 echo "[5/5] 启动容器..."
 docker compose up -d

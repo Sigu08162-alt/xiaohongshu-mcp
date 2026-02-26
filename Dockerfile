@@ -14,6 +14,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
     libxss1 libxtst6 xdg-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+ARG VERSION=unknown
+ENV APP_VERSION=$VERSION
+LABEL version=$VERSION
+
 WORKDIR /app
 
 COPY release/xiaohongshu-mcp-linux-amd64 /app/app
