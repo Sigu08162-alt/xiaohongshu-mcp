@@ -10,7 +10,7 @@ echo "=== Docker 镜像重建 ==="
 echo "[1/5] 下载最新 release..."
 mkdir -p release
 ASSET="xiaohongshu-mcp-linux-amd64.tar.gz"
-RELEASE_TAG=$(gh release view --repo vmxmy/xiaohongshu-mcp --latest --json tagName -q .tagName)
+RELEASE_TAG=$(gh release list --repo vmxmy/xiaohongshu-mcp --limit 1 --json tagName -q '.[0].tagName')
 echo "    版本: $RELEASE_TAG"
 echo ""
 read -p "确认使用此版本构建？[y/N] " confirm
