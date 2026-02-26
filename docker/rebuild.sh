@@ -18,7 +18,7 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
     echo "已取消构建。"
     exit 0
 fi
-gh release download --repo vmxmy/xiaohongshu-mcp --pattern "$ASSET" --dir release --clobber --latest
+gh release download "$RELEASE_TAG" --repo vmxmy/xiaohongshu-mcp --pattern "$ASSET" --dir release --clobber
 tar -xzf "release/$ASSET" -C release
 rm -f "release/$ASSET"
 
