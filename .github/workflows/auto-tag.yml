@@ -1,13 +1,7 @@
 name: Auto Tag
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - 'docker/**'
-      - '*.md'
-      - '.github/workflows/auto-tag.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
