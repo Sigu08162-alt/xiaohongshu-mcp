@@ -1,0 +1,32 @@
+name: Auto Tag
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docker/**'
+      - '*.md'
+      - '.github/workflows/auto-tag.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate and push tag
+        run: |
+          TIMESTAMP=$(date +%Y.%m.%d.%H%M)
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          TAG="v${TIMESTAMP}-${COMMIT_SHA}"
+          echo "Tagging: ${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${TAG}"
+          git push origin "${TAG}"
