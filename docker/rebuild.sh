@@ -12,11 +12,13 @@ mkdir -p release
 ASSET="xiaohongshu-mcp-linux-amd64.tar.gz"
 RELEASE_TAG=$(gh release list --repo vmxmy/xiaohongshu-mcp --limit 1 --json tagName -q '.[0].tagName')
 echo "    版本: $RELEASE_TAG"
-echo ""
-read -p "确认使用此版本构建？[y/N] " confirm
-if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
-    echo "已取消构建。"
-    exit 0
+if [[ "${NON_INTERACTIVE:-}" != "1" ]]; then
+    echo ""
+    read -p "确认使用此版本构建？[y/N] " confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo "已取消构建。"
+        exit 0
+    fi
 fi
 gh release download "$RELEASE_TAG" --repo vmxmy/xiaohongshu-mcp --pattern "$ASSET" --dir release --clobber
 tar -xzf "release/$ASSET" -C release
