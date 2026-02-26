@@ -11,7 +11,11 @@ services:
     volumes:
       - ./data:/app/data
       - ./images:/app/images
+      - playwright_cache:/root/.cache/ms-playwright
     environment:
       - COOKIES_PATH=/app/data/cookies.json
     ports:
       - "18060:18060"
+
+volumes:
+  playwright_cache:
