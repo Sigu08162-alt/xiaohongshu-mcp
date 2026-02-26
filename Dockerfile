@@ -17,8 +17,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
 WORKDIR /app
 
 COPY release/xiaohongshu-mcp-linux-amd64 /app/app
-COPY release/xiaohongshu-login-linux-amd64 /app/login
-RUN chmod +x /app/app /app/login
+RUN chmod +x /app/app
 
 COPY configs/ /app/configs/
 
