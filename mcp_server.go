@@ -83,6 +83,11 @@ type SyncCookiesArgs struct {
 	CookiesJSON   string `json:"cookies_json,omitempty" jsonschema:"cookies JSON 字符串（备用）"`
 }
 
+// GetLoginQrcodeArgs 获取登录二维码参数
+type GetLoginQrcodeArgs struct {
+	InlineImage bool `json:"inline_image,omitempty" jsonschema:"是否在 MCP 响应中内联二维码图片，默认 false（推荐，避免超长 Base64 占满 Agent 窗口）"`
+}
+
 // SearchFeedsArgs 搜索内容的参数
 type SearchFeedsArgs struct {
 	Keyword string       `json:"keyword" jsonschema:"搜索关键词"`
@@ -272,14 +277,14 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 	mcp.AddTool(server,
 		&mcp.Tool{
 			Name:        "get_login_qrcode",
-			Description: "获取登录二维码（返回 Base64 图片和超时时间）",
+			Description: "获取登录二维码（默认返回短文本+二维码链接；可通过 inline_image=true 返回内联图片）",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Get Login QR Code",
 				ReadOnlyHint: true,
 			},
 		},
-		withPanicRecovery("get_login_qrcode", func(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, any, error) {
-			result := appServer.handleGetLoginQrcode(ctx)
+		withPanicRecovery("get_login_qrcode", func(ctx context.Context, req *mcp.CallToolRequest, args GetLoginQrcodeArgs) (*mcp.CallToolResult, any, error) {
+			result := appServer.handleGetLoginQrcode(ctx, args)
 			return convertToMCPResult(result), nil, nil
 		}),
 	)

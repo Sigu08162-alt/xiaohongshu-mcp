@@ -17,22 +17,23 @@ cd docker
 ```
 
 此脚本会自动：
-1. 拉取最新代码
-2. 下载最新 release
-3. 停止旧容器
-4. 强制重建镜像（不使用缓存）
-5. 启动新容器
-6. 显示启动日志
+1. 使用当前本地代码编译 Linux 二进制
+2. 停止旧容器
+3. 强制重建镜像（不使用缓存）
+4. 启动新容器
+5. 显示容器状态
 
-## 1. 下载 Release 并准备二进制
+> 如需无人值守执行，可使用：`NON_INTERACTIVE=1 ./rebuild.sh`
+
+## 1. 本地编译并准备二进制
 
 在项目根目录运行：
 
 ```bash
-./build_release.sh
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o release/xiaohongshu-mcp-linux-amd64 .
 ```
 
-会下载最新 release 并生成 `bin/app`。
+会在 `release/` 下生成 Docker 构建所需的本地二进制，不依赖 GitHub Release。
 
 ## 2. 构建 Docker 镜像
 
@@ -79,7 +80,7 @@ docker exec -it xiaohongshu-mcp bash
 docker compose up -d --build
 ```
 
-## 3. 使用 MCP-Inspector 进行连接
+## 4. 使用 MCP-Inspector 进行连接
 
 **注意 IP 换成你自己的 IP**
 
@@ -89,7 +90,7 @@ docker compose up -d --build
 
 <img width="1662" height="458" alt="image" src="https://github.com/user-attachments/assets/309c2dab-51c4-4502-a41b-cdd4a3dd57ac" />
 
-## 4. 扫码登录
+## 5. 扫码登录
 
 1. **重要**，一定要先把 App 提前打开，准备扫码登录。
 2. 尽快扫码，有可能二维码会过期。

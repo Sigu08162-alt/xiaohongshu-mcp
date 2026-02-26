@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
-	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	appanalytics "github.com/vmxmy/xiaohongshu-mcp/internal/app/analytics"
@@ -21,6 +20,7 @@ import (
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/polling"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/ratelimit"
 	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
+	"log/slog"
 )
 
 type loginProvider interface {
@@ -159,15 +159,20 @@ func (s *XiaohongshuService) SyncCookies(ctx context.Context, data []byte) (stri
 
 // CheckLoginStatus 检查登录状态
 func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatusResponse, error) {
-	var status *xiaohongshu.LoginStatusResult
-	var err error
+	engine := newBrowserEngine()
+	if err := engine.Start(); err != nil {
+		return nil, err
+	}
+	defer engine.Close()
 
-	err = withBrowserPage(func(page browser.Page) error {
-		loginAction := xiaohongshu.NewLogin(page, s.polling.Auth)
-		status, err = loginAction.CheckLoginStatus(ctx)
-		return err
-	})
+	page, err := engine.NewPage()
+	if err != nil {
+		return nil, err
+	}
+	defer page.Close()
 
+	loginAction := xiaohongshu.NewLogin(page, s.polling.Auth)
+	status, err := loginAction.CheckLoginStatus(ctx)
 	if err != nil {
 		return nil, err
 	}

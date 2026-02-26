@@ -57,8 +57,17 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	resolver := g.newResolver(page)
 
 	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
-	slog.Info("⏳ 等待上传输入框可见 (选择器: )...", "arg1", uploadSelector)
-	if err := page.WaitVisible(uploadSelector); err != nil {
+	uploadTimeout, err := getTimeout(g.pollingFor(isPublish))
+	if err != nil {
+		return fmt.Errorf("%s upload timeout: %w", actionName, err)
+	}
+	uploadInterval, err := getInterval(g.pollingFor(isPublish))
+	if err != nil {
+		return fmt.Errorf("%s upload interval: %w", actionName, err)
+	}
+
+	slog.Info("⏳ 等待上传输入框就绪 (选择器: )...", "arg1", uploadSelector)
+	if err := waitForSelectorAttached(page, uploadSelector, uploadTimeout, uploadInterval); err != nil {
 		return fmt.Errorf("%s wait upload_input(%s): %w", actionName, uploadSelector, err)
 	}
 
@@ -135,14 +144,6 @@ func (g *Gateway) publishOrSaveCommon(ctx context.Context, content publish.Image
 	slog.Info("选择器:", "arg1", buttonSelector)
 
 	uploadSelectors := resolveUploadSelectors(g.cfg.Selectors)
-	uploadTimeout, err := getTimeout(g.pollingFor(isPublish))
-	if err != nil {
-		return fmt.Errorf("%s upload timeout: %w", actionName, err)
-	}
-	uploadInterval, err := getInterval(g.pollingFor(isPublish))
-	if err != nil {
-		return fmt.Errorf("%s upload interval: %w", actionName, err)
-	}
 	if err := waitForUploadComplete(page, uploadSelectors, len(content.ImagePaths), uploadTimeout, uploadInterval); err != nil {
 		return fmt.Errorf("%s失败: %w", actionName, err)
 	}
@@ -235,7 +236,15 @@ func (g *Gateway) videoFlow(ctx context.Context, content publish.VideoContent, i
 	resolver := g.newResolver(page)
 
 	uploadSelector := resolveOrFallback(resolver, "publish_upload", g.cfg.Selectors["upload_input"])
-	if err := page.WaitVisible(uploadSelector); err != nil {
+	uploadTimeout, err := getTimeout(g.cfg.VideoPolling)
+	if err != nil {
+		return fmt.Errorf("%s upload timeout: %w", actionName, err)
+	}
+	uploadInterval, err := getInterval(g.cfg.VideoPolling)
+	if err != nil {
+		return fmt.Errorf("%s upload interval: %w", actionName, err)
+	}
+	if err := waitForSelectorAttached(page, uploadSelector, uploadTimeout, uploadInterval); err != nil {
 		return fmt.Errorf("%s wait upload_input(%s): %w", actionName, uploadSelector, err)
 	}
 	if err := page.SetFiles(uploadSelector, []string{content.VideoPath}); err != nil {

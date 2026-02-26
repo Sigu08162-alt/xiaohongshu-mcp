@@ -24,6 +24,7 @@ COPY release/xiaohongshu-mcp-linux-amd64 /app/app
 RUN chmod +x /app/app
 
 COPY configs/ /app/configs/
+COPY selectors_discovered_pages_fixed.yaml /app/selectors_discovered_pages_fixed.yaml
 
 RUN mkdir -p /app/images /app/data && \
     chmod 777 /app/images /app/data
