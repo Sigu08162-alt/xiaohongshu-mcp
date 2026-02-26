@@ -1,4 +1,4 @@
-name: Auto Tag
+name: Auto Tag and Release
 
 on:
   workflow_dispatch:
@@ -7,20 +7,68 @@ permissions:
   contents: write
 
 jobs:
-  tag:
+  tag-and-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Generate and push tag
+      - name: Generate tag
+        id: tag
         run: |
           TIMESTAMP=$(date +%Y.%m.%d.%H%M)
           COMMIT_SHA=$(git rev-parse --short HEAD)
           TAG="v${TIMESTAMP}-${COMMIT_SHA}"
-          echo "Tagging: ${TAG}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Generated tag: ${TAG}"
+
+      - name: Push tag
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${TAG}"
-          git push origin "${TAG}"
+          git tag "${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Build binaries
+        run: |
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o xiaohongshu-mcp-darwin-arm64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o xiaohongshu-mcp-darwin-amd64 .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o xiaohongshu-mcp-windows-amd64.exe .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o xiaohongshu-mcp-linux-amd64 .
+
+      - name: Package binaries
+        run: |
+          tar czf xiaohongshu-mcp-darwin-arm64.tar.gz xiaohongshu-mcp-darwin-arm64
+          tar czf xiaohongshu-mcp-darwin-amd64.tar.gz xiaohongshu-mcp-darwin-amd64
+          zip xiaohongshu-mcp-windows-amd64.zip xiaohongshu-mcp-windows-amd64.exe
+          tar czf xiaohongshu-mcp-linux-amd64.tar.gz xiaohongshu-mcp-linux-amd64
+
+      - name: Clean up old releases
+        run: |
+          RELEASES=$(gh release list --limit 100 | grep -E '^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]{4}-' | awk '{print $3}' | tail -n +11)
+          for release in $RELEASES; do
+            echo "Deleting old release: $release"
+            gh release delete "$release" --yes --cleanup-tag
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
+        continue-on-error: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: |
+            xiaohongshu-mcp-darwin-arm64.tar.gz
+            xiaohongshu-mcp-darwin-amd64.tar.gz
+            xiaohongshu-mcp-windows-amd64.zip
+            xiaohongshu-mcp-linux-amd64.tar.gz
