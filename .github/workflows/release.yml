@@ -2,27 +2,8 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main ]
-    paths-ignore:
-      - 'README.md'
-      - 'README_EN.md'
-      - 'CLAUDE.md'
-      - '.all-contributorsrc'
-      - '.gitignore'
-      - '.dockerignore'
-      - 'Dockerfile'
-      - '.claude/**'
-      - '.cursor/**'
-      - '.github/**'
-      - '.vscode/**'
-      - 'assets/**'
-      - 'configs/**'
-      - 'cookies/**'
-      - 'docker/**'
-      - 'deploy/**'
-      - 'docs/**'
-      - 'donate/**'
-      - 'examples/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -32,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     # 只在推送到 main 时运行，或手动触发
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
 
     steps:
     - uses: actions/checkout@v4
