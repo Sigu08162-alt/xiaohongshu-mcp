@@ -10,7 +10,7 @@ echo "=== Docker 镜像重建 ==="
 echo "[1/5] 下载最新 release..."
 mkdir -p release
 ASSET="xiaohongshu-mcp-linux-amd64.tar.gz"
-gh release download --repo vmxmy/xiaohongshu-mcp --pattern "$ASSET" --dir release --clobber
+gh release download --repo vmxmy/xiaohongshu-mcp --pattern "$ASSET" --dir release --clobber --latest
 tar -xzf "release/$ASSET" -C release
 rm -f "release/$ASSET"
 
