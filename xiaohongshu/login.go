@@ -3,6 +3,7 @@ package xiaohongshu
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -19,29 +20,170 @@ func NewLogin(page browser.Page, pollingModule polling.Module) *LoginAction {
 	return &LoginAction{page: page, polling: pollingModule}
 }
 
-func (a *LoginAction) CheckLoginStatus(ctx context.Context) (bool, error) {
+// LoginStatusResult holds the result of a login status check.
+type LoginStatusResult struct {
+	LoggedIn bool
+	Nickname string
+}
+
+func (a *LoginAction) CheckLoginStatus(ctx context.Context) (*LoginStatusResult, error) {
 	pp := a.page.WithContext(ctx)
 	if err := pp.Goto("https://www.xiaohongshu.com/explore"); err != nil {
-		return false, errors.Wrap(err, "导航失败")
+		return nil, errors.Wrap(err, "导航失败")
 	}
 	if err := pp.WaitLoad(); err != nil {
-		return false, errors.Wrap(err, "等待页面加载失败")
+		return nil, errors.Wrap(err, "等待页面加载失败")
 	}
 
-	if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
-		return false, err
+	// Give the top bar time to hydrate; a single fast check is often flaky.
+	if err := polling.SleepDelay(a.polling, "wait_2000ms"); err != nil {
+		return nil, err
 	}
 
 	exists, err := pp.Has(`.main-container .user .link-wrapper .channel`)
 	if err != nil {
-		return false, errors.Wrap(err, "check login status failed")
+		return nil, errors.Wrap(err, "check login status failed")
 	}
-
 	if !exists {
-		return false, errors.Wrap(err, "login status element not found")
+		// Retry once to reduce transient false negatives during SPA rendering.
+		if err := polling.SleepDelay(a.polling, "wait_1000ms"); err != nil {
+			return nil, err
+		}
+		exists, err = pp.Has(`.main-container .user .link-wrapper .channel`)
+		if err != nil {
+			return nil, errors.Wrap(err, "check login status failed")
+		}
+	}
+	if !exists {
+		return &LoginStatusResult{LoggedIn: false}, nil
 	}
 
-	return true, nil
+	nickname := ""
+	profilePath := ""
+	raw, evalErr := pp.Eval(`() => {
+		try {
+			const pick = (vals) => {
+				for (const v of vals) {
+					if (typeof v === "string" && v.trim()) return v.trim();
+				}
+				return "";
+			};
+			const link = document.querySelector('.main-container .user .link-wrapper a');
+			const channel = document.querySelector('.main-container .user .link-wrapper .channel');
+			return {
+				nickname: pick([
+					window.__INITIAL_STATE__?.user?.userPageData?.value?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.userPageData?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.nickname,
+					link?.getAttribute("title"),
+					link?.textContent,
+					channel?.textContent,
+				]),
+				profilePath: (link?.getAttribute("href") || "").trim(),
+			};
+		} catch(e) {
+			return { nickname: "", profilePath: "" };
+		}
+	}`)
+	if evalErr == nil {
+		if m, ok := raw.(map[string]interface{}); ok {
+			if s, ok := m["nickname"].(string); ok {
+				nickname = strings.TrimSpace(s)
+			}
+			if s, ok := m["profilePath"].(string); ok {
+				profilePath = strings.TrimSpace(s)
+			}
+		}
+	}
+
+	profileNickname := ""
+	profileTitle := ""
+	if isPlaceholderNickname(nickname) && profilePath != "" {
+		profileURL := profilePath
+		if strings.HasPrefix(profileURL, "/") {
+			profileURL = "https://www.xiaohongshu.com" + profileURL
+		}
+		if err := pp.Goto(profileURL); err == nil {
+			if err := pp.WaitLoad(); err == nil {
+				if err := polling.SleepDelay(a.polling, "wait_1000ms"); err == nil {
+					profileRaw, pErr := pp.Eval(`() => {
+						try {
+							const pick = (vals) => {
+								for (const v of vals) {
+									if (typeof v === "string" && v.trim()) return v.trim();
+								}
+								return "";
+							};
+							return {
+								nickname: pick([
+									window.__INITIAL_STATE__?.user?.userPageData?.value?.basicInfo?.nickname,
+									window.__INITIAL_STATE__?.user?.userPageData?.basicInfo?.nickname,
+									window.__INITIAL_STATE__?.user?.basicInfo?.nickname,
+									window.__INITIAL_STATE__?.user?.nickname,
+									document.querySelector(".user-name")?.textContent,
+									document.querySelector('[class*="nickname"]')?.textContent,
+									document.querySelector('[class*="user-name"]')?.textContent,
+								]),
+								title: (document.title || "").trim(),
+							};
+						} catch(e) {
+							return { nickname: "", title: "" };
+						}
+					}`)
+					if pErr == nil {
+						if m, ok := profileRaw.(map[string]interface{}); ok {
+							if s, ok := m["nickname"].(string); ok {
+								profileNickname = strings.TrimSpace(s)
+							}
+							if s, ok := m["title"].(string); ok {
+								profileTitle = strings.TrimSpace(s)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	nickname = selectPreferredNickname(nickname, profileNickname, profileTitle)
+
+	return &LoginStatusResult{LoggedIn: true, Nickname: nickname}, nil
+}
+
+func isPlaceholderNickname(name string) bool {
+	n := strings.TrimSpace(strings.ToLower(name))
+	switch n {
+	case "", "我", "我的", "me", "my":
+		return true
+	default:
+		return false
+	}
+}
+
+func nicknameFromTitle(title string) string {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return ""
+	}
+	t = strings.TrimSuffix(t, "- 小红书")
+	return strings.TrimSpace(t)
+}
+
+func selectPreferredNickname(baseNickname, profileNickname, profileTitle string) string {
+	base := strings.TrimSpace(baseNickname)
+	if !isPlaceholderNickname(base) {
+		return base
+	}
+	profile := strings.TrimSpace(profileNickname)
+	if !isPlaceholderNickname(profile) {
+		return profile
+	}
+	titleName := strings.TrimSpace(nicknameFromTitle(profileTitle))
+	if !isPlaceholderNickname(titleName) {
+		return titleName
+	}
+	return ""
 }
 
 func (a *LoginAction) Login(ctx context.Context) error {

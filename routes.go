@@ -41,6 +41,7 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 		// 登录认证
 		api.GET("/login/status", appServer.checkLoginStatusHandler)
 		api.GET("/login/qrcode", appServer.getLoginQrcodeHandler)
+		api.GET("/login/qrcode/image", appServer.getLoginQrcodeImageHandler)
 		api.DELETE("/login/cookies", appServer.deleteCookiesHandler)
 		api.POST("/login/sync_cookies", appServer.syncCookiesHandler)
 

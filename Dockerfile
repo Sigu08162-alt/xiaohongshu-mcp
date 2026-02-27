@@ -14,13 +14,17 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
     libxss1 libxtst6 xdg-utils \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+ARG VERSION=unknown
+ENV APP_VERSION=$VERSION
+LABEL version=$VERSION
+
 WORKDIR /app
 
 COPY release/xiaohongshu-mcp-linux-amd64 /app/app
-COPY release/xiaohongshu-login-linux-amd64 /app/login
-RUN chmod +x /app/app /app/login
+RUN chmod +x /app/app
 
 COPY configs/ /app/configs/
+COPY selectors_discovered_pages_fixed.yaml /app/selectors_discovered_pages_fixed.yaml
 
 RUN mkdir -p /app/images /app/data && \
     chmod 777 /app/images /app/data

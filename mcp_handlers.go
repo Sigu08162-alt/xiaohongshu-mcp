@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	apperrors "github.com/vmxmy/xiaohongshu-mcp/errors"
 	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
@@ -44,9 +45,9 @@ func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 	// 根据 IsLoggedIn 判断并返回友好的提示
 	var resultText string
 	if status.IsLoggedIn {
-		resultText = fmt.Sprintf("✅ 已登录\n用户名: %s\n\n你可以使用其他功能了。", status.Username)
+		resultText = fmt.Sprintf("✅ 已登录\n用户名: %s\n版本: %s\n\n你可以使用其他功能了。", status.Username, configs.Version)
 	} else {
-		resultText = fmt.Sprintf("❌ 未登录\n\n请使用 get_login_qrcode 工具获取二维码进行登录。")
+		resultText = fmt.Sprintf("❌ 未登录 (版本: %s)\n\n请使用 get_login_qrcode 工具获取二维码进行登录。", configs.Version)
 	}
 
 	return &MCPToolResult{
@@ -56,7 +57,7 @@ func (s *AppServer) handleCheckLoginStatus(ctx context.Context) *MCPToolResult {
 
 // handleGetLoginQrcode 处理获取登录二维码请求。
 // 返回二维码图片的 Base64 编码和超时时间，供前端展示扫码登录。
-func (s *AppServer) handleGetLoginQrcode(ctx context.Context) *MCPToolResult {
+func (s *AppServer) handleGetLoginQrcode(ctx context.Context, args GetLoginQrcodeArgs) *MCPToolResult {
 	slog.Info("MCP: 获取登录扫码图片")
 
 	result, err := s.xiaohongshuService.GetLoginQrcode(ctx)
@@ -90,16 +91,24 @@ func (s *AppServer) handleGetLoginQrcode(ctx context.Context) *MCPToolResult {
 	if result.SessionID != "" {
 		lines = append(lines, "会话: "+result.SessionID)
 	}
+	if url, ok := s.cacheLoginQRCode(result); ok {
+		lines = append(lines, "二维码链接: "+url)
+	}
+	if !args.InlineImage {
+		lines = append(lines, "提示: 默认仅返回链接，避免超长 Base64 影响 Agent 窗口。需要内联图片时设置 inline_image=true。")
+	}
 	text = strings.Join(lines, "\n")
 
-	// 已登录：文本 + 图片
-	contents := []MCPContent{
-		{Type: "text", Text: text},
-		{
-			Type:     "image",
-			MimeType: "image/png",
-			Data:     strings.TrimPrefix(result.Img, "data:image/png;base64,"),
-		},
+	contents := []MCPContent{{Type: "text", Text: text}}
+	if args.InlineImage {
+		raw := strings.TrimPrefix(result.Img, "data:image/png;base64,")
+		if raw != "" {
+			contents = append(contents, MCPContent{
+				Type:     "image",
+				MimeType: "image/png",
+				Data:     raw,
+			})
+		}
 	}
 	return &MCPToolResult{Content: contents}
 }

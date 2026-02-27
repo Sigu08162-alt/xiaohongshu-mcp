@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"log/slog"
 	apppublish "github.com/vmxmy/xiaohongshu-mcp/internal/app/publish"
+	"log/slog"
 )
 
 // AppServer 应用服务器结构体，封装所有服务和处理器
@@ -21,12 +22,16 @@ type AppServer struct {
 	mcpServer          *mcp.Server
 	router             *gin.Engine
 	httpServer         *http.Server
+	loginQRStore       *loginQRCodeStore
+	publicBaseURL      string
 }
 
 // NewAppServer 创建新的应用服务器实例
 func NewAppServer(xiaohongshuService *XiaohongshuService) *AppServer {
 	appServer := &AppServer{
 		xiaohongshuService: xiaohongshuService,
+		loginQRStore:       newLoginQRCodeStore(),
+		publicBaseURL:      resolvePublicBaseURL(),
 	}
 
 	// 初始化 MCP Server（需要在创建 appServer 之后，因为工具注册需要访问 appServer）
@@ -40,6 +45,8 @@ func NewAppServerWithPublish(xiaohongshuService *XiaohongshuService, publishUsec
 	appServer := &AppServer{
 		xiaohongshuService: xiaohongshuService,
 		publishUsecase:     publishUsecase,
+		loginQRStore:       newLoginQRCodeStore(),
+		publicBaseURL:      resolvePublicBaseURL(),
 	}
 
 	// 初始化 MCP Server（需要在创建 appServer 之后，因为工具注册需要访问 appServer）
@@ -50,6 +57,10 @@ func NewAppServerWithPublish(xiaohongshuService *XiaohongshuService, publishUsec
 
 // Start 启动服务器
 func (s *AppServer) Start(port string) error {
+	if strings.TrimSpace(os.Getenv("XHS_PUBLIC_BASE_URL")) == "" {
+		s.publicBaseURL = resolvePublicBaseURLFromListenAddr(port)
+	}
+
 	s.router = setupRoutes(s)
 
 	s.httpServer = &http.Server{

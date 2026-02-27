@@ -44,7 +44,47 @@ func (s *AppServer) getLoginQrcodeHandler(c *gin.Context) {
 			"获取登录二维码失败", err.Error())
 		return
 	}
+	_, _ = s.cacheLoginQRCode(result)
 	respondSuccess(c, result, "获取登录二维码成功")
+}
+
+// getLoginQrcodeImageHandler 返回最近一次二维码 PNG 图片（优先按 session_id）。
+// @Summary 获取登录二维码图片
+// @Description 返回二维码 PNG 图片，适用于不希望在 JSON/MCP 内联 Base64 的客户端
+// @Tags 登录认证
+// @Produce image/png
+// @Param session_id query string false "登录会话ID（可选，不传时返回最新可用二维码）"
+// @Success 200 {file} binary "二维码 PNG"
+// @Failure 404 {object} ErrorResponse "二维码不存在或已过期"
+// @Router /login/qrcode/image [get]
+func (s *AppServer) getLoginQrcodeImageHandler(c *gin.Context) {
+	if s.loginQRStore == nil {
+		respondError(c, http.StatusInternalServerError, "QRCODE_STORE_UNAVAILABLE",
+			"二维码缓存不可用", "login qrcode store is not initialized")
+		return
+	}
+
+	querySessionID := c.Query("session_id")
+	sessionID := querySessionID
+
+	var data []byte
+	var ok bool
+	if querySessionID != "" {
+		data, ok = s.loginQRStore.Get(querySessionID)
+	} else {
+		sessionID, data, ok = s.loginQRStore.GetLatest()
+	}
+	if !ok {
+		respondError(c, http.StatusNotFound, "QRCODE_NOT_FOUND",
+			"二维码不存在或已过期", "请重新调用 get_login_qrcode 或 /api/v1/login/qrcode 获取新二维码")
+		return
+	}
+
+	if sessionID != "" {
+		c.Header("X-Login-Session-ID", sessionID)
+	}
+	c.Header("Cache-Control", "no-store, max-age=0")
+	c.Data(http.StatusOK, "image/png", data)
 }
 
 // deleteCookiesHandler 删除 cookies，重置登录状态

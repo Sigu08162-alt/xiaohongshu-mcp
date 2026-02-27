@@ -473,73 +473,108 @@ func applyStateNoteMaps(feeds []Feed, titleMap, coverMap map[string]string) []Fe
 	return feeds
 }
 
-// GetMyStats 获取当前用户的统计数据
+// injectAPIInterceptor 在页面中注入 XHR/fetch 拦截器，捕获创作者中心 API 响应
+const injectAPIInterceptor = `
+(function() {
+  if (window.__xhs_api_cache) return; // 已注入
+  window.__xhs_api_cache = {};
+  const TARGETS = [
+    '/api/galaxy/v2/creator/datacenter/account/base',
+    '/api/galaxy/creator/home/personal_info',
+    '/api/galaxy/creator/data/note_detail_new',
+  ];
+  function matchTarget(url) {
+    return TARGETS.find(t => url.includes(t));
+  }
+  // 拦截 fetch
+  const origFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+    const key = matchTarget(url);
+    const resp = await origFetch.apply(this, args);
+    if (key) {
+      try {
+        const clone = resp.clone();
+        clone.text().then(text => {
+          window.__xhs_api_cache[key] = { status: resp.status, body: text };
+        });
+      } catch(e) {}
+    }
+    return resp;
+  };
+  // 拦截 XHR
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this.__xhs_url = url;
+    return origOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function() {
+    const key = matchTarget(this.__xhs_url || '');
+    if (key) {
+      this.addEventListener('load', function() {
+        window.__xhs_api_cache[key] = { status: this.status, body: this.responseText };
+      });
+    }
+    return origSend.apply(this, arguments);
+  };
+})();
+`
+
+// GetMyStats 获取当前用户的统计数据（复用 GetMyProfileViaSidebar，从 __INITIAL_STATE__ 提取，无需创作者中心 API）
 func (d *DataAction) GetMyStats(ctx context.Context) (*UserStats, error) {
-	timeout, err := d.polling.Delay("wait_60000ms")
+	profileAction, err := NewUserProfileAction(d.page, d.polling)
 	if err != nil {
-		return nil, err
-	}
-	page := d.page.WithContext(ctx).WithTimeout(timeout)
-
-	// 导航到创作者中心页面（包含更详细的运营数据）
-	slog.Info("导航到创作者中心页面...")
-	if err := page.Goto("https://creator.xiaohongshu.com/new/home?source=official"); err != nil {
-		return nil, fmt.Errorf("导航失败: %w", err)
-	}
-	waitStable, err := d.polling.Delay("wait_1000ms")
-	if err != nil {
-		return nil, err
-	}
-	if err := page.WaitDOMStable(waitStable, 0.1); err != nil {
-		slog.Warn("等待 DOM 稳定出现问题", "error", err)
-	}
-	if err := polling.SleepDelay(d.polling, "wait_5000ms"); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("创建 UserProfileAction 失败: %w", err)
 	}
 
-	accountBase, err := d.fetchAccountBase(page)
+	slog.Info("通过个人主页获取统计数据...")
+	profile, err := profileAction.GetMyProfileViaSidebar(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("获取账号数据失败: %w", err)
-	}
-	personalInfo, err := d.fetchPersonalInfo(page)
-	if err != nil {
-		return nil, fmt.Errorf("获取个人信息失败: %w", err)
-	}
-	noteDetail, err := d.fetchNoteDetail(page)
-	if err != nil {
-		return nil, fmt.Errorf("获取笔记详情失败: %w", err)
+		return nil, fmt.Errorf("获取个人主页失败: %w", err)
 	}
 
-	stats := UserStats{
-		FollowerCount:       getInt(personalInfo, "fans_count"),
-		FollowCount:         getInt(personalInfo, "follow_count"),
-		LikedCount:          getInt(personalInfo, "faved_count"),
-		NoteCount:           getInt(personalInfo, "note_count"),
-		CollectCount:        getInt(personalInfo, "collect_count"),
-		ExposureCount:       getNestedInt(accountBase, "thirty", "exposure_count"),
-		ViewCount:           getNestedInt(noteDetail, "seven", "view_count"),
-		CoverClickRate:      getNestedFloat(accountBase, "thirty", "cover_click_rate"),
-		VideoCompleteRate:   getNestedFloat(accountBase, "thirty", "video_complete_rate"),
-		LikeCount7d:         getNestedInt(noteDetail, "seven", "like_count"),
-		CommentCount7d:      getNestedInt(noteDetail, "seven", "comment_count"),
-		CollectCount7d:      getNestedInt(noteDetail, "seven", "collect_count"),
-		ShareCount7d:        getNestedInt(noteDetail, "seven", "share_count"),
-		NetFollowerGrowth:   getNestedInt(noteDetail, "seven", "rise_fans_count"),
-		NewFollowerCount:    getNestedInt(noteDetail, "seven", "new_fans_count"),
-		UnfollowCount:       getNestedInt(noteDetail, "seven", "leave_fans_count"),
-		ProfileVisitorCount: getNestedInt(noteDetail, "seven", "home_view_count"),
+	stats := &UserStats{}
+	for _, interaction := range profile.Interactions {
+		count := parseInteractionCount(interaction.Count)
+		switch interaction.Type {
+		case "fans":
+			stats.FollowerCount = count
+		case "follows":
+			stats.FollowCount = count
+		case "interaction":
+			stats.LikedCount = count
+		}
 	}
 
-	if stats.FollowerCount == 0 &&
-		stats.FollowCount == 0 &&
-		stats.LikedCount == 0 &&
-		stats.NoteCount == 0 &&
-		stats.CollectCount == 0 {
-		return nil, fmt.Errorf("获取统计数据为空，可能未登录或接口返回异常")
+	if stats.FollowerCount == 0 && stats.FollowCount == 0 && stats.LikedCount == 0 {
+		return nil, fmt.Errorf("获取统计数据为空，可能未登录或页面数据异常")
 	}
 
-	slog.Info("获取统计数据成功", "stats", stats)
-	return &stats, nil
+	slog.Info("获取统计数据成功", "follower", stats.FollowerCount, "follow", stats.FollowCount, "liked", stats.LikedCount)
+	return stats, nil
+}
+
+// parseInteractionCount 将 "1.2万" / "123" 等格式转为 int
+func parseInteractionCount(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	// 处理 "万" 单位
+	if strings.HasSuffix(s, "万") {
+		s = strings.TrimSuffix(s, "万")
+		var f float64
+		if _, err := fmt.Sscanf(s, "%f", &f); err == nil {
+			return int(f * 10000)
+		}
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(s, "%d", &n); err == nil {
+		return n
+	}
+	return 0
 }
 
 type apiFetchResult struct {
@@ -559,6 +594,42 @@ func (d *DataAction) fetchPersonalInfo(page browser.Page) (map[string]interface{
 
 func (d *DataAction) fetchNoteDetail(page browser.Page) (map[string]interface{}, error) {
 	return d.fetchJSONWithRetry(page, "/api/galaxy/creator/data/note_detail_new")
+}
+
+// fetchCachedOrDirect 先从拦截缓存读取，缓存未命中则回退到直接请求
+func (d *DataAction) fetchCachedOrDirect(page browser.Page, path string) (map[string]interface{}, error) {
+	// 轮询等待缓存命中（最多15秒）
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		result, err := page.Eval(`(path) => {
+			const cache = window.__xhs_api_cache;
+			if (!cache || !cache[path]) return null;
+			return JSON.stringify(cache[path]);
+		}`, path)
+		if err == nil && result != nil {
+			raw, ok := result.(string)
+			if ok && raw != "" && raw != "null" {
+				var entry struct {
+					Status int    `json:"status"`
+					Body   string `json:"body"`
+				}
+				if err := json.Unmarshal([]byte(raw), &entry); err == nil && entry.Status == 200 {
+					var payload map[string]interface{}
+					if err := json.Unmarshal([]byte(entry.Body), &payload); err == nil {
+						if data, ok := payload["data"].(map[string]interface{}); ok {
+							slog.Info("从拦截缓存读取成功", "path", path)
+							return data, nil
+						}
+						return payload, nil
+					}
+				}
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	// 缓存未命中，回退到直接请求
+	slog.Info("缓存未命中，回退到直接请求", "path", path)
+	return d.fetchJSONWithRetry(page, path)
 }
 
 func (d *DataAction) fetchJSONWithRetry(page browser.Page, path string) (map[string]interface{}, error) {

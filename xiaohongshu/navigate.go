@@ -39,6 +39,14 @@ func (n *NavigateAction) ToExplorePage(ctx context.Context) error {
 		return err
 	}
 
+	// 检查是否被重定向到登录页
+	currentURL, evalErr := page.Eval(`() => location.href`)
+	if evalErr == nil {
+		if urlStr, ok := currentURL.(string); ok && strings.Contains(urlStr, "/login") {
+			return fmt.Errorf("cookie 已失效，被重定向到登录页: %s", urlStr)
+		}
+	}
+
 	return nil
 }
 

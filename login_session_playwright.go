@@ -1,17 +1,23 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/playwright-community/playwright-go"
-	"log/slog"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	"github.com/vmxmy/xiaohongshu-mcp/internal/infra/browser"
+	"log/slog"
 )
 
 const (
@@ -36,7 +42,8 @@ const (
 	maxFrameDepth      = 6
 )
 
-var forceFullPageQRCode = true
+var forceFullPageQRCode = strings.EqualFold(os.Getenv("XHS_FORCE_FULL_PAGE_QR"), "1") ||
+	strings.EqualFold(os.Getenv("XHS_FORCE_FULL_PAGE_QR"), "true")
 
 // qrElement 二维码元素接口
 type qrElement interface {
@@ -145,21 +152,35 @@ func (b *browserElementAdapter) Screenshot() ([]byte, error) {
 
 	// 通过 Eval 执行截图
 	result, err := b.element.Eval(`(el) => {
-		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d');
 		const rect = el.getBoundingClientRect();
-		canvas.width = rect.width;
-		canvas.height = rect.height;
+		const pad = 12;
+		const createCanvas = (w, h) => {
+			const canvas = document.createElement('canvas');
+			canvas.width = Math.max(1, Math.floor(w));
+			canvas.height = Math.max(1, Math.floor(h));
+			const ctx = canvas.getContext('2d');
+			ctx.fillStyle = '#fff';
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			return { canvas, ctx };
+		};
 
 		// 如果是 canvas 元素，直接获取数据
 		if (el.tagName === 'CANVAS') {
-			return el.toDataURL('image/png');
+			const sw = el.width || rect.width || 1;
+			const sh = el.height || rect.height || 1;
+			const out = createCanvas(sw + pad * 2, sh + pad * 2);
+			out.ctx.drawImage(el, pad, pad, Math.floor(sw), Math.floor(sh));
+			return out.canvas.toDataURL('image/png');
 		}
 
 		// 如果是 img 元素，绘制到 canvas
 		if (el.tagName === 'IMG') {
-			ctx.drawImage(el, 0, 0);
-			return canvas.toDataURL('image/png');
+			// 使用图片原始尺寸，避免显示尺寸导致右/下边缘被裁切。
+			const sw = el.naturalWidth || el.width || rect.width || 1;
+			const sh = el.naturalHeight || el.height || rect.height || 1;
+			const out = createCanvas(sw + pad * 2, sh + pad * 2);
+			out.ctx.drawImage(el, pad, pad, Math.floor(sw), Math.floor(sh));
+			return out.canvas.toDataURL('image/png');
 		}
 
 		// 其他元素使用 html2canvas 或返回错误
@@ -372,6 +393,11 @@ func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error
 	if err != nil {
 		return loginQRCode{}, err
 	}
+	if withQuietZone, qErr := ensurePNGQuietZone(img, 12); qErr == nil {
+		img = withQuietZone
+	} else {
+		slog.Warn("ensure qrcode quiet zone failed", "error", qErr)
+	}
 
 	source := "login_qrcode"
 	if stage == "security" {
@@ -383,6 +409,60 @@ func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error
 		Image: base64.StdEncoding.EncodeToString(img),
 		Stage: stage,
 	}, nil
+}
+
+// ensurePNGQuietZone guarantees a white border around QR images so decoders can
+// reliably detect finder patterns even when the source image is tightly cropped.
+func ensurePNGQuietZone(pngData []byte, minPadding int) ([]byte, error) {
+	if len(pngData) == 0 {
+		return pngData, errors.New("empty png data")
+	}
+	if minPadding <= 0 {
+		minPadding = 12
+	}
+
+	img, err := png.Decode(bytes.NewReader(pngData))
+	if err != nil {
+		return nil, err
+	}
+	if !pngTouchesDarkEdge(img) {
+		return pngData, nil
+	}
+
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	dst := image.NewRGBA(image.Rect(0, 0, w+minPadding*2, h+minPadding*2))
+	draw.Draw(dst, dst.Bounds(), &image.Uniform{color.White}, image.Point{}, draw.Src)
+	draw.Draw(dst, image.Rect(minPadding, minPadding, minPadding+w, minPadding+h), img, b.Min, draw.Src)
+
+	var out bytes.Buffer
+	if err := png.Encode(&out, dst); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func pngTouchesDarkEdge(img image.Image) bool {
+	b := img.Bounds()
+	isDark := func(x, y int) bool {
+		r, g, bb, _ := img.At(x, y).RGBA()
+		rr := uint8(r >> 8)
+		gg := uint8(g >> 8)
+		bb8 := uint8(bb >> 8)
+		return rr < 200 || gg < 200 || bb8 < 200
+	}
+
+	for x := b.Min.X; x < b.Max.X; x++ {
+		if isDark(x, b.Min.Y) || isDark(x, b.Max.Y-1) {
+			return true
+		}
+	}
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		if isDark(b.Min.X, y) || isDark(b.Max.X-1, y) {
+			return true
+		}
+	}
+	return false
 }
 
 func fullPageScreenshotBase64(page fullPageScreenshotter) (string, error) {

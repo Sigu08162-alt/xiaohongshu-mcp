@@ -47,9 +47,9 @@ func main() {
 		slog.Error("failed to check login status:", "arg1", err)
 	}
 
-	slog.Info("当前登录状态:", "arg1", status)
+	slog.Info("当前登录状态:", "loggedIn", status.LoggedIn, "nickname", status.Nickname)
 
-	if status {
+	if status.LoggedIn {
 		return
 	}
 
@@ -69,8 +69,8 @@ func main() {
 		slog.Error("failed to check login status after login:", "arg1", err)
 	}
 
-	if status {
-		slog.Info("登录成功！")
+	if status.LoggedIn {
+		slog.Info("登录成功！", "nickname", status.Nickname)
 	} else {
 		slog.Error("登录流程完成但仍未登录")
 	}
