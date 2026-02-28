@@ -34,7 +34,7 @@ func uploadImages(page browser.Page, imagesPaths []string) error {
 	}
 
 	// 等待上传输入框出现
-	uploadInput, err := pp.Element(".upload-input")
+	uploadInput, err := pp.Element(`input[type="file"]`)
 	if err != nil {
 		return errors.Wrap(err, "找不到上传输入框")
 	}
