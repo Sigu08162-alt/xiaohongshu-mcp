@@ -338,13 +338,39 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 	if s.page == nil {
 		return false, errors.New("login page not initialized")
 	}
+	
+	// 方法1: 检查 DOM 选择器
 	ok, err := s.page.Has(ctx, loginStatusSelector)
 	loginVisible, loginErr := s.page.Has(ctx, ".login-container")
 	slog.Info("login status selector check", "login_status_selector", loginStatusSelector, "login_status_match", ok, "login_status_err", err, "login_container_match", loginVisible, "login_container_err", loginErr)
-	if err != nil {
-		return false, err
+	
+	if err == nil && ok {
+		return true, nil
 	}
-	return ok, nil
+	
+	// 方法2: 检查关键 cookies（备用方案）
+	if s.pwPage != nil && s.pwPage.ctx != nil {
+		cookies, cookieErr := s.pwPage.ctx.Cookies()
+		if cookieErr == nil {
+			hasWebSession := false
+			hasA1 := false
+			for _, c := range cookies {
+				if c.Name == "web_session" && len(c.Value) > 20 {
+					hasWebSession = true
+				}
+				if c.Name == "a1" && len(c.Value) > 20 {
+					hasA1 = true
+				}
+			}
+			cookieLoggedIn := hasWebSession && hasA1
+			slog.Info("login status cookie check", "has_web_session", hasWebSession, "has_a1", hasA1, "cookie_logged_in", cookieLoggedIn)
+			if cookieLoggedIn {
+				return true, nil
+			}
+		}
+	}
+	
+	return false, nil
 }
 
 func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error) {
