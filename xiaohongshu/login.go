@@ -58,26 +58,24 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (*LoginStatusResult,
 	
 	// 方法2: 如果 DOM 选择器失败，检查关键 cookies
 	if !exists {
-		cookies, cookieErr := pp.Cookies()
+		cookieCheck, cookieErr := pp.Eval(`() => {
+			const cookies = document.cookie.split(';').reduce((acc, c) => {
+				const [k, v] = c.trim().split('=');
+				if (k && v) acc[k] = v;
+				return acc;
+			}, {});
+			const hasWebSession = cookies.web_session && cookies.web_session.length > 20;
+			const hasA1 = cookies.a1 && cookies.a1.length > 20;
+			return hasWebSession && hasA1;
+		}`)
 		if cookieErr == nil {
-			hasWebSession := false
-			hasA1 := false
-			for _, c := range cookies {
-				if c.Name == "web_session" && len(c.Value) > 20 {
-					hasWebSession = true
-				}
-				if c.Name == "a1" && len(c.Value) > 20 {
-					hasA1 = true
-				}
+			if loggedIn, ok := cookieCheck.(bool); ok && loggedIn {
+				slog.Info("login status detected via cookies", "selector_failed", true, "cookie_check", true)
+				// Cookie 检测通过，继续获取用户名
+				exists = true
 			}
-			cookieLoggedIn := hasWebSession && hasA1
-			slog.Info("login status cookie check", "has_web_session", hasWebSession, "has_a1", hasA1, "cookie_logged_in", cookieLoggedIn)
-			if !cookieLoggedIn {
-				return &LoginStatusResult{LoggedIn: false}, nil
-			}
-			// Cookie 检测通过，继续获取用户名
-			exists = true
-		} else {
+		}
+		if !exists {
 			return &LoginStatusResult{LoggedIn: false}, nil
 		}
 	}
