@@ -40,6 +40,7 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (*LoginStatusResult,
 		return nil, err
 	}
 
+	// 方法1: 检查 DOM 选择器
 	exists, err := pp.Has(`.main-container .user .link-wrapper .channel`)
 	if err != nil {
 		return nil, errors.Wrap(err, "check login status failed")
@@ -54,8 +55,31 @@ func (a *LoginAction) CheckLoginStatus(ctx context.Context) (*LoginStatusResult,
 			return nil, errors.Wrap(err, "check login status failed")
 		}
 	}
+	
+	// 方法2: 如果 DOM 选择器失败，检查关键 cookies
 	if !exists {
-		return &LoginStatusResult{LoggedIn: false}, nil
+		cookies, cookieErr := pp.Cookies()
+		if cookieErr == nil {
+			hasWebSession := false
+			hasA1 := false
+			for _, c := range cookies {
+				if c.Name == "web_session" && len(c.Value) > 20 {
+					hasWebSession = true
+				}
+				if c.Name == "a1" && len(c.Value) > 20 {
+					hasA1 = true
+				}
+			}
+			cookieLoggedIn := hasWebSession && hasA1
+			slog.Info("login status cookie check", "has_web_session", hasWebSession, "has_a1", hasA1, "cookie_logged_in", cookieLoggedIn)
+			if !cookieLoggedIn {
+				return &LoginStatusResult{LoggedIn: false}, nil
+			}
+			// Cookie 检测通过，继续获取用户名
+			exists = true
+		} else {
+			return &LoginStatusResult{LoggedIn: false}, nil
+		}
 	}
 
 	nickname := ""
