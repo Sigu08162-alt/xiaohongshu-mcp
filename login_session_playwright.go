@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -22,6 +23,7 @@ import (
 
 const (
 	xhsLoginURL         = "https://www.xiaohongshu.com/explore"
+	xhsCreatorHomeURL   = "https://creator.xiaohongshu.com/new/home?source=official"
 	loginStatusSelector = ".main-container .user .link-wrapper .channel"
 )
 
@@ -338,16 +340,39 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 	if s.page == nil {
 		return false, errors.New("login page not initialized")
 	}
-	
+
 	// 方法1: 检查 DOM 选择器
 	ok, err := s.page.Has(ctx, loginStatusSelector)
-	loginVisible, loginErr := s.page.Has(ctx, ".login-container")
+	loginVisible, loginErr := s.loginContainerVisible(ctx)
 	slog.Info("login status selector check", "login_status_selector", loginStatusSelector, "login_status_match", ok, "login_status_err", err, "login_container_match", loginVisible, "login_container_err", loginErr)
-	
-	if err == nil && ok {
+
+	// 页面选择器检查异常时上抛，避免把页面异常误报成“未登录”。
+	if err != nil {
+		return false, err
+	}
+
+	// 命中登录态且登录弹窗不可见，直接认为已登录。
+	if ok && (loginErr != nil || !loginVisible) {
 		return true, nil
 	}
-	
+
+	// 当登录弹窗可见时再短暂复查一次，降低 SPA 过渡态误判。
+	if ok && loginErr == nil && loginVisible && s.sleep != nil {
+		s.sleep(500 * time.Millisecond)
+		recheckOK, recheckErr := s.page.Has(ctx, loginStatusSelector)
+		recheckLoginVisible, recheckLoginErr := s.loginContainerVisible(ctx)
+		slog.Info("login status selector recheck", "login_status_match", recheckOK, "login_status_err", recheckErr, "login_container_match", recheckLoginVisible, "login_container_err", recheckLoginErr)
+		if recheckErr == nil && recheckOK && (recheckLoginErr != nil || !recheckLoginVisible) {
+			return true, nil
+		}
+	}
+
+	// 登录弹窗可见时，说明当前仍处于登录页流程，禁止用 cookie 兜底误报“已登录”。
+	if loginErr == nil && loginVisible {
+		slog.Info("login modal is visible, skip cookie fallback")
+		return false, nil
+	}
+
 	// 方法2: 检查关键 cookies（备用方案）
 	if s.pwPage != nil && s.pwPage.ctx != nil {
 		cookies, cookieErr := s.pwPage.ctx.Cookies()
@@ -369,8 +394,295 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 			}
 		}
 	}
-	
+
 	return false, nil
+}
+
+func (s *playwrightLoginSession) loginContainerVisible(ctx context.Context) (bool, error) {
+	if s.pwPage != nil && s.pwPage.page != nil {
+		visible, err := s.pwPage.page.WithContext(ctx).IsVisible(".login-container")
+		if err == nil {
+			return visible, nil
+		}
+		slog.Warn("login container visibility check failed, fallback to exists check", "error", err)
+	}
+	return s.page.Has(ctx, ".login-container")
+}
+
+func (s *playwrightLoginSession) Nickname(ctx context.Context) (string, error) {
+	if s.pwPage == nil || s.pwPage.page == nil {
+		return "", errors.New("login page not initialized")
+	}
+
+	baseNickname, profilePath, baseErr := s.nicknameFromExplore(ctx)
+	if !isPlaceholderNicknameMain(baseNickname) {
+		return baseNickname, nil
+	}
+
+	profileNickname := ""
+	profileTitle := ""
+	if profilePath != "" {
+		pn, pt, profileErr := s.nicknameFromProfile(ctx, profilePath)
+		if profileErr != nil && baseErr == nil {
+			baseErr = profileErr
+		}
+		profileNickname = pn
+		profileTitle = pt
+	}
+
+	if preferred := selectPreferredNicknameMain(baseNickname, profileNickname, profileTitle); !isPlaceholderNicknameMain(preferred) {
+		return preferred, nil
+	}
+
+	creatorNickname, creatorErr := s.nicknameFromCreatorHome(ctx)
+	if creatorErr == nil && !isPlaceholderNicknameMain(creatorNickname) {
+		return creatorNickname, nil
+	}
+
+	if baseErr == nil {
+		baseErr = creatorErr
+	}
+	if baseErr != nil {
+		return "", baseErr
+	}
+	return "", errors.New("nickname unavailable")
+}
+
+func (s *playwrightLoginSession) nicknameFromExplore(ctx context.Context) (nickname, profilePath string, err error) {
+	pp := s.pwPage.page.WithContext(ctx)
+	raw, err := pp.Eval(`() => {
+		try {
+			const pick = (vals) => {
+				for (const v of vals) {
+					if (typeof v === "string" && v.trim()) return v.trim();
+				}
+				return "";
+			};
+			const link = document.querySelector('.main-container .user .link-wrapper a');
+			const channel = document.querySelector('.main-container .user .link-wrapper .channel');
+			return {
+				nickname: pick([
+					window.__INITIAL_STATE__?.user?.userPageData?.value?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.userPageData?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.nickname,
+					link?.getAttribute("title"),
+					link?.textContent,
+					channel?.textContent,
+				]),
+				profilePath: (link?.getAttribute("href") || "").trim(),
+			};
+		} catch(e) {
+			return { nickname: "", profilePath: "" };
+		}
+	}`)
+	if err != nil {
+		return "", "", fmt.Errorf("extract nickname on explore failed: %w", err)
+	}
+	nickname, profilePath, _ = parseNicknameEvalResult(raw)
+	return nickname, profilePath, nil
+}
+
+func (s *playwrightLoginSession) nicknameFromProfile(ctx context.Context, profilePath string) (nickname, title string, err error) {
+	profileURL := profilePath
+	if strings.HasPrefix(profileURL, "/") {
+		profileURL = "https://www.xiaohongshu.com" + profileURL
+	}
+	if err := s.page.Navigate(ctx, profileURL); err != nil {
+		return "", "", fmt.Errorf("navigate profile page failed: %w", err)
+	}
+	if err := s.page.WaitLoad(ctx); err != nil {
+		return "", "", fmt.Errorf("wait profile page load failed: %w", err)
+	}
+	if s.sleep != nil {
+		s.sleep(1 * time.Second)
+	}
+
+	pp := s.pwPage.page.WithContext(ctx)
+	raw, err := pp.Eval(`() => {
+		try {
+			const pick = (vals) => {
+				for (const v of vals) {
+					if (typeof v === "string" && v.trim()) return v.trim();
+				}
+				return "";
+			};
+			return {
+				nickname: pick([
+					window.__INITIAL_STATE__?.user?.userPageData?.value?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.userPageData?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.basicInfo?.nickname,
+					window.__INITIAL_STATE__?.user?.nickname,
+					document.querySelector(".user-name")?.textContent,
+					document.querySelector('[class*="nickname"]')?.textContent,
+					document.querySelector('[class*="user-name"]')?.textContent,
+				]),
+				title: (document.title || "").trim(),
+			};
+		} catch(e) {
+			return { nickname: "", title: "" };
+		}
+	}`)
+	if err != nil {
+		return "", "", fmt.Errorf("extract nickname on profile failed: %w", err)
+	}
+
+	nickname, _, title = parseNicknameEvalResult(raw)
+	return nickname, title, nil
+}
+
+func (s *playwrightLoginSession) nicknameFromCreatorHome(ctx context.Context) (string, error) {
+	if err := s.page.Navigate(ctx, xhsCreatorHomeURL); err != nil {
+		return "", fmt.Errorf("navigate creator home failed: %w", err)
+	}
+	if err := s.page.WaitLoad(ctx); err != nil {
+		return "", fmt.Errorf("wait creator home load failed: %w", err)
+	}
+	if s.sleep != nil {
+		s.sleep(1500 * time.Millisecond)
+	}
+
+	pp := s.pwPage.page.WithContext(ctx)
+	raw, err := pp.Eval(`async () => {
+		const pick = (vals) => {
+			for (const v of vals) {
+				if (typeof v === "string" && v.trim()) return v.trim();
+			}
+			return "";
+		};
+		const keySet = new Set(["nickname", "nickName", "userName", "username", "name", "displayName"]);
+		const deepFind = (obj, depth = 0) => {
+			if (depth > 5 || obj == null) return "";
+			if (Array.isArray(obj)) {
+				for (const item of obj) {
+					const v = deepFind(item, depth + 1);
+					if (v) return v;
+				}
+				return "";
+			}
+			if (typeof obj !== "object") return "";
+			for (const [k, v] of Object.entries(obj)) {
+				if (keySet.has(k) && typeof v === "string" && v.trim()) return v.trim();
+			}
+			for (const v of Object.values(obj)) {
+				const found = deepFind(v, depth + 1);
+				if (found) return found;
+			}
+			return "";
+		};
+
+		const domNickname = pick([
+			document.querySelector(".user-name")?.textContent,
+			document.querySelector('[class*="nickname"]')?.textContent,
+			document.querySelector('[class*="user-name"]')?.textContent,
+			document.querySelector('[class*="avatar"] + div')?.textContent,
+		]);
+
+		const stateNickname = pick([
+			deepFind(window.__INITIAL_STATE__),
+			deepFind(window.__NUXT__),
+			deepFind(window.__NEXT_DATA__),
+			deepFind(window.__STORE__),
+			deepFind(window.__APOLLO_STATE__),
+		]);
+		if (stateNickname) {
+			return { nickname: stateNickname, title: (document.title || "").trim() };
+		}
+		if (domNickname) {
+			return { nickname: domNickname, title: (document.title || "").trim() };
+		}
+
+		const endpoints = [
+			"/api/galaxy/creator/home/base_info",
+			"/api/galaxy/creator/home/user_info",
+			"/api/sns/web/v1/user/me",
+			"/api/sns/web/v1/user/profile",
+		];
+		for (const endpoint of endpoints) {
+			try {
+				const resp = await fetch(endpoint, { credentials: "include" });
+				if (!resp || !resp.ok) continue;
+				const text = await resp.text();
+				if (!text) continue;
+				let data = null;
+				try {
+					data = JSON.parse(text);
+				} catch (_) {
+					continue;
+				}
+				const apiNickname = deepFind(data);
+				if (apiNickname) {
+					return { nickname: apiNickname, title: (document.title || "").trim() };
+				}
+			} catch (_) {}
+		}
+		return { nickname: "", title: (document.title || "").trim() };
+	}`)
+	if err != nil {
+		return "", fmt.Errorf("extract nickname on creator home failed: %w", err)
+	}
+
+	nickname, _, title := parseNicknameEvalResult(raw)
+	preferred := selectPreferredNicknameMain("", nickname, title)
+	if isPlaceholderNicknameMain(preferred) {
+		return "", errors.New("nickname unavailable on creator home")
+	}
+	return preferred, nil
+}
+
+func parseNicknameEvalResult(raw interface{}) (nickname, profilePath, title string) {
+	m, ok := raw.(map[string]interface{})
+	if !ok {
+		return "", "", ""
+	}
+	if s, ok := m["nickname"].(string); ok {
+		nickname = strings.TrimSpace(s)
+	}
+	if s, ok := m["profilePath"].(string); ok {
+		profilePath = strings.TrimSpace(s)
+	}
+	if s, ok := m["title"].(string); ok {
+		title = strings.TrimSpace(s)
+	}
+	return nickname, profilePath, title
+}
+
+func isPlaceholderNicknameMain(name string) bool {
+	n := strings.TrimSpace(strings.ToLower(name))
+	switch n {
+	case "", "我", "我的", "me", "my":
+		return true
+	default:
+		return false
+	}
+}
+
+func nicknameFromTitleMain(title string) string {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return ""
+	}
+	if !strings.HasSuffix(t, "- 小红书") {
+		return ""
+	}
+	t = strings.TrimSuffix(t, "- 小红书")
+	return strings.TrimSpace(t)
+}
+
+func selectPreferredNicknameMain(baseNickname, profileNickname, profileTitle string) string {
+	base := strings.TrimSpace(baseNickname)
+	if !isPlaceholderNicknameMain(base) {
+		return base
+	}
+	profile := strings.TrimSpace(profileNickname)
+	if !isPlaceholderNicknameMain(profile) {
+		return profile
+	}
+	titleName := strings.TrimSpace(nicknameFromTitleMain(profileTitle))
+	if !isPlaceholderNicknameMain(titleName) {
+		return titleName
+	}
+	return ""
 }
 
 func (s *playwrightLoginSession) QRCode(ctx context.Context) (loginQRCode, error) {

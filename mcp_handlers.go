@@ -14,7 +14,6 @@ import (
 	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	apperrors "github.com/vmxmy/xiaohongshu-mcp/errors"
-	domainpublish "github.com/vmxmy/xiaohongshu-mcp/internal/domain/publish"
 	"github.com/vmxmy/xiaohongshu-mcp/xiaohongshu"
 )
 
@@ -288,24 +287,20 @@ func (s *AppServer) handleSaveDraft(ctx context.Context, args map[string]interfa
 
 	slog.Info("MCP: 保存草稿", "title", title, "imageCount", len(imagePaths), "tagCount", len(tags))
 
-	// 调用保存草稿服务
-	if s.publishUsecase == nil {
-		return errorResult("保存草稿失败: 发布服务未初始化")
+	req := &SaveDraftRequest{
+		Title:   title,
+		Content: content,
+		Images:  imagePaths,
+		Tags:    tags,
 	}
 
-	publishContent := domainpublish.ImageContent{
-		Title:      title,
-		Content:    content,
-		Tags:       tags,
-		ImagePaths: imagePaths,
-	}
-
-	if err := s.publishUsecase.SaveImageDraft(ctx, publishContent); err != nil {
+	result, err := s.xiaohongshuService.SaveDraft(ctx, req)
+	if err != nil {
 		return errorResult("保存草稿失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{Type: "text", Text: "草稿保存成功"}},
+		Content: []MCPContent{{Type: "text", Text: result.Message}},
 	}
 }
 
@@ -324,24 +319,20 @@ func (s *AppServer) handleSaveVideoDraft(ctx context.Context, args map[string]in
 
 	slog.Info("MCP: 保存视频草稿", "title", title, "tagCount", len(tags))
 
-	// 调用保存视频草稿服务
-	if s.publishUsecase == nil {
-		return errorResult("保存草稿失败: 发布服务未初始化")
+	req := &SaveVideoDraftRequest{
+		Title:   title,
+		Content: content,
+		Video:   videoPath,
+		Tags:    tags,
 	}
 
-	publishContent := domainpublish.VideoContent{
-		Title:     title,
-		Content:   content,
-		Tags:      tags,
-		VideoPath: videoPath,
-	}
-
-	if err := s.publishUsecase.SaveVideoDraft(ctx, publishContent); err != nil {
+	result, err := s.xiaohongshuService.SaveVideoDraft(ctx, req)
+	if err != nil {
 		return errorResult("保存视频草稿失败: " + err.Error())
 	}
 
 	return &MCPToolResult{
-		Content: []MCPContent{{Type: "text", Text: "视频草稿保存成功"}},
+		Content: []MCPContent{{Type: "text", Text: result.Message}},
 	}
 }
 

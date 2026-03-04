@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/mattn/go-runewidth"
-	"github.com/vmxmy/xiaohongshu-mcp/configs"
 	"github.com/vmxmy/xiaohongshu-mcp/cookies"
 	appanalytics "github.com/vmxmy/xiaohongshu-mcp/internal/app/analytics"
 	appfeed "github.com/vmxmy/xiaohongshu-mcp/internal/app/feed"
@@ -44,6 +43,7 @@ type XiaohongshuService struct {
 	userUsecase      *appuser.Usecase
 	analyticsUsecase *appanalytics.Usecase
 	loginManager     loginProvider
+	loginSessionNew  func() (loginSession, error)
 	polling          PollingModules
 	limiter          *ratelimit.Limiter
 }
@@ -68,6 +68,7 @@ func NewXiaohongshuServiceWithModules(
 		userUsecase:      userUsecase,
 		analyticsUsecase: analyticsUsecase,
 		loginManager:     NewLoginManager(newPlaywrightLoginSession, loginTTL),
+		loginSessionNew:  newPlaywrightLoginSession,
 		polling:          modules,
 		limiter:          ratelimit.DefaultLimiter(),
 	}, nil
@@ -159,33 +160,67 @@ func (s *XiaohongshuService) SyncCookies(ctx context.Context, data []byte) (stri
 
 // CheckLoginStatus 检查登录状态
 func (s *XiaohongshuService) CheckLoginStatus(ctx context.Context) (*LoginStatusResponse, error) {
-	engine := newBrowserEngine()
-	if err := engine.Start(); err != nil {
-		return nil, err
+	newSession := s.loginSessionNew
+	if newSession == nil {
+		newSession = newPlaywrightLoginSession
 	}
-	defer engine.Close()
 
-	page, err := engine.NewPage()
+	session, err := newSession()
 	if err != nil {
 		return nil, err
 	}
-	defer page.Close()
+	defer session.Close()
 
-	loginAction := xiaohongshu.NewLogin(page, s.polling.Auth)
-	status, err := loginAction.CheckLoginStatus(ctx)
+	if err := session.Open(ctx); err != nil {
+		return nil, err
+	}
+
+	loggedIn, err := session.LoggedIn(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	username := status.Nickname
-	if username == "" {
-		username = configs.DefaultUsername
+	username := ""
+	if loggedIn {
+		provider, ok := session.(interface {
+			Nickname(context.Context) (string, error)
+		})
+		if !ok {
+			slog.Warn("login session does not support nickname extraction, treat as logged out")
+			loggedIn = false
+		} else {
+			name, nameErr := provider.Nickname(ctx)
+			if nameErr != nil {
+				slog.Warn("extract login nickname failed, treat as logged out", "error", nameErr)
+				loggedIn = false
+			} else {
+				username = strings.TrimSpace(name)
+				if isPlaceholderStatusUsername(username) {
+					slog.Warn("extract login nickname unavailable, treat as logged out", "nickname", username)
+					loggedIn = false
+					username = ""
+				}
+			}
+		}
 	}
 
 	return &LoginStatusResponse{
-		IsLoggedIn: status.LoggedIn,
+		IsLoggedIn: loggedIn,
 		Username:   username,
 	}, nil
+}
+
+func isPlaceholderStatusUsername(name string) bool {
+	n := strings.TrimSpace(strings.ToLower(name))
+	if strings.Contains(n, "小红书") && strings.Contains(n, "创作服务平台") {
+		return true
+	}
+	switch n {
+	case "", "我", "我的", "me", "my", "小红书", "xiaohongshu", "xiaohongshu creator", "xhs creator":
+		return true
+	default:
+		return false
+	}
 }
 
 // GetLoginQrcode 获取登录的扫码二维码
@@ -429,6 +464,53 @@ func (s *XiaohongshuService) PublishVideo(ctx context.Context, req *PublishVideo
 		Status:  "发布完成",
 	}
 	return resp, nil
+}
+
+// SaveDraft 保存图文草稿（暂存离开，不立即发布）
+func (s *XiaohongshuService) SaveDraft(ctx context.Context, req *SaveDraftRequest) (*ActionResult, error) {
+	if s.publishUsecase == nil {
+		return nil, fmt.Errorf("发布服务未初始化")
+	}
+
+	content := domainpublish.ImageContent{
+		Title:      req.Title,
+		Content:    req.Content,
+		Tags:       req.Tags,
+		ImagePaths: req.Images,
+	}
+	if err := s.publishUsecase.SaveImageDraft(ctx, content); err != nil {
+		return nil, err
+	}
+
+	return &ActionResult{
+		Success: true,
+		Message: "草稿保存成功",
+	}, nil
+}
+
+// SaveVideoDraft 保存视频草稿（暂存离开，不立即发布）
+func (s *XiaohongshuService) SaveVideoDraft(ctx context.Context, req *SaveVideoDraftRequest) (*ActionResult, error) {
+	if s.publishUsecase == nil {
+		return nil, fmt.Errorf("发布服务未初始化")
+	}
+	if strings.TrimSpace(req.Video) == "" {
+		return nil, fmt.Errorf("缺少本地视频文件路径")
+	}
+
+	content := domainpublish.VideoContent{
+		Title:     req.Title,
+		Content:   req.Content,
+		Tags:      req.Tags,
+		VideoPath: req.Video,
+	}
+	if err := s.publishUsecase.SaveVideoDraft(ctx, content); err != nil {
+		return nil, err
+	}
+
+	return &ActionResult{
+		Success: true,
+		Message: "视频草稿保存成功",
+	}, nil
 }
 
 // publishVideo 执行视频发布

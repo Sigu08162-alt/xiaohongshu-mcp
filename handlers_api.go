@@ -584,29 +584,12 @@ func (s *AppServer) saveDraftHandler(c *gin.Context) {
 		return
 	}
 
-	images := make([]interface{}, len(req.Images))
-	for i, img := range req.Images {
-		images[i] = img
-	}
-	tags := make([]interface{}, len(req.Tags))
-	for i, tag := range req.Tags {
-		tags[i] = tag
-	}
-
-	argsMap := map[string]interface{}{
-		"title":   req.Title,
-		"content": req.Content,
-		"images":  images,
-		"tags":    tags,
-	}
-
-	result := s.handleSaveDraft(c.Request.Context(), argsMap)
-	if result.IsError {
-		respondError(c, http.StatusInternalServerError, "SAVE_DRAFT_FAILED",
-			"保存草稿失败", result.Content[0].Text)
+	result, err := s.xiaohongshuService.SaveDraft(c.Request.Context(), &req)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "SAVE_DRAFT_FAILED", "保存草稿失败", err.Error())
 		return
 	}
-	respondSuccess(c, map[string]any{"message": result.Content[0].Text}, "保存草稿成功")
+	respondSuccess(c, result, result.Message)
 }
 
 // saveVideoDraftHandler 保存视频草稿
@@ -626,25 +609,12 @@ func (s *AppServer) saveVideoDraftHandler(c *gin.Context) {
 		return
 	}
 
-	tags := make([]interface{}, len(req.Tags))
-	for i, tag := range req.Tags {
-		tags[i] = tag
-	}
-
-	argsMap := map[string]interface{}{
-		"title":   req.Title,
-		"content": req.Content,
-		"video":   req.Video,
-		"tags":    tags,
-	}
-
-	result := s.handleSaveVideoDraft(c.Request.Context(), argsMap)
-	if result.IsError {
-		respondError(c, http.StatusInternalServerError, "SAVE_VIDEO_DRAFT_FAILED",
-			"保存视频草稿失败", result.Content[0].Text)
+	result, err := s.xiaohongshuService.SaveVideoDraft(c.Request.Context(), &req)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "SAVE_VIDEO_DRAFT_FAILED", "保存视频草稿失败", err.Error())
 		return
 	}
-	respondSuccess(c, map[string]any{"message": result.Content[0].Text}, "保存视频草稿成功")
+	respondSuccess(c, result, result.Message)
 }
 
 // shareFeedHandler 分享笔记

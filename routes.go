@@ -22,6 +22,14 @@ func setupRoutes(appServer *AppServer) *gin.Engine {
 
 	// 健康检查
 	router.GET("/health", healthHandler)
+	router.GET("/swagger", swaggerRedirectHandler)
+	router.HEAD("/swagger", swaggerRedirectHandler)
+	router.GET("/swagger/index.html", swaggerIndexHandler)
+	router.HEAD("/swagger/index.html", swaggerIndexHandler)
+	router.GET("/swagger/doc.json", swaggerDocJSONHandler)
+	router.HEAD("/swagger/doc.json", swaggerDocJSONHandler)
+	router.GET("/swagger/doc.yaml", swaggerDocYAMLHandler)
+	router.HEAD("/swagger/doc.yaml", swaggerDocYAMLHandler)
 
 	// MCP 端点 - 使用官方 SDK 的 Streamable HTTP Handler
 	mcpHandler := mcp.NewStreamableHTTPHandler(

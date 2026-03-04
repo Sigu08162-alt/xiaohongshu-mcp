@@ -104,7 +104,7 @@ func main() {
 	}
 
 	// 创建并启动应用服务器
-	appServer := NewAppServerWithPublish(xiaohongshuService, publishUsecase)
+	appServer := NewAppServer(xiaohongshuService)
 	if err := appServer.Start(port); err != nil {
 		slog.Error("failed to run server:", "arg1", err)
 	}
