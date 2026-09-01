@@ -21,7 +21,10 @@ LABEL version=$VERSION
 WORKDIR /app
 
 COPY release/xiaohongshu-mcp-linux-amd64 /app/app
-RUN chmod +x /app/app
+COPY release/playwright /app/playwright
+RUN chmod +x /app/app /app/playwright && \
+    /app/playwright install chromium && \
+    rm /app/playwright
 
 COPY configs/ /app/configs/
 COPY selectors_discovered_pages_fixed.yaml /app/selectors_discovered_pages_fixed.yaml
