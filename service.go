@@ -667,7 +667,11 @@ func (s *XiaohongshuService) ReplyCommentToFeed(ctx context.Context, feedID, xse
 
 // GetMyProfile 获取当前登录用户的个人信息
 func (s *XiaohongshuService) GetMyProfile(ctx context.Context) (*UserProfileResponse, error) {
-	result, err := s.userUsecase.GetMyProfile(ctx)
+	return s.GetMyProfileTab(ctx, "note")
+}
+
+func (s *XiaohongshuService) GetMyProfileTab(ctx context.Context, tab string) (*UserProfileResponse, error) {
+	result, err := s.userUsecase.GetMyProfileTab(ctx, tab)
 	if err != nil {
 		return nil, err
 	}
