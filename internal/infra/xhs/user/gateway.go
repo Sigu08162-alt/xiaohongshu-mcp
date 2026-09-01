@@ -60,13 +60,17 @@ func (g *Gateway) GetUserProfile(ctx context.Context, userID, xsecToken string) 
 
 // GetMyProfile returns the current logged-in user's profile via sidebar.
 func (g *Gateway) GetMyProfile(ctx context.Context) (*xiaohongshu.UserProfileResponse, error) {
+	return g.GetMyProfileTab(ctx, "note")
+}
+
+func (g *Gateway) GetMyProfileTab(ctx context.Context, tab string) (*xiaohongshu.UserProfileResponse, error) {
 	var result *xiaohongshu.UserProfileResponse
 	err := g.withPage(ctx, func(page browser.Page) error {
 		action, err := xiaohongshu.NewUserProfileAction(page, g.polling)
 		if err != nil {
 			return err
 		}
-		result, err = action.GetMyProfileViaSidebar(ctx)
+		result, err = action.GetMyProfileTabViaSidebar(ctx, tab)
 		return err
 	})
 	return result, err
