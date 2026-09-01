@@ -367,10 +367,10 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// 登录弹窗可见时，说明当前仍处于登录页流程，禁止用 cookie 兜底误报“已登录”。
+	// 扫码确认后页面可能短暂保留登录弹窗，但会话 cookies 已经下发。
+	// 因此弹窗可见时仍继续检查 cookies，避免漏报成功登录。
 	if loginErr == nil && loginVisible {
-		slog.Info("login modal is visible, skip cookie fallback")
-		return false, nil
+		slog.Info("login modal is visible, continue cookie fallback")
 	}
 
 	// 方法2: 检查关键 cookies（备用方案）
@@ -998,5 +998,9 @@ func saveCookiesFromWrapper(wrapper *playwrightPageWrapper) error {
 	}
 
 	cookiePath := cookies.GetCookiesFilePath()
-	return os.WriteFile(cookiePath, data, 0644)
+	if err := os.WriteFile(cookiePath, data, 0600); err != nil {
+		return err
+	}
+	// WriteFile keeps the mode of an existing file, so enforce it explicitly.
+	return os.Chmod(cookiePath, 0600)
 }
