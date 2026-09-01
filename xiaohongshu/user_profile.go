@@ -135,7 +135,19 @@ func makeUserProfileURL(userID, xsecToken string) string {
 }
 
 func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context) (*UserProfileResponse, error) {
+	return u.GetMyProfileTabViaSidebar(ctx, "note")
+}
+
+// GetMyProfileTabViaSidebar returns the current user's notes, favorites, or liked notes.
+// It only reads the profile page and never changes interaction state.
+func (u *UserProfileAction) GetMyProfileTabViaSidebar(ctx context.Context, tab string) (*UserProfileResponse, error) {
 	page := u.page.WithContext(ctx)
+	if tab == "" {
+		tab = "note"
+	}
+	if tab != "note" && tab != "fav" && tab != "liked" {
+		return nil, fmt.Errorf("unsupported profile tab %q", tab)
+	}
 
 	// 创建导航动作
 	navigate := NewNavigate(page, u.polling)
@@ -172,6 +184,31 @@ func (u *UserProfileAction) GetMyProfileViaSidebar(ctx context.Context) (*UserPr
 	// 额外等待500ms确保数据完全加载
 	if err := polling.SleepDelay(u.polling, "wait_500ms"); err != nil {
 		return nil, err
+	}
+
+	if tab != "note" {
+		label := "收藏"
+		if tab == "liked" {
+			label = "赞过"
+		}
+		clicked, err := page.Eval(fmt.Sprintf(`() => {
+			const label = %q;
+			const candidates = [...document.querySelectorAll('button, [role="tab"], .reds-tab-item, .tab-item, span')];
+			const el = candidates.find(node => (node.textContent || '').trim() === label);
+			if (!el) return false;
+			el.click();
+			return true;
+		}`, label))
+		if err != nil {
+			return nil, fmt.Errorf("切换个人主页标签失败: %w", err)
+		}
+		if clicked != true {
+			return nil, fmt.Errorf("个人主页未找到%s标签", label)
+		}
+		// The profile store is replaced asynchronously after switching tabs.
+		if err := polling.SleepDelay(u.polling, "wait_1000ms"); err != nil {
+			return nil, err
+		}
 	}
 
 	return u.extractUserProfileData(page)
