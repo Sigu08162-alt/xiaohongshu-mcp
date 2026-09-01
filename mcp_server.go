@@ -106,6 +106,10 @@ type UserProfileArgs struct {
 	XsecToken string `json:"xsec_token" jsonschema:"访问令牌，从Feed列表的xsecToken字段获取"`
 }
 
+type GetMyProfileArgs struct {
+	Tab string `json:"tab,omitempty" jsonschema:"主页 tab: note(笔记,默认)|fav(收藏)|liked(点赞)"`
+}
+
 // PostCommentArgs 发表评论的参数
 type PostCommentArgs struct {
 	FeedID    string `json:"feed_id" jsonschema:"小红书笔记ID，从Feed列表获取"`
@@ -418,6 +422,26 @@ func registerTools(server *mcp.Server, appServer *AppServer) {
 			}
 			result := appServer.handleUserProfile(ctx, argsMap)
 			return convertToMCPResult(result), nil, nil
+		}),
+	)
+
+	// 工具 8.1: 获取当前用户主页及指定标签页
+	mcp.AddTool(server,
+		&mcp.Tool{
+			Name:        "get_my_profile",
+			Description: "获取当前登录用户的主页，以及指定 tab 下的内容。tab 可选 note、fav、liked",
+			Annotations: &mcp.ToolAnnotations{Title: "My Profile", ReadOnlyHint: true},
+		},
+		withPanicRecovery("get_my_profile", func(ctx context.Context, req *mcp.CallToolRequest, args GetMyProfileArgs) (*mcp.CallToolResult, any, error) {
+			tab := args.Tab
+			if tab == "" {
+				tab = "note"
+			}
+			result, err := appServer.xiaohongshuService.GetMyProfileTab(ctx, tab)
+			if err != nil {
+				return nil, nil, err
+			}
+			return convertToMCPResult(successJSON(result)), nil, nil
 		}),
 	)
 
