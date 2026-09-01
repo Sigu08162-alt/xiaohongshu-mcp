@@ -186,24 +186,53 @@ func (u *UserProfileAction) GetMyProfileTabViaSidebar(ctx context.Context, tab s
 		return nil, err
 	}
 
-	if tab != "note" {
-		label := "收藏"
-		if tab == "liked" {
-			label = "赞过"
+	// userPageData is created before the profile payload and tabs are rendered.
+	// Wait for real profile content instead of accepting the initial empty ref.
+	maxWait, err = u.polling.Timeout()
+	if err != nil {
+		return nil, err
+	}
+	checkInterval, err = u.polling.Interval()
+	if err != nil {
+		return nil, err
+	}
+	startTime = time.Now()
+	for time.Since(startTime) < maxWait {
+		ready, evalErr := page.Eval(`() => {
+			const ref = window.__INITIAL_STATE__?.user?.userPageData;
+			const data = ref?.value ?? ref?._value ?? ref?._rawValue ?? ref;
+			const basic = data?.basicInfo;
+			const text = document.body?.innerText || '';
+			return Boolean(basic?.nickname || basic?.redId || text.includes('收藏'));
+		}`)
+		if evalErr == nil && ready == true {
+			break
 		}
+		time.Sleep(checkInterval)
+	}
+
+	if tab != "note" {
+		labels := []string{"收藏", "收藏夹"}
+		if tab == "liked" {
+			labels = []string{"赞过", "点赞"}
+		}
+		labelsJSON, _ := json.Marshal(labels)
 		clicked, err := page.Eval(fmt.Sprintf(`() => {
-			const label = %q;
+			const labels = %s;
 			const candidates = [...document.querySelectorAll('button, [role="tab"], .reds-tab-item, .tab-item, span')];
-			const el = candidates.find(node => (node.textContent || '').trim() === label);
+			const el = candidates.find(node => {
+				const text = (node.textContent || '').trim();
+				return labels.some(label => text === label || text.startsWith(label + ' '));
+			});
 			if (!el) return false;
 			el.click();
 			return true;
-		}`, label))
+		}`, string(labelsJSON)))
 		if err != nil {
 			return nil, fmt.Errorf("切换个人主页标签失败: %w", err)
 		}
 		if clicked != true {
-			return nil, fmt.Errorf("个人主页未找到%s标签", label)
+			return nil, fmt.Errorf("个人主页未找到%s标签", labels[0])
 		}
 		// The profile store is replaced asynchronously after switching tabs.
 		if err := polling.SleepDelay(u.polling, "wait_1000ms"); err != nil {
