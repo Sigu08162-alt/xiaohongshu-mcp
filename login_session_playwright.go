@@ -367,10 +367,15 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// 扫码确认后页面可能短暂保留登录弹窗，但会话 cookies 已经下发。
-	// 因此弹窗可见时仍继续检查 cookies，避免漏报成功登录。
+	// Anonymous visitors also receive a1 and web_session cookies. When the login
+	// modal is visible, accept cookie fallback only after the page explicitly
+	// reports that the QR scan was confirmed on the phone.
 	if loginErr == nil && loginVisible {
-		slog.Info("login modal is visible, continue cookie fallback")
+		scanConfirmed, scanErr := s.page.HasRegex(ctx, "body", scanSuccessRegexp)
+		slog.Info("login modal cookie fallback gate", "scan_confirmed", scanConfirmed, "scan_err", scanErr)
+		if scanErr != nil || !scanConfirmed {
+			return false, nil
+		}
 	}
 
 	// 方法2: 检查关键 cookies（备用方案）
