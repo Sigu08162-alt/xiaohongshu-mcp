@@ -149,6 +149,13 @@ type UserProfileResponse struct {
 
 // DeleteCookies 删除 cookies 文件，用于登录重置
 func (s *XiaohongshuService) DeleteCookies(ctx context.Context) error {
+	// Close the active QR/browser session first. Otherwise it can write stale
+	// credentials back after the cookies file has been removed.
+	if manager, ok := s.loginManager.(*LoginManager); ok {
+		if err := manager.Reset(); err != nil {
+			return err
+		}
+	}
 	cookiePath := cookies.GetCookiesFilePath()
 	cookieLoader := cookies.NewLoadCookie(cookiePath)
 	return cookieLoader.DeleteCookies()
