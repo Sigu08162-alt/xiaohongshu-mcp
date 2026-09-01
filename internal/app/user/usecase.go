@@ -27,6 +27,10 @@ func (u *Usecase) GetMyProfile(ctx context.Context) (*xiaohongshu.UserProfileRes
 	return u.Gateway.GetMyProfile(ctx)
 }
 
+func (u *Usecase) GetMyProfileTab(ctx context.Context, tab string) (*xiaohongshu.UserProfileResponse, error) {
+	return u.Gateway.GetMyProfileTab(ctx, tab)
+}
+
 func (u *Usecase) GetMyStats(ctx context.Context) (map[string]any, error) {
 	return u.Gateway.GetMyStats(ctx)
 }
