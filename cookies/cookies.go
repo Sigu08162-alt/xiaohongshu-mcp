@@ -40,7 +40,11 @@ func (c *localCookie) LoadCookies() ([]byte, error) {
 
 // SaveCookies 保存 cookies 到文件中。
 func (c *localCookie) SaveCookies(data []byte) error {
-	return os.WriteFile(c.path, data, 0644)
+	if err := os.WriteFile(c.path, data, 0600); err != nil {
+		return err
+	}
+	// WriteFile does not change permissions on an existing file.
+	return os.Chmod(c.path, 0600)
 }
 
 // DeleteCookies 删除 cookies 文件。
