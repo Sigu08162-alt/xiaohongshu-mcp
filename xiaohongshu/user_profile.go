@@ -157,12 +157,28 @@ func (u *UserProfileAction) GetMyProfileTabViaSidebar(ctx context.Context, tab s
 	if err := navigate.ToExplorePage(ctx); err != nil {
 		return nil, fmt.Errorf("导航到探索页失败: %w", err)
 	}
-	profileLink, err := page.Element(".main-container .user .link-wrapper a")
-	if err != nil {
-		return nil, fmt.Errorf("未找到个人主页入口: %w", err)
+	profileSelectors := []string{
+		".main-container .user .link-wrapper",
+		".main-container .user .link-wrapper .channel",
+		`a[href*="/user/profile/"]`,
 	}
-	if err := profileLink.Click(); err != nil {
-		return nil, fmt.Errorf("点击个人主页入口失败: %w", err)
+	clickedProfile := false
+	for _, selector := range profileSelectors {
+		exists, hasErr := page.Has(selector)
+		if hasErr != nil || !exists {
+			continue
+		}
+		profileLink, elementErr := page.Element(selector)
+		if elementErr != nil {
+			continue
+		}
+		if clickErr := profileLink.Click(); clickErr == nil {
+			clickedProfile = true
+			break
+		}
+	}
+	if !clickedProfile {
+		return nil, fmt.Errorf("未找到可点击的个人主页入口")
 	}
 	if err := polling.SleepDelay(u.polling, "wait_1000ms"); err != nil {
 		return nil, err
