@@ -2,7 +2,7 @@ FROM debian:bookworm-slim
 
 ENV TZ=Asia/Shanghai \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright \
-    PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.playwright.dev/dbazure/download/playwright
+    PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.playwright.dev
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \
     apt-get update && apt-get install -y --no-install-recommends \
