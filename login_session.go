@@ -137,6 +137,14 @@ func (m *LoginManager) GetQRCode(ctx context.Context) (loginQRResult, error) {
 	}, nil
 }
 
+// Reset closes any in-memory login browser so stale credentials cannot be
+// written back after the persistent cookies file is deleted.
+func (m *LoginManager) Reset() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.closeLocked()
+}
+
 func (m *LoginManager) expiredLocked() bool {
 	if m.ttl <= 0 {
 		return false
