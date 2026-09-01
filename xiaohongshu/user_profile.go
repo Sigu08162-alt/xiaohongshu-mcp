@@ -152,9 +152,20 @@ func (u *UserProfileAction) GetMyProfileTabViaSidebar(ctx context.Context, tab s
 	// 创建导航动作
 	navigate := NewNavigate(page, u.polling)
 
-	// 通过侧边栏导航到个人主页
-	if err := navigate.ToProfilePage(ctx); err != nil {
-		return nil, fmt.Errorf("导航到个人主页失败: %w", err)
+	// Enter through the signed-in sidebar link. A direct profile URL can be
+	// redirected to /login even while the explore SPA has a valid session.
+	if err := navigate.ToExplorePage(ctx); err != nil {
+		return nil, fmt.Errorf("导航到探索页失败: %w", err)
+	}
+	profileLink, err := page.Element(".main-container .user .link-wrapper a")
+	if err != nil {
+		return nil, fmt.Errorf("未找到个人主页入口: %w", err)
+	}
+	if err := profileLink.Click(); err != nil {
+		return nil, fmt.Errorf("点击个人主页入口失败: %w", err)
+	}
+	if err := polling.SleepDelay(u.polling, "wait_1000ms"); err != nil {
+		return nil, err
 	}
 
 	// 等待 __INITIAL_STATE__ 中的用户数据加载，而不是等待 DOM 稳定
