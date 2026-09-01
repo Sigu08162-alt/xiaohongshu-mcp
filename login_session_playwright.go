@@ -324,10 +324,7 @@ func (s *playwrightLoginSession) Open(ctx context.Context) error {
 	if s.page == nil {
 		return errors.New("login page not initialized")
 	}
-	// Use Xiaohongshu's creator portal for QR authentication. It shares the
-	// account cookie domain with the main site and is more reliable in headless
-	// environments than the explore-page login modal.
-	if err := s.page.Navigate(ctx, xhsCreatorHomeURL); err != nil {
+	if err := s.page.Navigate(ctx, xhsLoginURL); err != nil {
 		return err
 	}
 	if err := s.page.WaitLoad(ctx); err != nil {
