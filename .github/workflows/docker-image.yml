@@ -26,9 +26,12 @@ jobs:
       - name: Build Linux binary and Playwright installer
         run: |
           mkdir -p release
-          go get github.com/playwright-community/playwright-go@v0.6000.0
+          find . -type f -name '*.go' -exec sed -i 's#github.com/playwright-community/playwright-go#github.com/mxschmitt/playwright-go#g' {} +
+          go mod edit -droprequire=github.com/playwright-community/playwright-go
+          go get github.com/mxschmitt/playwright-go@v0.6100.0
+          go mod tidy
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o release/xiaohongshu-mcp-linux-amd64 .
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o release/playwright github.com/playwright-community/playwright-go/cmd/playwright
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o release/playwright github.com/mxschmitt/playwright-go/cmd/playwright
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
