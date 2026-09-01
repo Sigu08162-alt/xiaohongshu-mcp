@@ -61,6 +61,12 @@ func NewXiaohongshuServiceWithModules(
 	if loginTTL <= 0 {
 		return nil, fmt.Errorf("polling.auth.timeout_ms missing or invalid")
 	}
+	// Mobile users need enough time to save the QR image, switch apps, scan,
+	// and confirm before the browser session is discarded.
+	const minimumLoginTTL = 5 * time.Minute
+	if loginTTL < minimumLoginTTL {
+		loginTTL = minimumLoginTTL
+	}
 	return &XiaohongshuService{
 		publishUsecase:   publishUsecase,
 		feedUsecase:      feedUsecase,
