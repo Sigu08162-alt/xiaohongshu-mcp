@@ -367,15 +367,38 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 		}
 	}
 
-	// Anonymous visitors also receive a1 and web_session cookies. When the login
-	// modal is visible, accept cookie fallback only after the page explicitly
-	// reports that the QR scan was confirmed on the phone.
+	// Anonymous visitors also receive a1 and web_session cookies. After the QR
+	// confirmation, give Xiaohongshu time to finish the server-side session,
+	// then reload the authenticated page. Persist cookies only after the real
+	// signed-in navigation entry appears; never accept the transient cookie pair.
 	if loginErr == nil && loginVisible {
 		scanConfirmed, scanErr := s.page.HasRegex(ctx, "body", scanSuccessRegexp)
-		slog.Info("login modal cookie fallback gate", "scan_confirmed", scanConfirmed, "scan_err", scanErr)
+		slog.Info("login modal stabilization gate", "scan_confirmed", scanConfirmed, "scan_err", scanErr)
 		if scanErr != nil || !scanConfirmed {
 			return false, nil
 		}
+		if s.sleep != nil {
+			s.sleep(3 * time.Second)
+		}
+		if err := s.page.Navigate(ctx, xhsLoginURL); err != nil {
+			return false, err
+		}
+		if err := s.page.WaitLoad(ctx); err != nil {
+			return false, err
+		}
+		if s.sleep != nil {
+			s.sleep(2 * time.Second)
+		}
+		stableOK, stableErr := s.page.Has(ctx, loginStatusSelector)
+		stableLoginVisible, stableLoginErr := s.loginContainerVisible(ctx)
+		slog.Info("login status after stabilization", "login_status_match", stableOK, "login_status_err", stableErr, "login_container_match", stableLoginVisible, "login_container_err", stableLoginErr)
+		if stableErr != nil {
+			return false, stableErr
+		}
+		if stableOK && (stableLoginErr != nil || !stableLoginVisible) {
+			return true, nil
+		}
+		return false, nil
 	}
 
 	// 方法2: 检查关键 cookies（备用方案）
