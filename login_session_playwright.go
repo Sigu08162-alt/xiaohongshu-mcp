@@ -392,7 +392,9 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 			if cookieErr == nil && changed {
 				return true, nil
 			}
-			return false, nil
+			// The mobile app may complete authentication before the QR page
+			// updates its text or cookies. Reload once and verify the real
+			// signed-in navigation state instead of waiting on stale UI.
 		}
 		if s.sleep != nil {
 			s.sleep(3 * time.Second)
