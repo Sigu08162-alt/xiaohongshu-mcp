@@ -272,11 +272,12 @@ func framesForPage(ctx context.Context, page browser.Page) ([]qrFrame, error) {
 }
 
 type playwrightLoginSession struct {
-	engine      browser.Engine
-	page        qrPage
-	pwPage      *playwrightPageWrapper // 保存包含 context 的包装器
-	saveCookies func() error
-	sleep       func(time.Duration)
+	engine            browser.Engine
+	page              qrPage
+	pwPage            *playwrightPageWrapper // 保存包含 context 的包装器
+	saveCookies       func() error
+	sleep             func(time.Duration)
+	initialWebSession string
 }
 
 // playwrightPageWrapper 包装 browser.Page 并保存 playwright context
@@ -333,6 +334,17 @@ func (s *playwrightLoginSession) Open(ctx context.Context) error {
 	if s.sleep != nil {
 		s.sleep(2 * time.Second)
 	}
+	if s.pwPage != nil && s.pwPage.ctx != nil {
+		cks, cookieErr := s.pwPage.ctx.Cookies()
+		if cookieErr == nil {
+			for _, cookie := range cks {
+				if cookie.Name == "web_session" {
+					s.initialWebSession = cookie.Value
+					break
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -375,6 +387,11 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 		scanConfirmed, scanErr := s.page.HasRegex(ctx, "body", scanSuccessRegexp)
 		slog.Info("login modal stabilization gate", "scan_confirmed", scanConfirmed, "scan_err", scanErr)
 		if scanErr != nil || !scanConfirmed {
+			changed, cookieErr := s.authCookieChanged()
+			slog.Info("login session cookie change check", "changed", changed, "error", cookieErr)
+			if cookieErr == nil && changed {
+				return true, nil
+			}
 			return false, nil
 		}
 		if s.sleep != nil {
@@ -424,6 +441,27 @@ func (s *playwrightLoginSession) LoggedIn(ctx context.Context) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func (s *playwrightLoginSession) authCookieChanged() (bool, error) {
+	if s.pwPage == nil || s.pwPage.ctx == nil {
+		return false, errors.New("playwright context is nil")
+	}
+	cks, err := s.pwPage.ctx.Cookies()
+	if err != nil {
+		return false, err
+	}
+	webSession := ""
+	hasA1 := false
+	for _, cookie := range cks {
+		switch cookie.Name {
+		case "web_session":
+			webSession = cookie.Value
+		case "a1":
+			hasA1 = len(cookie.Value) > 20
+		}
+	}
+	return hasA1 && len(webSession) > 20 && webSession != s.initialWebSession, nil
 }
 
 func (s *playwrightLoginSession) loginContainerVisible(ctx context.Context) (bool, error) {
