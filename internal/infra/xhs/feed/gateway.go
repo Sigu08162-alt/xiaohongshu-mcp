@@ -112,7 +112,11 @@ func (g *Gateway) SearchFeeds(ctx context.Context, keyword string, filters xiaoh
 			return err
 		}
 		var e error
-		result, e = action.Search(ctx, keyword, filters)
+		if filters == (xiaohongshu.FilterOption{}) {
+			result, e = action.Search(ctx, keyword)
+		} else {
+			result, e = action.Search(ctx, keyword, filters)
+		}
 		return e
 	})
 	return result, err
